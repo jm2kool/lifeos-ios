@@ -49,6 +49,7 @@ struct StudyLockView: View {
             .padding(.horizontal, 28).padding(.bottom, 20)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background { AmbientBackground(palette: .study) }
+            .tint(.green)
         }
         .sensoryFeedback(.warning, trigger: store.lockShown)
     }

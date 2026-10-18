@@ -17,6 +17,8 @@ jobs:
   preview:
     runs-on: macos-26
     timeout-minutes: 40
+    env:
+      SIMCTL_CHILD_LIFEOS_PREVIEW: '1'
     steps:
       - uses: actions/checkout@v4
 

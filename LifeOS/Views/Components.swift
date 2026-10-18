@@ -157,9 +157,13 @@ extension Store {
         case "orange": return .orange
         case "pink": return .pink
         case "teal": return .teal
-        default: return .primary
+        default: return Self.graphite
         }
     }
+    /// A slate grey that reads as text on either background and still carries white text when it fills a button.
+    static let graphite = Color(uiColor: UIColor { t in
+        t.userInterfaceStyle == .dark ? UIColor(red: 0.50, green: 0.52, blue: 0.57, alpha: 1) : UIColor(red: 0.20, green: 0.21, blue: 0.24, alpha: 1)
+    })
     var scheme: ColorScheme? {
         switch doc["settings"]["theme"].string ?? "auto" { case "light": return .light; case "dark": return .dark; default: return nil }
     }

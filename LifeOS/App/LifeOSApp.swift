@@ -27,7 +27,7 @@ struct LifeOSApp: App {
                 .onAppear {
                     assistant.store = store
                     focus.store = store
-                    if ProcessInfo.processInfo.environment["LIFEOS_TOUR"] == nil {
+                    if ProcessInfo.processInfo.environment["LIFEOS_PREVIEW"] == nil {
                         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
                     }
                 }
