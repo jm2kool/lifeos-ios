@@ -54,8 +54,8 @@ jobs:
           xcrun simctl io "$UDID" recordVideo --codec h264 --force out/tour.mp4 & REC=$!
           sleep 2
           SIMCTL_CHILD_LIFEOS_TOUR=1 xcrun simctl launch "$UDID" com.jm2kool.lifeos
-          sleep 5;  xcrun simctl io "$UDID" screenshot out/1-today.png
-          sleep 4;  xcrun simctl io "$UDID" screenshot out/2-inbox.png
+          sleep 5;   xcrun simctl io "$UDID" screenshot out/1-today.png
+          sleep 3.5; xcrun simctl io "$UDID" screenshot out/2-inbox.png
           sleep 3.5; xcrun simctl io "$UDID" screenshot out/3-study.png
           sleep 3.5; xcrun simctl io "$UDID" screenshot out/4-library.png
           sleep 3.5; xcrun simctl io "$UDID" screenshot out/5-search.png
