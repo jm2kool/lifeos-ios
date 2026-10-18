@@ -39,16 +39,28 @@ export function snapshot(doc) {
   }).slice(0, 24000);
 }
 
+// Tries the chosen model, then faster fallbacks when Google is slow or busy.
 export async function gemini(system, user, { json = true, fetcher = fetch } = {}) {
   if (!env.GEMINI_API_KEY) throw Object.assign(Error('Add GEMINI_API_KEY in Vercel'), { status: 503 });
-  const body = { systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts: [{ text: user }] }], generationConfig: { temperature: 0.4, maxOutputTokens: 4096, ...(json ? { responseMimeType: 'application/json' } : {}) } };
-  const call = m => fetcher(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY }, body: JSON.stringify(body), signal: AbortSignal.timeout(50000) });
-  let r = await call(MODEL()); if (r.status === 404) r = await call('gemini-flash-latest');
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw Object.assign(Error(j.error?.message || 'Gemini error ' + r.status), { status: 502 });
-  const text = (j.candidates?.[0]?.content?.parts || []).filter(p => p.text && !p.thought).map(p => p.text).join('');
-  if (!json) return text;
-  try { return JSON.parse(text) } catch { const m = text.match(/\{[\s\S]*\}/); return m ? JSON.parse(m[0]) : {} }
+  const models = [...new Set([MODEL(), 'gemini-3.5-flash', 'gemini-2.5-flash'])];
+  let last = 'Gemini did not respond';
+  for (const [i, m] of models.entries()) {
+    const gen = { temperature: 0.4, maxOutputTokens: 4096, ...(json ? { responseMimeType: 'application/json' } : {}) };
+    if (/^gemini-3/.test(m)) gen.thinkingConfig = { thinkingLevel: 'low' };
+    else if (/^gemini-2\.5/.test(m)) gen.thinkingConfig = { thinkingBudget: 0 };
+    const body = { systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts: [{ text: user }] }], generationConfig: gen };
+    let r, j;
+    try {
+      r = await fetcher('https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY }, body: JSON.stringify(body), signal: AbortSignal.timeout(i === 0 ? 40000 : 25000) });
+      j = await r.json().catch(() => ({}));
+    } catch (e) { last = m + ': ' + e.message; continue }
+    if (r.status === 400 && gen.thinkingConfig && /thinking/i.test(j.error?.message || '')) { delete gen.thinkingConfig; models.splice(i + 1, 0, m); continue }
+    if (!r.ok) { last = j.error?.message || 'Gemini error ' + r.status; if ([404, 429, 500, 502, 503, 504].includes(r.status)) continue; throw Object.assign(Error(last), { status: 502 }) }
+    const text = (j.candidates?.[0]?.content?.parts || []).filter(p => p.text && !p.thought).map(p => p.text).join('');
+    if (!json) return text;
+    try { return JSON.parse(text) } catch { const x = text.indexOf('{'), y = text.lastIndexOf('}'); return x >= 0 && y > x ? JSON.parse(text.slice(x, y + 1)) : {} }
+  }
+  throw Object.assign(Error(last), { status: 504 });
 }
 
 // timetable text helpers (same format the app uses)
