@@ -1,4 +1,5 @@
 import SwiftUI
+import MessageUI
 
 // MARK: design tokens
 enum UI {
@@ -240,6 +241,35 @@ struct ChangesBanner: View {
                 }
             }
             .card(padding: 14).padding(.bottom, 10)
+        }
+    }
+}
+
+/// The system email composer, inside the app. `finished` gets the result once it closes.
+struct MailComposer: UIViewControllerRepresentable {
+    let to: [String]
+    let subject: String
+    let body: String
+    var finished: @MainActor (MFMailComposeResult) -> Void
+    static var available: Bool { MFMailComposeViewController.canSendMail() }
+
+    func makeCoordinator() -> Coordinator { Coordinator(finished: finished) }
+    func makeUIViewController(context: Context) -> MFMailComposeViewController {
+        let vc = MFMailComposeViewController()
+        vc.mailComposeDelegate = context.coordinator
+        vc.setToRecipients(to); vc.setSubject(subject); vc.setMessageBody(body, isHTML: false)
+        return vc
+    }
+    func updateUIViewController(_ vc: MFMailComposeViewController, context: Context) {}
+
+    final class Coordinator: NSObject, MFMailComposeViewControllerDelegate {
+        let finished: @MainActor (MFMailComposeResult) -> Void
+        init(finished: @escaping @MainActor (MFMailComposeResult) -> Void) { self.finished = finished }
+        func mailComposeController(_ controller: MFMailComposeViewController, didFinishWith result: MFMailComposeResult, error: Error?) {
+            MainActor.assumeIsolated {
+                controller.dismiss(animated: true)
+                finished(result)
+            }
         }
     }
 }

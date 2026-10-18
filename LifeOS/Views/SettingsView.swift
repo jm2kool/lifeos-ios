@@ -12,6 +12,7 @@ struct SettingsView: View {
     @State private var model = ""
     @State private var assistantName = ""
     @State private var assistantAddress = ""
+    @State private var assistantEmail = ""
     @State private var syncURL = ""
     @State private var syncKey = ""
     @State private var importing = false
@@ -78,6 +79,7 @@ struct SettingsView: View {
                 Section {
                     TextField("Name", text: $assistantName)
                     TextField("iMessage address (phone or email)", text: $assistantAddress).textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.emailAddress)
+                    TextField("Email address (for sending replies)", text: $assistantEmail).textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.emailAddress)
                 } header: { Text("Your iMessage assistant") } footer: {
                     Text("“Send to” buttons open Messages with a ready-made message to this address.")
                 }
@@ -125,15 +127,16 @@ struct SettingsView: View {
         let d = store.doc
         name = d["profile"]["name"].str; timezone = d["profile"]["timezone"].string ?? TimeZone.current.identifier
         geminiKey = Keychain.get("geminiKey") ?? ""; model = d["settings"]["ai"]["model"].string ?? "gemini-3.5-flash"
-        assistantName = d["profile"]["assistant"]["name"].str; assistantAddress = d["profile"]["assistant"]["imessage"].str
+        assistantName = d["profile"]["assistant"]["name"].str; assistantAddress = d["profile"]["assistant"]["imessage"].str; assistantEmail = store.assistantEmail
         syncURL = d["settings"]["sync"]["url"].str; syncKey = Keychain.get("syncKey") ?? ""
     }
     private func save() {
         Keychain.set("geminiKey", geminiKey.trimmingCharacters(in: .whitespacesAndNewlines))
         Keychain.set("syncKey", syncKey.trimmingCharacters(in: .whitespacesAndNewlines))
         var ops: [JSON] = []
-        if name != store.profileName || assistantName != store.doc["profile"]["assistant"]["name"].str || assistantAddress != store.assistantAddress {
-            ops.append(["op": "profile.set", "value": ["name": .string(name), "assistant": ["name": .string(assistantName), "imessage": .string(assistantAddress), "email": .string(assistantAddress.contains("@") ? assistantAddress : "")]]])
+        if name != store.profileName || assistantName != store.doc["profile"]["assistant"]["name"].str || assistantAddress != store.assistantAddress || assistantEmail != store.assistantEmail {
+            let email = assistantEmail.trimmingCharacters(in: .whitespaces)
+            ops.append(["op": "profile.set", "value": ["name": .string(name), "assistant": ["name": .string(assistantName), "imessage": .string(assistantAddress), "email": .string(email.isEmpty && assistantAddress.contains("@") ? assistantAddress : email)]]])
         }
         if model != (store.doc["settings"]["ai"]["model"].string ?? "gemini-3.5-flash") { ops.append(["op": "settings.set", "value": ["ai": ["model": .string(model)]]]) }
         if syncURL != store.syncURL { ops.append(["op": "settings.set", "value": ["sync": ["url": .string(syncURL.trimmingCharacters(in: .whitespaces))]]]) }

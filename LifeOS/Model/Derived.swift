@@ -7,6 +7,12 @@ extension Store {
     var profileName: String { doc["profile"]["name"].str }
     var assistantName: String { doc["profile"]["assistant"]["name"].string.flatMap { $0.isEmpty ? nil : $0 } ?? "your assistant" }
     var assistantAddress: String { doc["profile"]["assistant"]["imessage"].str }
+    /// Where "Send via assistant" emails go: the assistant's email, or its iMessage address if that is an email.
+    var assistantEmail: String {
+        let e = doc["profile"]["assistant"]["email"].str.trimmingCharacters(in: .whitespaces)
+        if !e.isEmpty { return e }
+        return assistantAddress.contains("@") ? assistantAddress : ""
+    }
 
     // MARK: time
     var tz: TimeZone { TimeZone(identifier: doc["profile"]["timezone"].str) ?? .current }

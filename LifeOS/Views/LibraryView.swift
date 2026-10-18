@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import MessageUI
 
 enum LibraryPage: Hashable {
     case board, drafts, draft(String), calendar, timetable, feed, saved, finances, workflows
@@ -189,6 +190,9 @@ struct DraftDetail: View {
     @State private var changes = ""
     @State private var body_ = ""
     @State private var editing = false
+    @State private var confirmSend = false
+    @State private var composing = false
+    @State private var needEmail = false
 
     var body: some View {
         if let d = store.drafts.first(where: { $0.id == id }), let v = d.latest {
@@ -225,25 +229,94 @@ struct DraftDetail: View {
             if !v.by.isEmpty { Text("Written by \(v.by) · version \(v.version)").font(.caption).foregroundStyle(.tertiary).padding(.top, 10) }
         }
         .card()
+        let handed = store.review(d, v.version, "email-draft")?["state"].str.hasPrefix("sent to") == true
         GlassEffectContainer(spacing: 10) {
             VStack(spacing: 10) {
+                Button {
+                    if store.assistantEmail.isEmpty { needEmail = true } else { confirmSend = true }
+                } label: { Label(handed ? "Sent to \(store.assistantName) · Send again" : "Send via \(store.assistantName)", systemImage: "paperplane.fill").frame(maxWidth: .infinity) }
+                .buttonStyle(.glassProminent).controlSize(.large).disabled(editing)
+                HStack(spacing: 10) {
+                    Button { if editing { store.act(["op": "draft.email", "id": .string(d.id), "body": .string(body_), "by": "you"], undo: "Draft updated") }; editing.toggle() } label: {
+                        Label(editing ? "Save" : "Edit", systemImage: editing ? "checkmark" : "pencil").lineLimit(1).frame(maxWidth: .infinity)
+                    }
+                    Button { UIPasteboard.general.string = v.body; store.show("Copied") } label: { Label("Copy", systemImage: "doc.on.doc").lineLimit(1).frame(maxWidth: .infinity) }
+                    Button { store.sheet = .ask("Rewrite the email draft \(d.id) to be ") } label: { Label("Rewrite", systemImage: "sparkles").lineLimit(1).frame(maxWidth: .infinity) }
+                }
+                .buttonStyle(.glass).controlSize(.large)
                 Button {
                     var c = URLComponents(); c.scheme = "mailto"; c.path = v.to
                     c.queryItems = [URLQueryItem(name: "subject", value: v.subject), URLQueryItem(name: "body", value: v.body)]
                     if let u = c.url { openURL(u) }
-                } label: { Label("Open in Mail", systemImage: "envelope").frame(maxWidth: .infinity) }
-                .buttonStyle(.glassProminent).controlSize(.large)
-                HStack(spacing: 10) {
-                    Button { if editing { store.act(["op": "draft.email", "id": .string(d.id), "body": .string(body_), "by": "you"], undo: "Draft updated") }; editing.toggle() } label: {
-                        Label(editing ? "Save" : "Edit", systemImage: editing ? "checkmark" : "pencil").frame(maxWidth: .infinity)
-                    }
-                    Button { UIPasteboard.general.string = v.body; store.show("Copied") } label: { Label("Copy", systemImage: "doc.on.doc").frame(maxWidth: .infinity) }
-                    Button { store.sheet = .ask("Rewrite the email draft \(d.id) to be ") } label: { Label("Rewrite", systemImage: "sparkles").frame(maxWidth: .infinity) }
-                }
-                .buttonStyle(.glass).controlSize(.large)
+                } label: { Label("Open in Mail and send it myself", systemImage: "envelope").frame(maxWidth: .infinity) }
+                .buttonStyle(.glass)
             }
         }
-        Text("Nothing is sent from LifeOS. Mail opens with this text so you can check it and send it yourself.").font(.caption).foregroundStyle(.secondary)
+        Text("Send via \(store.assistantName) emails \(store.assistantName) everything needed to send this reply for you, in the original thread. You confirm in the email screen before anything goes.")
+            .font(.caption).foregroundStyle(.secondary)
+            .confirmationDialog("Send this reply through \(store.assistantName)?", isPresented: $confirmSend, titleVisibility: .visible) {
+                Button("Email \(store.assistantName) to send it") { startSend(d, v) }
+            } message: {
+                Text("\(store.assistantName) will send it to \(v.to.isEmpty ? "the sender" : v.to)\(v.from.isEmpty ? "" : " from " + v.from), exactly as written.")
+            }
+            .alert("Add \(store.assistantName)'s email", isPresented: $needEmail) {
+                Button("Open Settings") { store.sheet = .settings }
+                Button("Cancel", role: .cancel) {}
+            } message: { Text("LifeOS needs \(store.assistantName)'s email address (Settings › Your iMessage assistant) to hand replies over.") }
+            .sheet(isPresented: $composing) {
+                let req = sendRequest(d, v)
+                MailComposer(to: [store.assistantEmail], subject: req.subject, body: req.body) { result in
+                    composing = false
+                    if result == .sent { handedOver(d, v, how: "sent to \(store.assistantName)") }
+                    else if result == .failed { store.show("Mail couldn't send that. Try again.") }
+                }
+                .ignoresSafeArea()
+            }
+    }
+
+    private func startSend(_ d: Draft, _ v: DraftVersion) {
+        if MailComposer.available { composing = true; return }
+        // no Mail account on this iPhone: fall back to whatever mail app handles mailto
+        let req = sendRequest(d, v)
+        var c = URLComponents(); c.scheme = "mailto"; c.path = store.assistantEmail
+        c.queryItems = [URLQueryItem(name: "subject", value: req.subject), URLQueryItem(name: "body", value: req.body)]
+        guard let u = c.url else { store.show("Couldn't build the email"); return }
+        openURL(u)
+        handedOver(d, v, how: "sent to \(store.assistantName) (mail app)")
+    }
+    /// Records that you approved this version and handed it to your assistant to send.
+    private func handedOver(_ d: Draft, _ v: DraftVersion, how: String) {
+        store.act(["op": "draft.review", "draftId": .string(d.id), "version": JSON(v.version), "week": "email-draft", "action": "approve", "state": .string(how), "title": .string(d.title)], undo: "Handed to \(store.assistantName)")
+        store.show("Sent to \(store.assistantName) to send")
+    }
+    /// The email your assistant gets: what to send, where, and the original message to reply to.
+    private func sendRequest(_ d: Draft, _ v: DraftVersion) -> (subject: String, body: String) {
+        let name = store.assistantName, me = store.profileName.isEmpty ? "me" : store.profileName
+        let original = store.mail.first { $0.id == d.inboxId }
+        let account = v.from.isEmpty ? (original?.account ?? "") : v.from
+        var lines: [String] = [
+            "Hi \(name),", "",
+            "Please send this email reply for \(me) exactly as written below. Don't change the wording.",
+            account.isEmpty ? "Reply in the existing thread of the original email." : "Send it from the \(account) account, as a reply in the existing thread of the original email.",
+            "When it's sent, mark the email done in LifeOS\(d.inboxId.isEmpty ? "" : " (inbox.done, id \(d.inboxId))") and message \(me). If anything is unclear (for example you can't find the recipient's address), don't send; ask \(me) first.",
+            "", "===== SEND THIS =====",
+            "From account: " + (account.isEmpty ? "(the account the original email came to)" : account),
+            "To: " + (v.to.isEmpty ? (original?.sender ?? "") : v.to),
+        ]
+        if !v.cc.isEmpty { lines.append("Cc: " + v.cc) }
+        lines += ["Subject: " + v.subject, "", v.body, "===== END =====", ""]
+        if let m = original {
+            lines += ["Original email to reply to:", "From: " + m.sender, "Account: " + m.account, "Subject: " + m.title]
+            if !m.checkedAt.isEmpty { lines.append("Received/checked: " + m.checkedAt) }
+            if !m.url.isEmpty { lines.append("Link: " + m.url) }
+            if !m.key.isEmpty { lines.append("Message key: " + m.key) }
+            if !m.gist.isEmpty { lines.append("Summary: " + m.gist) }
+            lines.append("")
+        }
+        let ref: JSON = ["draftId": .string(d.id), "version": JSON(v.version), "inboxId": .string(d.inboxId), "from": .string(account), "to": .string(v.to), "cc": .string(v.cc),
+                         "subject": .string(v.subject), "body": .string(v.body), "threadUrl": .string(original?.url ?? ""), "messageKey": .string(original?.key ?? "")]
+        lines += ["Approved by \(me) in LifeOS on \(Date().formatted(date: .abbreviated, time: .shortened)).", "", "LIFEOS-SEND " + ref.text()]
+        return ("Please send: " + v.subject + (v.to.isEmpty ? "" : " → " + v.to), lines.joined(separator: "\n"))
     }
 
     /// The whole draft, every type: intro, free text, each week with every day's lines, scope and questions.
@@ -299,12 +372,17 @@ struct DraftDetail: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("History").font(.headline)
                 ForEach(hist, id: \.self) { r in
-                    Label((r["action"].str == "approve" ? "Approved " : "Changes requested: ") + (d.parts.first { $0.id == r["week"].str }?.title ?? r["week"].str) + " · " + store.ago(r["at"].double ?? 0),
-                          systemImage: r["action"].str == "approve" ? "checkmark.seal" : "pencil").font(.footnote)
+                    Label(historyText(d, r), systemImage: r["state"].str.hasPrefix("sent to") ? "paperplane" : r["action"].str == "approve" ? "checkmark.seal" : "pencil").font(.footnote)
                 }
             }
             .card()
         }
+    }
+    private func historyText(_ d: Draft, _ r: JSON) -> String {
+        let state = r["state"].str, when = " · " + store.ago(r["at"].double ?? 0)
+        if state.hasPrefix("sent to") { return "Sent to" + String(state.dropFirst("sent to".count)) + " · v" + r["version"].str + when }
+        let part = d.parts.first { $0.id == r["week"].str }?.title ?? r["week"].str
+        return (r["action"].str == "approve" ? "Approved " : "Changes requested: ") + part + when
     }
     private func submit(_ d: Draft, _ v: DraftVersion, _ action: String) {
         let w = d.isEmail ? "email-draft" : week
