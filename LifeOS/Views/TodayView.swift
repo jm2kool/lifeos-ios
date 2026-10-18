@@ -183,6 +183,21 @@ struct GeminiCard: View {
             if let brief = p["brief"].string, !brief.isEmpty {
                 Text(brief).font(.callout).lineLimit(expanded ? nil : 3).fixedSize(horizontal: false, vertical: true)
                     .contentShape(.rect).onTapGesture { withAnimation(.smooth) { expanded.toggle() } }
+                if let f = p["focus"].string, !f.isEmpty {
+                    let t = store.target(for: f, hint: p["focusTarget"])
+                    Button { if let t { store.open(t) } else { store.sheet = .ask(f) } } label: {
+                        HStack(alignment: .top, spacing: 8) {
+                            Text("Do next").font(.footnote.weight(.semibold)).foregroundStyle(.tint)
+                            Text(f).font(.footnote.weight(.medium)).foregroundStyle(.primary).multilineTextAlignment(.leading)
+                            Spacer(minLength: 4)
+                            Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(.tertiary)
+                        }
+                        .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.accentColor.opacity(0.08), in: .rect(cornerRadius: 14, style: .continuous))
+                        .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                }
                 let rows = suggestions(p)
                 if !rows.isEmpty {
                     VStack(spacing: 0) {
@@ -190,8 +205,8 @@ struct GeminiCard: View {
                             let t = store.target(for: r.text, hint: r.hint)
                             Button { if let t { store.open(t) } else { store.sheet = .ask(r.text) } } label: {
                                 HStack(spacing: 10) {
-                                    Image(systemName: r.lead ? "arrow.right.circle.fill" : icon(t?["page"].str ?? "")).font(.footnote).foregroundStyle(.tint).frame(width: 18)
-                                    Text(r.text).font(.footnote.weight(r.lead ? .semibold : .regular)).foregroundStyle(.primary).lineLimit(1)
+                                    Image(systemName: icon(t?["page"].str ?? "")).font(.footnote).foregroundStyle(.tint).frame(width: 18)
+                                    Text(r.text).font(.footnote).foregroundStyle(.primary).lineLimit(1)
                                     Spacer(minLength: 4)
                                     Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(.tertiary)
                                 }
@@ -230,15 +245,14 @@ struct GeminiCard: View {
         }
         .card()
     }
-    private struct Suggestion { let text: String; let hint: JSON; let lead: Bool }
-    /// The next step first, then up to two highlights that say something different.
+    private struct Suggestion { let text: String; let hint: JSON }
+    /// Up to two highlights that say something different from "Do next".
     private func suggestions(_ p: JSON) -> [Suggestion] {
         let focusText = p["focus"].str
         var out: [Suggestion] = []
-        if !focusText.isEmpty { out.append(Suggestion(text: focusText, hint: p["focusTarget"], lead: true)) }
         for h in p["highlights"].array where !h["text"].str.isEmpty && !Reducer.alike(h["text"].str, focusText) {
-            if out.count >= 3 { break }
-            out.append(Suggestion(text: h["text"].str, hint: ["page": h["page"], "id": h["id"]], lead: false))
+            if out.count >= 2 { break }
+            out.append(Suggestion(text: h["text"].str, hint: ["page": h["page"], "id": h["id"]]))
         }
         return out
     }
