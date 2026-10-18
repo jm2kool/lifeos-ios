@@ -161,7 +161,9 @@ struct SavedView: View {
 struct FinancesView: View {
     @Environment(Store.self) private var store
     @State private var adding = false
-    @State private var name = "", price = "", renews = ""
+    @State private var name = ""
+    @State private var price = ""
+    @State private var renews = ""
     var body: some View {
         let subs = store.content["subscriptions"].array
         let cur = store.content["currency"].string ?? "₹"

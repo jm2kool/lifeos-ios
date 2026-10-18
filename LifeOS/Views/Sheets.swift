@@ -308,7 +308,8 @@ struct EventSheet: View {
 struct TaskSheet: View {
     @Environment(Store.self) private var store
     @Environment(\.dismiss) private var dismiss
-    @State private var title = "", note = ""
+    @State private var title = ""
+    @State private var note = ""
     @State private var hasDue = false
     @State private var due = Date()
     @State private var editing: TaskItem?
@@ -343,7 +344,9 @@ struct TaskSheet: View {
 struct SavedSheet: View {
     @Environment(Store.self) private var store
     @Environment(\.dismiss) private var dismiss
-    @State private var title = "", url = "", note = ""
+    @State private var title = ""
+    @State private var url = ""
+    @State private var note = ""
     @State private var editing: SavedItem?
     var body: some View {
         NavigationStack {
