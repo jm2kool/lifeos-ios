@@ -46,11 +46,28 @@ struct RootView: View {
         .animation(.smooth(duration: 0.4), value: store.toast)
         .task {
             if store.profileName.isEmpty { store.sheet = .onboarding }
+            await previewMode()
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(20))
                 store.tick = Date()
                 focus.checkFinished()
             }
+        }
+    }
+}
+
+extension RootView {
+    /// Only used by the cloud preview build (set through simulator launch environment): open a given tab, or walk through every tab.
+    func previewMode() async {
+        let env = ProcessInfo.processInfo.environment
+        let tabs: [String: AppTab] = ["today": .today, "inbox": .inbox, "study": .study, "library": .library, "search": .search]
+        if let name = env["LIFEOS_TAB"], let t = tabs[name] { store.tab = t }
+        guard env["LIFEOS_TOUR"] != nil else { return }
+        let order: [AppTab] = [.today, .inbox, .study, .library, .search, .today]
+        try? await Task.sleep(for: .seconds(3))
+        for t in order {
+            withAnimation(.smooth(duration: 0.45)) { store.tab = t }
+            try? await Task.sleep(for: .seconds(3.5))
         }
     }
 }

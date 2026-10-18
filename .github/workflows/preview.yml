@@ -1,0 +1,71 @@
+name: Preview
+
+on:
+  push:
+    branches: [main]
+    paths: ['preview/**', '.github/workflows/preview.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: preview
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use the newest Xcode
+        run: |
+          XC=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          [ -z "$XC" ] && XC=/Applications/Xcode.app
+          sudo xcode-select -s "$XC"
+
+      - name: Build for the simulator
+        run: |
+          xcodebuild -project LifeOS.xcodeproj -target LifeOS -configuration Debug -sdk iphonesimulator \
+            CODE_SIGNING_ALLOWED=NO SYMROOT="$PWD/simbuild" build > sim.log 2>&1 || { grep -E "error:" sim.log | sort -u | head -40; exit 1; }
+          test -d simbuild/Debug-iphonesimulator/LifeOS.app
+
+      - name: Boot an iPhone and load the demo data
+        run: |
+          UDID=$(xcrun simctl list devices available | grep -E "iPhone 1[67] Pro \(" | head -1 | grep -oE '[0-9A-F-]{36}')
+          [ -z "$UDID" ] && UDID=$(xcrun simctl list devices available | grep "iPhone" | head -1 | grep -oE '[0-9A-F-]{36}')
+          echo "UDID=$UDID" >> $GITHUB_ENV
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl ui "$UDID" appearance dark || true
+          xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 --cellularBars 4 || true
+          xcrun simctl install "$UDID" simbuild/Debug-iphonesimulator/LifeOS.app
+          xcrun simctl launch "$UDID" com.jm2kool.lifeos; sleep 4
+          xcrun simctl terminate "$UDID" com.jm2kool.lifeos
+          DATA=$(xcrun simctl get_app_container "$UDID" com.jm2kool.lifeos data)
+          mkdir -p "$DATA/Library/Application Support/LifeOS"
+          cp preview/demo.json "$DATA/Library/Application Support/LifeOS/doc.json"
+
+      - name: Record a tour and take screenshots
+        run: |
+          mkdir -p out
+          xcrun simctl io "$UDID" recordVideo --codec h264 --force out/tour.mp4 & REC=$!
+          sleep 2
+          SIMCTL_CHILD_LIFEOS_TOUR=1 xcrun simctl launch "$UDID" com.jm2kool.lifeos
+          sleep 5;  xcrun simctl io "$UDID" screenshot out/1-today.png
+          sleep 4;  xcrun simctl io "$UDID" screenshot out/2-inbox.png
+          sleep 3.5; xcrun simctl io "$UDID" screenshot out/3-study.png
+          sleep 3.5; xcrun simctl io "$UDID" screenshot out/4-library.png
+          sleep 3.5; xcrun simctl io "$UDID" screenshot out/5-search.png
+          sleep 5
+          kill -INT $REC; wait $REC || true
+          ls -lh out
+
+      - name: Publish the preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete preview --yes --cleanup-tag 2>/dev/null || true
+          gh release create preview out/* --title "LifeOS preview (simulator)" --notes "Screenshots and a screen recording from an iPhone simulator, using sample data." --prerelease
