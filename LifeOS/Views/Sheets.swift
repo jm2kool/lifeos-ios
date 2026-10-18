@@ -8,7 +8,7 @@ struct SheetHost: View {
         switch route {
         case .ask(let q): AskView(prefill: q).presentationDetents([.large])
         case .capture: CaptureSheet().presentationDetents([.medium, .large])
-        case .focus: FocusSheet().presentationDetents([.medium])
+        case .focus: FocusSheet().presentationDetents([.large])
         case .inbox(let id): NavigationStack { if let m = store.mail.first(where: { $0.id == id }) { MailDetail(mail: m) } }
         case .feed(let id): FeedSheet(id: id).presentationDetents([.medium, .large])
         case .event(let id): EventSheet(id: id).presentationDetents([.medium])
@@ -230,32 +230,122 @@ struct FocusSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var label = ""
     @State private var minutes = 25
+    @FocusState private var typing: Bool
+
     var body: some View {
         NavigationStack {
-            VStack(spacing: 20) {
-                if focus.running {
-                    Text(focus.label).font(.headline)
-                    if focus.paused { Text("\(Int(focus.remaining / 60)) min left").font(UI.number(54)) }
-                    else { Text(timerInterval: Date()...focus.endDate, countsDown: true).font(UI.number(54)).monospacedDigit() }
-                    ProgressView(value: focus.progress).padding(.horizontal, 40)
-                    GlassEffectContainer(spacing: 12) {
-                        HStack(spacing: 12) {
-                            Button(focus.paused ? "Resume" : "Pause", systemImage: focus.paused ? "play.fill" : "pause.fill") { focus.togglePause() }.buttonStyle(.glassProminent)
-                            Button("End", systemImage: "stop.fill") { focus.stop(); dismiss() }.buttonStyle(.glass)
-                        }.controlSize(.large)
-                    }
-                } else {
-                    TextField("What are you focusing on?", text: $label).textFieldStyle(.roundedBorder).padding(.horizontal)
-                    Picker("Length", selection: $minutes) { ForEach([15, 25, 50, 90], id: \.self) { Text("\($0) min").tag($0) } }.pickerStyle(.segmented).padding(.horizontal)
-                    Button("Start focus", systemImage: "play.fill") { focus.start(minutes: minutes, label: label); dismiss() }.buttonStyle(.glassProminent).controlSize(.large)
-                    Text("You'll get a notification when it ends. Sessions of 20 minutes or more count toward your streak.").font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal)
+            ScrollView {
+                VStack(spacing: 22) {
+                    if focus.running { running } else { setup }
                 }
+                .padding(.horizontal, UI.gutter).padding(.top, 6).padding(.bottom, 24)
             }
-            .padding(.top, 10)
+            .scrollBounceBehavior(.basedOnSize)
             .navigationTitle("Focus").navigationBarTitleDisplayMode(.inline)
-            .onAppear { label = store.now.current?.title ?? "" }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close", systemImage: "xmark") { dismiss() } } }
+            .onAppear {
+                if label.isEmpty { label = store.now.current?.title ?? "" }
+                minutes = UserDefaults.standard.integer(forKey: "focus.lastLength").clamped(5, 120, default: 25)
+            }
         }
     }
+
+    // MARK: before starting: the clock
+    @ViewBuilder private var setup: some View {
+        FocusDial(minutes: $minutes) {
+            VStack(spacing: 0) {
+                Text("\(minutes)").font(.system(size: 68, weight: .semibold, design: .rounded)).monospacedDigit()
+                    .contentTransition(.numericText(value: Double(minutes)))
+                Text("min").font(.headline).foregroundStyle(.secondary)
+                Text("ends " + Date().addingTimeInterval(Double(minutes) * 60).formatted(date: .omitted, time: .shortened))
+                    .font(.footnote).foregroundStyle(.secondary).padding(.top, 4)
+            }
+            .animation(.snappy, value: minutes)
+        }
+        .padding(.horizontal, 24)
+
+        if let until = untilNext {
+            Button { withAnimation(.smooth) { minutes = until.minutes } } label: {
+                Label("Until \(until.title) · \(until.minutes) min", systemImage: "arrow.right.to.line").font(.footnote.weight(.medium)).lineLimit(1)
+            }
+            .buttonStyle(.glass)
+        }
+
+        VStack(alignment: .leading, spacing: 10) {
+            TextField("What are you focusing on?", text: $label)
+                .focused($typing).submitLabel(.done)
+                .padding(.horizontal, 16).padding(.vertical, 12)
+                .glassEffect(.regular, in: .capsule)
+            if !suggestions.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(suggestions, id: \.self) { s in
+                            Button(s) { label = s; typing = false }
+                                .font(.footnote).lineLimit(1)
+                                .buttonStyle(.glass)
+                                .tint(s == label ? .accentColor : nil)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+
+        Button {
+            UserDefaults.standard.set(minutes, forKey: "focus.lastLength")
+            focus.start(minutes: minutes, label: label.trimmingCharacters(in: .whitespaces)); dismiss()
+        } label: { Label("Start \(minutes) min", systemImage: "play.fill").frame(maxWidth: .infinity) }
+        .buttonStyle(.glassProminent).controlSize(.large)
+
+        Text("It shows on your Lock Screen and in the Dynamic Island. Sessions of 20 minutes or more count toward your streak.")
+            .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+    }
+
+    // MARK: while it runs
+    @ViewBuilder private var running: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            FocusDial(minutes: .constant(focus.minutes), progress: focus.progress) {
+                VStack(spacing: 2) {
+                    Text(focus.label).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1).padding(.horizontal, 50)
+                    Text(Duration.seconds(focus.remaining.rounded(.up)).formatted(.time(pattern: .minuteSecond)))
+                        .font(.system(size: 56, weight: .semibold, design: .rounded)).monospacedDigit()
+                    Text(focus.paused ? "Paused" : "ends " + focus.endDate.formatted(date: .omitted, time: .shortened)).font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 24)
+        }
+        GlassEffectContainer(spacing: 12) {
+            HStack(spacing: 12) {
+                Button(focus.paused ? "Resume" : "Pause", systemImage: focus.paused ? "play.fill" : "pause.fill") { focus.togglePause() }
+                    .buttonStyle(.glassProminent)
+                Button("End", systemImage: "stop.fill") { focus.stop(); dismiss() }.buttonStyle(.glass)
+            }
+            .controlSize(.large)
+        }
+    }
+
+    /// Your current block, the next study block and a few open tasks, to tap instead of typing.
+    private var suggestions: [String] {
+        let (cur, next) = store.now
+        var candidates: [String] = []
+        if let c = cur { candidates.append(c.title) }
+        if let n = next, n.kind == .study { candidates.append(n.title) }
+        if focus.label != "Focus" { candidates.append(focus.label) }
+        candidates += store.openTasks.prefix(3).map(\.title)
+        var out: [String] = []
+        for t in candidates where !t.isEmpty && !out.contains(t) { out.append(t) }
+        return Array(out.prefix(5))
+    }
+    /// "Until Physics tuition · 45 min" when your next block starts within two hours.
+    private var untilNext: (title: String, minutes: Int)? {
+        guard let next = store.now.next else { return nil }
+        let m = Int(next.start.timeIntervalSinceNow / 60) / 5 * 5
+        return (5...120).contains(m) ? (next.title, m) : nil
+    }
+}
+
+private extension Int {
+    func clamped(_ lo: Int, _ hi: Int, default d: Int) -> Int { self == 0 ? d : Swift.min(hi, Swift.max(lo, self)) }
 }
 
 // MARK: small sheets
