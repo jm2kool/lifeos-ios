@@ -183,7 +183,19 @@ final class Store {
         guard !syncURL.isEmpty else { syncOn = false; syncStatus = "Sync is off. Everything stays on this iPhone."; return }
         do {
             let j = try await request("GET")
-            if j["doc"].isObject { withAnimation(.smooth) { adopt(j["doc"]) } }
+            if j["doc"].isObject {
+                let remote = j["doc"]
+                let remoteEmpty = remote["content"].object.isEmpty && remote["state"]["tasks"].array.isEmpty && remote["profile"]["name"].str.isEmpty
+                let localHas = !doc["content"].object.isEmpty || !doc["profile"]["name"].str.isEmpty
+                if remoteEmpty && localHas {
+                    // First sync: the server is empty, so upload this iPhone's data instead of wiping it.
+                    var up = doc; up["server"] = .null
+                    let r = try await request("PUT", body: ["doc": up, "by": "app"])
+                    if r["doc"].isObject { adopt(r["doc"]) }
+                } else {
+                    withAnimation(.smooth) { adopt(remote) }
+                }
+            }
             syncOn = true; syncStatus = "Synced " + Date().formatted(date: .omitted, time: .shortened)
             if !pending.isEmpty { await push() }
         } catch {
