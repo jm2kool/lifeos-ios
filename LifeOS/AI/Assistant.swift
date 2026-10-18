@@ -23,7 +23,7 @@ final class Assistant {
 
     init() {}
 
-    private var model: String { store?.doc["settings"]["ai"]["model"].string.flatMap { $0.isEmpty ? nil : $0 } ?? "gemini-3.8-flash" }
+    private var model: String { store?.doc["settings"]["ai"]["model"].string.flatMap { $0.isEmpty ? nil : $0 } ?? "gemini-3.5-flash" }
     var askFirst: Bool { store?.doc["settings"]["ai"]["askFirst"].bool ?? false }
     var intervalHours: Int { store?.doc["settings"]["ai"]["interval"].int ?? 2 }
     var available: Bool { Gemini.hasKey || !(store?.syncURL.isEmpty ?? true) }

@@ -102,7 +102,7 @@ struct SettingsView: View {
     private func load() {
         let d = store.doc
         name = d["profile"]["name"].str; timezone = d["profile"]["timezone"].string ?? TimeZone.current.identifier
-        geminiKey = Keychain.get("geminiKey") ?? ""; model = d["settings"]["ai"]["model"].string ?? "gemini-3.8-flash"
+        geminiKey = Keychain.get("geminiKey") ?? ""; model = d["settings"]["ai"]["model"].string ?? "gemini-3.5-flash"
         assistantName = d["profile"]["assistant"]["name"].str; assistantAddress = d["profile"]["assistant"]["imessage"].str
         syncURL = d["settings"]["sync"]["url"].str; syncKey = Keychain.get("syncKey") ?? ""
     }
@@ -113,7 +113,7 @@ struct SettingsView: View {
         if name != store.profileName || assistantName != store.doc["profile"]["assistant"]["name"].str || assistantAddress != store.assistantAddress {
             ops.append(["op": "profile.set", "value": ["name": .string(name), "assistant": ["name": .string(assistantName), "imessage": .string(assistantAddress), "email": .string(assistantAddress.contains("@") ? assistantAddress : "")]]])
         }
-        if model != (store.doc["settings"]["ai"]["model"].string ?? "gemini-3.8-flash") { ops.append(["op": "settings.set", "value": ["ai": ["model": .string(model)]]]) }
+        if model != (store.doc["settings"]["ai"]["model"].string ?? "gemini-3.5-flash") { ops.append(["op": "settings.set", "value": ["ai": ["model": .string(model)]]]) }
         if syncURL != store.syncURL { ops.append(["op": "settings.set", "value": ["sync": ["url": .string(syncURL.trimmingCharacters(in: .whitespaces))]]]) }
         if !ops.isEmpty { store.act(ops) }
     }

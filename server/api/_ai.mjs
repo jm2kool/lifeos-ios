@@ -1,6 +1,6 @@
 // Gemini helpers shared by /api/say and /api/pulse. Mirrors LifeOS/AI/Assistant.swift in the app.
 const env = process.env;
-export const MODEL = () => env.GEMINI_MODEL || 'gemini-3.8-flash';
+export const MODEL = () => env.GEMINI_MODEL || 'gemini-3.5-flash';
 
 export const OP_GUIDE = `You can change LifeOS by returning ops. Each op is an object like {"op":"task.add","title":"…"}. Ops:
 - task.add {title, note?, due?: "YYYY-MM-DD"} · task.update {id, title?, note?, due?} · task.done {id, done: true|false} · task.remove {id}
