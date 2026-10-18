@@ -11,7 +11,13 @@ const env=process.env;
 const kvUrl=()=>env.KV_REST_API_URL||env.UPSTASH_REDIS_REST_URL;
 const kvTok=()=>env.KV_REST_API_TOKEN||env.UPSTASH_REDIS_REST_TOKEN;
 
+// Works with either Upstash (REST) or a plain Redis URL (Vercel's Redis store).
+let conn=null;
+function redis(){if(!conn)conn=import('redis').then(async({createClient})=>{const c=createClient({url:env.REDIS_URL,socket:{connectTimeout:8000}});c.on('error',()=>{});await c.connect();return c}).catch(e=>{conn=null;throw e});return conn}
+export const hasStore=()=>!!(env.REDIS_URL||(kvUrl()&&kvTok()));
 export async function kv(cmd,fetcher=fetch){
+  if(!kvUrl()&&env.REDIS_URL){const c=await redis();return c.sendCommand(cmd.map(String))}
+  if(!hasStore())throw Object.assign(Error('Storage is not connected yet: add a Redis store to this Vercel project'),{status:503});
   const r=await fetcher(kvUrl(),{method:'POST',headers:{Authorization:'Bearer '+kvTok(),'Content-Type':'application/json'},body:JSON.stringify(cmd)});
   const j=await r.json().catch(()=>({}));if(!r.ok||j.error)throw Error(j.error||'Storage error '+r.status);return j.result;
 }
@@ -49,7 +55,9 @@ export function createHandler({store=kv}={}){return async function handler(req,r
   res.setHeader('Access-Control-Allow-Origin','*');res.setHeader('Access-Control-Allow-Headers','Authorization, Content-Type');res.setHeader('Access-Control-Allow-Methods','GET, POST, PUT, OPTIONS');
   if(req.method==='OPTIONS')return res.status(204).end();
   if(!env.LIFEOS_TOKEN)return res.status(503).json({error:'Sync is not set up: add LIFEOS_TOKEN in Vercel'});
-  if(!kvUrl()||!kvTok())return res.status(503).json({error:'Sync is not set up: connect an Upstash Redis store in Vercel'});
+  if(!hasStore())return res.status(503).json({error:'Sync is not set up: connect a Redis store in Vercel'});
+  const qk=(req.query||Object.fromEntries(new URL(req.url,'http://x').searchParams)).key;
+  if(qk&&!req.headers.authorization)req.headers.authorization='Bearer '+qk;
   const role=who(req);if(!role)return res.status(401).json({error:'Missing or wrong token'});
   try{
     if(req.method==='GET'){
