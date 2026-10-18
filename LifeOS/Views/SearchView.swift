@@ -33,6 +33,7 @@ struct SearchView: View {
             if !q.isEmpty && hits.isEmpty { ContentUnavailableView.search(text: q) }
         }
         .navigationTitle("Search")
+        .pageBackground()
         .searchable(text: $q, prompt: "Tasks, events, emails, notes")
     }
 

@@ -50,6 +50,8 @@ final class Store {
     var undoStack: [UndoEntry] = []
     var sheet: SheetRoute?
     var tab: AppTab = .today
+    var lockShown = false       // study lock screen
+    static let shared = Store()
     var syncStatus: String = "Sync is off. Everything stays on this iPhone."
     var syncOn = false
     var tick = Date()           // drives live clocks

@@ -46,6 +46,17 @@ struct SettingsView: View {
                     }
                 }
                 Section {
+                    Toggle("Notify me when study blocks start", isOn: Binding(get: { store.studyAlertsOn }, set: { store.act(["op": "settings.set", "value": ["study": ["alerts": .bool($0)]]]) }))
+                    Picker("Heads-up", selection: Binding(get: { store.studyLead }, set: { store.act(["op": "settings.set", "value": ["study": ["lead": JSON($0)]]]) })) {
+                        Text("None").tag(0); Text("5 min before").tag(5); Text("10 min before").tag(10); Text("15 min before").tag(15)
+                    }
+                    .disabled(!store.studyAlertsOn)
+                    Toggle("Study lock", isOn: Binding(get: { store.studyLockOn }, set: { store.act(["op": "settings.set", "value": ["study": ["lock": .bool($0)]]]) }))
+                    NavigationLink("Set up the study lock") { StudyLockGuide() }
+                } header: { Text("Study blocks") } footer: {
+                    Text("Study blocks are the ones on your timetable and study plan. Lunch, breaks and school calendar events don't count.")
+                }
+                Section {
                     SecureField("Gemini API key", text: $geminiKey).textInputAutocapitalization(.never).autocorrectionDisabled()
                     TextField("Model", text: $model).textInputAutocapitalization(.never).autocorrectionDisabled()
                     Picker("Update Today", selection: Binding(get: { assistant.intervalHours }, set: { store.act(["op": "settings.set", "value": ["ai": ["interval": JSON($0)]]]) })) {

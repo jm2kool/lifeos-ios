@@ -49,6 +49,7 @@ struct CalendarView: View {
         }
         .searchable(text: $q, prompt: "Search events")
         .navigationTitle("Calendar")
+        .pageBackground()
     }
 }
 
@@ -77,6 +78,7 @@ struct TimetableView: View {
             }
         }
         .navigationTitle("Timetable")
+        .pageBackground()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { Button("Add", systemImage: "plus") { store.sheet = .addBlock } }
             ToolbarItem(placement: .topBarTrailing) { Button("Edit as text", systemImage: "text.alignleft") { store.sheet = .editTimetable } }
@@ -144,6 +146,7 @@ struct SavedView: View {
             }
         }
         .navigationTitle("Saved")
+        .pageBackground()
         .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Add", systemImage: "plus") { EditBuffer.shared.saved = nil; store.sheet = .addSaved } } }
     }
     private func savedRow(_ s: SavedItem) -> some View {
@@ -197,6 +200,7 @@ struct FinancesView: View {
             }
         }
         .navigationTitle("Finances")
+        .pageBackground()
         .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Add", systemImage: "plus") { adding = true } } }
         .alert("Add subscription", isPresented: $adding) {
             TextField("Name", text: $name)
@@ -238,6 +242,7 @@ struct WorkflowsView: View {
             }
         }
         .navigationTitle("Workflows")
+        .pageBackground()
         .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Add", systemImage: "plus") { adding = true } } }
         .alert("Add a step", isPresented: $adding) {
             TextField("Step", text: $step)

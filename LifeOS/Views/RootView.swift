@@ -9,25 +9,29 @@ struct RootView: View {
         @Bindable var store = store
         TabView(selection: $store.tab) {
             Tab("Today", systemImage: "sun.max", value: AppTab.today) {
-                NavigationStack { TodayView() }
+                NavigationStack { TodayView() }.environment(\.ambientPalette, .today)
             }
             Tab("Inbox", systemImage: "tray", value: AppTab.inbox) {
-                NavigationStack { InboxView() }
+                NavigationStack { InboxView() }.environment(\.ambientPalette, .inbox)
             }
             .badge(store.inboxTodo.count)
             Tab("Study", systemImage: "book.closed", value: AppTab.study) {
-                NavigationStack { StudyView() }
+                NavigationStack { StudyView() }.environment(\.ambientPalette, .study)
             }
             Tab("Library", systemImage: "square.grid.2x2", value: AppTab.library) {
-                NavigationStack { LibraryView() }
+                NavigationStack { LibraryView() }.environment(\.ambientPalette, .library)
             }
             .badge(store.pendingDrafts.count)
             Tab(value: AppTab.search, role: .search) {
-                NavigationStack { SearchView() }
+                NavigationStack { SearchView() }.environment(\.ambientPalette, .search)
             }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
         .tabViewBottomAccessory { NowAccessory() }
+        .fullScreenCover(isPresented: $store.lockShown) {
+            StudyLockView().environment(store).environment(focus).tint(store.tint)
+        }
+        .task(id: store.studyAlertKey) { await StudyAlerts.reschedule(store) }
         .sheet(item: $store.sheet) { route in
             SheetHost(route: route)
                 .environment(store).environment(assistant).environment(focus)
@@ -62,6 +66,7 @@ extension RootView {
         let env = ProcessInfo.processInfo.environment
         let tabs: [String: AppTab] = ["today": .today, "inbox": .inbox, "study": .study, "library": .library, "search": .search]
         if let name = env["LIFEOS_TAB"], let t = tabs[name] { store.tab = t }
+        if env["LIFEOS_LOCK"] != nil { try? await Task.sleep(for: .seconds(1)); store.lockShown = true }
         guard env["LIFEOS_TOUR"] != nil else { return }
         let order: [AppTab] = [.today, .inbox, .study, .library, .search, .today]
         try? await Task.sleep(for: .seconds(3))

@@ -46,6 +46,7 @@ struct LibraryView: View {
             .buttonStyle(.plain)
         }
         .navigationTitle("Library")
+        .pageBackground()
         .navigationDestination(for: LibraryPage.self) { $0.view }
     }
     private func link(_ p: LibraryPage, _ title: String, _ symbol: String, _ color: Color, badge: Int = 0) -> some View {
@@ -119,6 +120,7 @@ struct BoardView: View {
             }
         }
         .navigationTitle("Board")
+        .pageBackground()
         .sheet(item: $dueCard) { c in DueDateSheet(card: c).presentationDetents([.height(320)]) }
     }
     private func add() {
@@ -173,6 +175,7 @@ struct DraftsView: View {
             }
         }
         .navigationTitle("Drafts")
+        .pageBackground()
     }
 }
 

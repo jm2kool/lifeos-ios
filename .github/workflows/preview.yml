@@ -61,6 +61,15 @@ jobs:
           sleep 3.5; xcrun simctl io "$UDID" screenshot out/5-search.png
           sleep 5
           kill -INT $REC; wait $REC || true
+          SIMCTL_CHILD_LIFEOS_LOCK=1 xcrun simctl launch --terminate-running-process "$UDID" com.jm2kool.lifeos
+          sleep 5; xcrun simctl io "$UDID" screenshot out/6-lock.png
+          xcrun simctl ui "$UDID" appearance light
+          SIMCTL_CHILD_LIFEOS_TAB=today xcrun simctl launch --terminate-running-process "$UDID" com.jm2kool.lifeos
+          sleep 5; xcrun simctl io "$UDID" screenshot out/7-today-light.png
+          SIMCTL_CHILD_LIFEOS_TAB=study xcrun simctl launch --terminate-running-process "$UDID" com.jm2kool.lifeos
+          sleep 5; xcrun simctl io "$UDID" screenshot out/8-study-light.png
+          SIMCTL_CHILD_LIFEOS_TAB=library xcrun simctl launch --terminate-running-process "$UDID" com.jm2kool.lifeos
+          sleep 5; xcrun simctl io "$UDID" screenshot out/9-library-light.png
           ls -lh out
 
       - name: Publish the preview

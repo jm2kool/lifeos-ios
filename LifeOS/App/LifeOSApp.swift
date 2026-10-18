@@ -6,9 +6,14 @@ let pulseTaskID = "com.jm2kool.lifeos.pulse"
 
 @main
 struct LifeOSApp: App {
-    @State private var store = Store()
+    @State private var store = Store.shared
     @State private var assistant = Assistant()
-    @State private var focus = FocusTimer()
+    @State private var focus = FocusTimer.shared
+
+    init() {
+        UNUserNotificationCenter.current().delegate = NotificationRouter.shared
+        StudyAlerts.registerCategories()
+    }
     @Environment(\.scenePhase) private var phase
 
     var body: some Scene {
@@ -41,6 +46,7 @@ struct LifeOSApp: App {
             await MainActor.run { schedulePulse(hours: 2) }
             await store.pull(quiet: true)
             await assistant.runPulse()
+            await StudyAlerts.reschedule(store)
         }
     }
 }

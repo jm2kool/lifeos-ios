@@ -48,6 +48,7 @@ struct InboxView: View {
             }
         }
         .navigationTitle("Inbox")
+        .pageBackground()
         .navigationSubtitle(store.inboxTodo.isEmpty ? "All reviewed" : "\(store.inboxTodo.count) to review")
         .navigationDestination(for: Mail.self) { MailDetail(mail: $0) }
         .navigationDestination(for: LibraryPage.self) { $0.view }

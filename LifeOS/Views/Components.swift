@@ -8,13 +8,14 @@ enum UI {
 }
 
 extension View {
-    /// Solid content card. Liquid Glass is kept for controls, as Apple recommends.
+    /// Content card on a frosted material so the background colour glows through softly. Liquid Glass stays on controls, as Apple recommends.
     func card(padding: CGFloat = 16) -> some View {
         self.padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: UI.radius, style: .continuous))
+            .background(.regularMaterial, in: .rect(cornerRadius: UI.radius, style: .continuous))
     }
-    func pageBackground() -> some View { self.background(Color(.systemGroupedBackground).ignoresSafeArea()) }
+    /// Screen background: soft colour pools (see AmbientBackground) instead of flat grey or black.
+    func pageBackground() -> some View { self.scrollContentBackground(.hidden).background { AmbientBackground() } }
 }
 
 struct SectionHeader: View {

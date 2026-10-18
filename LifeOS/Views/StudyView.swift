@@ -228,6 +228,7 @@ struct CoverageList: View {
             } footer: { Text("Tick what you've actually finished. \(store.doneCount(set)) of \(set.items.count) marked.") }
         }
         .navigationTitle(set.name)
+        .pageBackground()
     }
 }
 
@@ -244,5 +245,6 @@ struct ResourcesList: View {
         }
         .searchable(text: $q)
         .navigationTitle("Resources")
+        .pageBackground()
     }
 }

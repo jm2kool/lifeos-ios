@@ -6,6 +6,7 @@ import UserNotifications
 @MainActor
 @Observable
 final class FocusTimer {
+    static let shared = FocusTimer()
     var label = ""
     var minutes = 25
     var startedAt: Date?
