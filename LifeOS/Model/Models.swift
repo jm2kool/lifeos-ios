@@ -4,24 +4,25 @@ import SwiftUI
 // Typed, read-only views over the JSON document. Views read these; all writes go through ops.
 
 struct TaskItem: Identifiable, Hashable {
-    let id: String, title: String, note: String, src: String, due: String?
-    init(_ j: JSON) { id = j["id"].str; title = j["title"].str; note = j["note"].str; src = j["src"].str; due = j["due"].string.flatMap { $0.isEmpty ? nil : $0 } }
+    let id: String, title: String, note: String, src: String, due: String?, changedBy: String
+    init(_ j: JSON) { id = j["id"].str; title = j["title"].str; note = j["note"].str; src = j["src"].str; due = j["due"].string.flatMap { $0.isEmpty ? nil : $0 }; changedBy = j["changedBy"].str }
 }
 
 struct Card: Identifiable, Hashable {
-    let id: String, title: String, column: Int, due: String?, note: String, unfiled: Bool
-    init(_ j: JSON) { id = j["id"].str; title = j["t"].str; column = j["c"].int ?? 0; due = j["due"].string.flatMap { $0.isEmpty ? nil : $0 }; note = j["note"].str; unfiled = j["filed"] == .bool(false) }
+    let id: String, title: String, column: Int, due: String?, note: String, unfiled: Bool, changedBy: String
+    init(_ j: JSON) { id = j["id"].str; title = j["t"].str; column = j["c"].int ?? 0; due = j["due"].string.flatMap { $0.isEmpty ? nil : $0 }; note = j["note"].str; unfiled = j["filed"] == .bool(false); changedBy = j["changedBy"].str }
 }
 
 struct SavedItem: Identifiable, Hashable {
-    let id: String, title: String, url: String, note: String, source: String
-    init(_ j: JSON) { id = j["id"].str; title = j["t"].str; url = j["url"].str; note = j["n"].str; source = j["s"].str }
+    let id: String, title: String, url: String, note: String, source: String, changedBy: String
+    init(_ j: JSON) { id = j["id"].str; title = j["t"].str; url = j["url"].str; note = j["n"].str; source = j["s"].str; changedBy = j["changedBy"].str }
     var link: URL? { url.lowercased().hasPrefix("http") ? URL(string: url) : nil }
 }
 
 struct Event: Identifiable, Hashable {
-    let id: String, title: String, start: String, end: String?, note: String, url: String, source: String, checkedAt: String, status: String
+    let id: String, title: String, start: String, end: String?, note: String, url: String, source: String, checkedAt: String, status: String, changedBy: String
     init(_ j: JSON) {
+        changedBy = j["changedBy"].str
         title = j["title"].str; start = j["start"].str; id = j["id"].string ?? (title + start)
         end = j["end"].string.flatMap { $0.isEmpty ? nil : $0 }; note = j["note"].str; url = j["url"].str
         source = j["source"].string ?? "Calendar"; checkedAt = j["checkedAt"].str; status = j["status"].str
@@ -33,8 +34,9 @@ struct Event: Identifiable, Hashable {
 }
 
 struct Mail: Identifiable, Hashable {
-    let id: String, account: String, sender: String, title: String, gist: String, body: String, priority: String, url: String, checkedAt: String, key: String
+    let id: String, account: String, sender: String, title: String, gist: String, body: String, priority: String, url: String, checkedAt: String, key: String, changedBy: String
     init(_ j: JSON) {
+        changedBy = j["changedBy"].str
         id = j["id"].str; account = j["f"].string ?? "Mail"; sender = j["sender"].str; title = j["t"].str; gist = j["gist"].str
         body = j["b"].str; priority = j["priority"].string ?? "Normal"; url = j["url"].str; checkedAt = j["checkedAt"].str; key = j["key"].str
     }
@@ -56,7 +58,14 @@ struct DraftDay: Identifiable, Hashable { let id = UUID(); let title: String, su
 struct DraftVersion: Hashable {
     let version: Int, createdAt: String, intro: String, scope: String, questions: [String], weeks: [DraftWeek]
     let from: String, to: String, cc: String, subject: String, body: String, by: String
+    /// The draft's free text, whichever field it came in (body, markdown, text, content or notes).
+    let text: String
     init(_ j: JSON) {
+        func flat(_ v: JSON) -> String {
+            if let s = v.string { return s }
+            return v.array.map { $0.string ?? $0["text"].string ?? $0.text(pretty: true) }.joined(separator: "\n\n")
+        }
+        text = [j["body"], j["markdown"], j["text"], j["content"], j["notes"]].map(flat).filter { !$0.isEmpty }.joined(separator: "\n\n")
         version = j["version"].int ?? 1; createdAt = j["createdAt"].str; intro = j["intro"].str; scope = j["scope"].str
         questions = j["questions"].array.map(\.str)
         weeks = j["weeks"].array.map { w in DraftWeek(id: w["id"].str, title: w["title"].str, days: w["days"].array.map { DraftDay(title: $0["title"].str, subtitle: $0["subtitle"].str, lines: $0["lines"].array.map(\.str)) }) }
@@ -70,7 +79,12 @@ struct Draft: Identifiable, Hashable {
         versions = j["versions"].array.map(DraftVersion.init).sorted { $0.version < $1.version }
     }
     var latest: DraftVersion? { versions.last }
-    var parts: [DraftWeek] { isEmail ? [DraftWeek(id: "email-draft", title: "Email draft", days: [])] : (latest?.weeks ?? []) }
+    /// What gets reviewed: each week of a plan, or the whole draft when it has no weeks.
+    var parts: [DraftWeek] {
+        if isEmail { return [DraftWeek(id: "email-draft", title: "Email draft", days: [])] }
+        let w = latest?.weeks ?? []
+        return w.isEmpty ? [DraftWeek(id: "whole-draft", title: "Whole draft", days: [])] : w
+    }
 }
 
 enum BlockKind { case timetable, study, calendar, rest }

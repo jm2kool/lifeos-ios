@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 struct SettingsView: View {
@@ -17,6 +18,9 @@ struct SettingsView: View {
     @State private var exportURL: URL?
     @State private var confirmReset = false
     @State private var testing = false
+    @State private var importPlan: Store.ImportPlan?
+    @State private var importResult: String?
+    @State private var checking = false
 
     private let tints: [(String, Color)] = [("graphite", .primary), ("blue", .blue), ("indigo", .indigo), ("green", .green), ("orange", .orange), ("pink", .pink)]
 
@@ -82,12 +86,13 @@ struct SettingsView: View {
                     SecureField("Sync key", text: $syncKey)
                     Button("Save and sync now") { save(); Task { await store.pull(); store.show(store.syncStatus) } }
                     LabeledContent("Status", value: store.syncStatus)
+                    if !store.syncURL.isEmpty { NavigationLink("Access keys") { AccessKeysView() } }
                 } header: { Text("Sync and assistant access") } footer: {
-                    Text("Optional. With a LifeOS server, your iMessage assistant can add and remove things by sending a plain sentence to one web address, and this iPhone picks the changes up.")
+                    Text("Optional. With a LifeOS server, your assistants can add and remove things by sending a plain sentence to one web address, and this iPhone picks the changes up. Give each assistant its own key under Access keys.")
                 }
                 Section("Your data") {
                     if let exportURL { ShareLink("Export backup", item: exportURL) } else { Button("Prepare backup") { exportURL = makeExport() } }
-                    Button("Import backup or data file") { importing = true }
+                    Button { importing = true } label: { HStack { Text("Import backup or data file"); if checking { Spacer(); ProgressView() } } }.disabled(checking)
                     Button("Activity") { store.sheet = .activity }
                     Button("Start fresh", role: .destructive) { confirmReset = true }
                 }
@@ -100,8 +105,14 @@ struct SettingsView: View {
                 guard case .success(let url) = result else { return }
                 let ok = url.startAccessingSecurityScopedResource(); defer { if ok { url.stopAccessingSecurityScopedResource() } }
                 guard let d = try? Data(contentsOf: url), let j = JSON.parse(d), j["content"].isObject || j["state"].isObject else { store.show("That isn't a LifeOS file"); return }
-                store.replace(with: j); load(); store.show("Imported")
+                checking = true
+                Task {
+                    do { importPlan = try await store.planImport(j) } catch { importResult = "Nothing was imported. " + error.localizedDescription }
+                    checking = false
+                }
             }
+            .sheet(item: $importPlan) { plan in ImportReview(plan: plan) { importResult = $0; load() } }
+            .alert("Import", isPresented: Binding(get: { importResult != nil }, set: { if !$0 { importResult = nil } })) { Button("OK") {} } message: { Text(importResult ?? "") }
             .confirmationDialog("Erase everything on this iPhone?", isPresented: $confirmReset, titleVisibility: .visible) {
                 Button("Erase and start over", role: .destructive) {
                     store.replace(with: ["profile": ["timezone": .string(TimeZone.current.identifier)], "settings": ["theme": "auto"], "content": [:], "state": [:]])
@@ -174,6 +185,7 @@ struct OnboardingView: View {
             let ok = url.startAccessingSecurityScopedResource(); defer { if ok { url.stopAccessingSecurityScopedResource() } }
             if let d = try? Data(contentsOf: url), let j = JSON.parse(d), j["content"].isObject {
                 store.replace(with: j); name = store.profileName; withAnimation(.smooth) { step = 2 }
+                store.show("Imported " + Store.counts(j))
             } else { store.show("That isn't a LifeOS file") }
         }
     }
@@ -181,5 +193,152 @@ struct OnboardingView: View {
         guard !name.isEmpty else { return }
         store.act(["op": "profile.set", "value": ["name": .string(name), "timezone": .string(store.doc["profile"]["timezone"].string.flatMap { $0.isEmpty ? nil : $0 } ?? TimeZone.current.identifier)]])
         withAnimation(.smooth) { step = 2 }
+    }
+}
+
+// MARK: import review
+/// Shows what an import will do before it runs, then reports what actually happened.
+struct ImportReview: View {
+    @Environment(Store.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    let plan: Store.ImportPlan
+    var finished: (String) -> Void
+    @State private var running = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Text(plan.summary)
+                } footer: {
+                    Text(plan.viaServer
+                         ? "Merged with what is on your server: nothing there is deleted, items with the same id are updated, and likely duplicates are skipped. You can undo the whole import from Activity."
+                         : "Sync is off, so this replaces the data on this iPhone.")
+                }
+                if !plan.skipped.isEmpty {
+                    Section(plan.viaServer ? "Skipped as likely duplicates" : "Look like duplicates") {
+                        ForEach(Array(plan.skipped.enumerated()), id: \.offset) { _, t in Text(t).font(.footnote) }
+                    }
+                }
+                if !plan.failed.isEmpty {
+                    Section("Can't be imported") {
+                        ForEach(Array(plan.failed.enumerated()), id: \.offset) { _, t in Text(t).font(.footnote).foregroundStyle(.red) }
+                    }
+                }
+            }
+            .navigationTitle("Import").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(running) }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        running = true
+                        Task {
+                            let message: String
+                            do { message = try await store.runImport(plan) } catch { message = "Nothing was imported. " + error.localizedDescription }
+                            running = false; dismiss(); finished(message)
+                        }
+                    } label: { if running { ProgressView() } else { Text("Import") } }
+                    .disabled(running)
+                }
+            }
+        }
+        .interactiveDismissDisabled(running)
+    }
+}
+
+// MARK: access keys
+/// One key per assistant, each read-only or allowed to make changes, with a log of who changed what.
+struct AccessKeysView: View {
+    @Environment(Store.self) private var store
+    @State private var keys: [JSON] = []
+    @State private var audit: [JSON] = []
+    @State private var problem: String?
+    @State private var name = ""
+    @State private var scope = "write"
+    @State private var newKey: String?
+    @State private var revoking: JSON?
+    @State private var busy = false
+
+    var body: some View {
+        List {
+            if let problem { Section { Text(problem).foregroundStyle(.secondary) } }
+            Section {
+                ForEach(keys, id: \.self) { k in
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack {
+                            Text(k["name"].str).font(.body.weight(.medium))
+                            Spacer()
+                            Pill(text: Self.label(k["scope"].str), color: k["scope"].str == "admin" ? .orange : k["scope"].str == "read" ? .secondary : .blue)
+                        }
+                        Text(detail(k)).font(.caption).foregroundStyle(.secondary)
+                    }
+                    .opacity(k["revokedAt"].isNull ? 1 : 0.45)
+                    .swipeActions {
+                        if k["revokedAt"].isNull && k["id"].str != "owner" { Button("Revoke", role: .destructive) { revoking = k } }
+                    }
+                }
+            } header: { Text("Keys") } footer: {
+                Text("Changes are labelled with the name of the key that made them, so a key can't pass itself off as another. Swipe left on a key to revoke it.")
+            }
+            Section {
+                TextField("Name, e.g. FRIDAY", text: $name).autocorrectionDisabled()
+                Picker("Allowed to", selection: $scope) {
+                    Text("Read only").tag("read"); Text("Read and change").tag("write"); Text("Everything, incl. keys").tag("admin")
+                }
+                Button("Create key") { Task { await create() } }.disabled(busy || name.trimmingCharacters(in: .whitespaces).isEmpty)
+            } header: { Text("New key") } footer: {
+                Text("The key is shown once. Give it to the assistant, which sends it in the Authorization header. Keys in links are refused.")
+            }
+            if !audit.isEmpty {
+                Section("Who changed what") {
+                    ForEach(Array(audit.enumerated()), id: \.offset) { _, a in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text((a["op"].str == "denied" ? "Refused: " : "") + a["op"].str + (a["summary"].str.isEmpty ? "" : " · " + a["summary"].str))
+                                .font(.subheadline).lineLimit(2).foregroundStyle(a["ok"] == .bool(false) ? .red : .primary)
+                            Text(a["name"].str + " · " + store.ago(a["at"].double ?? 0) + (a["error"].string.map { " · " + $0 } ?? "")).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle("Access keys")
+        .task { await load() }
+        .refreshable { await load() }
+        .alert("Key for \(name)", isPresented: Binding(get: { newKey != nil }, set: { if !$0 { newKey = nil; name = "" } })) {
+            Button("Copy key") { UIPasteboard.general.string = newKey; store.show("Copied"); newKey = nil; name = "" }
+            Button("Done", role: .cancel) {}
+        } message: { Text((newKey ?? "") + "\n\nCopy it now: it won't be shown again.") }
+        .confirmationDialog("Revoke \(revoking?["name"].str ?? "")?", isPresented: Binding(get: { revoking != nil }, set: { if !$0 { revoking = nil } }), titleVisibility: .visible) {
+            Button("Revoke", role: .destructive) { if let k = revoking { Task { await revoke(k) } } }
+        } message: { Text("Anything using this key stops working straight away. Its past changes stay in the log.") }
+    }
+
+    static func label(_ scope: String) -> String { ["read": "Read only", "write": "Can change", "admin": "Admin"][scope] ?? scope }
+    private func detail(_ k: JSON) -> String {
+        if !k["revokedAt"].isNull { return "Revoked" + (k["revokedAt"].double.map { " " + store.ago($0) } ?? "") }
+        if k["id"].str == "owner" { return "This iPhone's sync key (LIFEOS_TOKEN in Vercel)" }
+        if k["legacy"].bool { return "The old shared assistant key (LIFEOS_AGENT_TOKEN). Revoke it once each assistant has its own." }
+        var parts = ["Created " + store.ago(k["createdAt"].double ?? 0)]
+        parts.append(k["lastUsedAt"].double.map { "used " + store.ago($0) } ?? "never used")
+        return parts.joined(separator: " · ")
+    }
+    private func load() async {
+        do {
+            keys = try await store.api("GET", "keys")["keys"].array
+            audit = try await store.api("GET", "keys", query: ["view": "audit", "limit": "60"])["audit"].array
+            problem = nil
+        } catch { problem = error.localizedDescription }
+    }
+    private func create() async {
+        busy = true; defer { busy = false }
+        do {
+            let j = try await store.api("POST", "keys", body: ["name": .string(name.trimmingCharacters(in: .whitespaces)), "scope": .string(scope)])
+            newKey = j["key"].str
+            await load()
+        } catch { problem = error.localizedDescription }
+    }
+    private func revoke(_ k: JSON) async {
+        do { _ = try await store.api("DELETE", "keys", body: ["id": k["id"]]); store.show("Revoked " + k["name"].str); await load() }
+        catch { problem = error.localizedDescription }
     }
 }

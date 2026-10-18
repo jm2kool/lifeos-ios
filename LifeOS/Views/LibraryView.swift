@@ -246,25 +246,21 @@ struct DraftDetail: View {
         Text("Nothing is sent from LifeOS. Mail opens with this text so you can check it and send it yourself.").font(.caption).foregroundStyle(.secondary)
     }
 
+    /// The whole draft, every type: intro, free text, each week with every day's lines, scope and questions.
     @ViewBuilder private func plan(_ d: Draft, _ v: DraftVersion) -> some View {
-        if !v.intro.isEmpty { Text(v.intro.replacingOccurrences(of: "# ", with: "")).font(.subheadline).card() }
-        ForEach(v.weeks) { w in
-            DisclosureGroup {
-                ForEach(Array(w.days.enumerated()), id: \.offset) { _, day in
-                    DisclosureGroup(day.title) {
-                        VStack(alignment: .leading, spacing: 0) {
-                            if !day.subtitle.isEmpty { Text(day.subtitle).font(.caption).foregroundStyle(.secondary).padding(.bottom, 4) }
-                            ForEach(Array(day.lines.enumerated()), id: \.offset) { _, l in Text(l).font(.footnote).padding(.vertical, 6); Divider() }
-                        }
-                    }
-                    .font(.subheadline).padding(.vertical, 2)
-                }
-            } label: {
-                HStack { Text(w.title).font(.body.weight(.semibold)); Spacer(); if store.review(d, v.version, w.id) != nil { Image(systemName: "checkmark.seal.fill").foregroundStyle(.green) } }
-            }
-            .card()
+        if v.intro.isEmpty && v.text.isEmpty && v.weeks.isEmpty && v.scope.isEmpty && v.questions.isEmpty {
+            ContentUnavailableView("This draft has no text", systemImage: "doc.text", description: Text("Ask \(store.assistantName) to send it again.")).card()
         }
-        if !v.scope.isEmpty { DisclosureGroup("Full scope and source notes") { Text(v.scope).font(.caption.monospaced()).foregroundStyle(.secondary).padding(.top, 6) }.card() }
+        if !v.intro.isEmpty { RichText(v.intro).card() }
+        if !v.text.isEmpty { RichText(v.text).card() }
+        ForEach(v.weeks) { w in DraftWeekCard(week: w, approved: store.review(d, v.version, w.id) != nil) }
+        if !v.scope.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Full scope and source notes").font(.headline)
+                Text(v.scope).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading).card()
+        }
         if !v.questions.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Confirm when you approve").font(.headline)
@@ -275,16 +271,19 @@ struct DraftDetail: View {
             }
             .card()
         }
+        let meta: [String?] = [v.by.isEmpty ? nil : "Written by \(v.by)", "version \(v.version)", v.createdAt.isEmpty ? nil : store.ago(isoMillis(v.createdAt))].compactMap { $0 }
+        Text(meta.joined(separator: " · ")).font(.caption).foregroundStyle(.tertiary)
     }
+    private func isoMillis(_ s: String) -> Double { (ISO8601DateFormatter().date(from: s) ?? ISO8601DateFormatter.fractional.date(from: s) ?? .now).timeIntervalSince1970 * 1000 }
 
     @ViewBuilder private func review(_ d: Draft, _ v: DraftVersion) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Your review").font(.headline)
-            if !d.isEmail {
+            if d.parts.count > 1 {
                 Picker("Week", selection: $week) { ForEach(d.parts) { w in Text(w.title + (store.review(d, v.version, w.id) != nil ? " ✓" : "")).tag(w.id) } }
                     .pickerStyle(.menu)
             }
-            Toggle(d.isEmail ? "I checked the recipient and the text" : "I reviewed this week and accept the assumptions", isOn: $reviewed).font(.subheadline)
+            Toggle(d.isEmail ? "I checked the recipient and the text" : d.parts.count > 1 ? "I reviewed this week and accept the assumptions" : "I reviewed this draft and accept the assumptions", isOn: $reviewed).font(.subheadline)
             TextField("Changes you want (optional)", text: $changes, axis: .vertical).lineLimit(3...6).padding(10)
                 .background(Color(.tertiarySystemFill), in: .rect(cornerRadius: 12, style: .continuous))
             HStack {
@@ -314,4 +313,35 @@ struct DraftDetail: View {
         changes = ""; reviewed = false
         if !store.assistantAddress.isEmpty { store.sheet = .delegate(text) }
     }
+}
+
+/// One week of a plan draft, open by default so the whole text is readable.
+struct DraftWeekCard: View {
+    let week: DraftWeek
+    let approved: Bool
+    @State private var open = true
+    var body: some View {
+        DisclosureGroup(isExpanded: $open) {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(week.days) { day in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(day.title).font(.subheadline.weight(.semibold))
+                        if !day.subtitle.isEmpty { Text(day.subtitle).font(.caption).foregroundStyle(.secondary) }
+                        ForEach(Array(day.lines.enumerated()), id: \.offset) { _, l in
+                            HStack(alignment: .firstTextBaseline, spacing: 6) { Text("•").foregroundStyle(.secondary); Text(l) }.font(.footnote)
+                        }
+                    }
+                }
+            }
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
+        } label: {
+            HStack { Text(week.title).font(.body.weight(.semibold)); Spacer(); if approved { Image(systemName: "checkmark.seal.fill").foregroundStyle(.green) } }
+        }
+        .card()
+    }
+}
+
+extension ISO8601DateFormatter {
+    static let fractional: ISO8601DateFormatter = { let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f }()
 }

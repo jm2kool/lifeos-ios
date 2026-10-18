@@ -8,6 +8,7 @@ struct TodayView: View {
         let _ = store.tick
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
+                ChangesBanner()
                 messages
                 GeminiCard()
                 stats.padding(.top, 12)
@@ -322,7 +323,8 @@ struct TaskRow: View {
                 if !task.note.isEmpty { Text(task.note).font(.footnote).foregroundStyle(.secondary).lineLimit(2) }
                 HStack(spacing: 6) {
                     if let due = task.due { Pill(text: store.dueText(due), color: due < store.today ? .red : .secondary, icon: "calendar") }
-                    if !task.src.isEmpty && task.src != "You" { Text(task.src).font(.caption).foregroundStyle(.tertiary) }
+                    if store.changedBy(task.changedBy) != nil { ChangedByTag(by: task.changedBy) }
+                    else if !task.src.isEmpty && task.src != "You" { Text(task.src).font(.caption).foregroundStyle(.tertiary) }
                 }
             }
             Spacer(minLength: 0)
@@ -358,6 +360,7 @@ struct EventRow: View {
                 Text(event.title).font(.body.weight(.medium)).lineLimit(2)
                 Text(store.relDay(d) + (event.timed ? ", " + store.time(store.start(event)) + (event.end != nil ? "–" + store.time(store.end(event)) : "") : ", all day"))
                     .font(.footnote).foregroundStyle(.secondary)
+                ChangedByTag(by: event.changedBy)
             }
             Spacer(minLength: 0)
         }

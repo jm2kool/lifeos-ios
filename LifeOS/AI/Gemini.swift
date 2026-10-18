@@ -54,39 +54,55 @@ enum Gemini {
             return ((res as? HTTPURLResponse)?.statusCode ?? 0, JSON.parse(data) ?? .null)
         }
 
-        // Try the chosen model, then faster ones if Google is slow or busy.
+        // Try the chosen model, then fallbacks if it is gone, slow, busy or answers with nothing.
         var models: [String] = [model]
-        for m in ["gemini-3.5-flash", "gemini-2.5-flash"] where !models.contains(m) { models.append(m) }
-        var code = 0
-        var j: JSON = .null
-        var lastError = "Gemini did not respond. Try again."
+        for m in fallbacks where !models.contains(m) && !gone.contains(m) { models.append(m) }
+        var tried: [String] = []
+        var rateLimited = false
         for (i, m) in models.enumerated() {
+            let result: (Int, JSON)
             do {
-                (code, j) = try await call(m, wait: i == 0 ? 40 : 25)
+                result = try await call(m, wait: i == 0 ? 40 : 25)
             } catch {
                 if error is Failure { throw error }
-                lastError = "Gemini did not respond. Try again."
-                code = 0
-                continue
+                tried.append("\(m): did not respond"); continue
             }
-            if code == 200 { break }
-            if [404, 429, 500, 502, 503, 504].contains(code) {
-                lastError = j["error"]["message"].string ?? "Gemini error \(code)"
-                continue
+            let (code, j) = result
+            let msg = j["error"]["message"].string ?? j["error"].string ?? "error \(code)"
+            if code == 200 {
+                let parts = j["candidates"][0]["content"]["parts"].array
+                let text = parts.filter { !$0["thought"].bool }.compactMap { $0["text"].string }.joined()
+                if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { tried.append("\(m): empty reply"); continue }
+                if m != model { note(model: model, used: m, why: tried.first ?? "") }
+                return text
             }
-            break
-        }
-        if code == 0 { throw Failure(message: lastError) }
-        if code >= 400 {
-            let msg = j["error"]["message"].string ?? j["error"].string ?? "Gemini error \(code)"
-            if code == 429 { throw Failure(message: "Gemini is rate limited. Try again in a minute.") }
-            if code == 400 && msg.lowercased().contains("key") { throw Failure(message: "Gemini rejected the API key. Check it in Settings.") }
+            tried.append("\(m): \(msg)")
+            let lower = msg.lowercased()
+            if code == 404 || ([400, 403].contains(code) && ["no longer", "not found", "not available", "not supported", "deprecated", "unknown model"].contains { lower.contains($0) }) {
+                gone.insert(m); continue
+            }
+            if code == 429 { rateLimited = true; continue }
+            if [500, 502, 503, 504].contains(code) { continue }
+            if code == 400 && lower.contains("key") { throw Failure(message: "Gemini rejected the API key. Check it in Settings.") }
             throw Failure(message: msg)
         }
-        let parts = j["candidates"][0]["content"]["parts"].array
-        let text = parts.filter { !$0["thought"].bool }.compactMap { $0["text"].string }.joined()
-        if text.isEmpty { throw Failure(message: "Gemini sent an empty reply.") }
-        return text
+        if rateLimited && tried.allSatisfy({ $0.contains("429") || $0.lowercased().contains("quota") || $0.lowercased().contains("rate") }) {
+            throw Failure(message: "Gemini is rate limited. Try again in a minute.")
+        }
+        throw Failure(message: "Gemini couldn't answer, so nothing was changed. Tried " + tried.joined(separator: "; "))
+    }
+
+    static let fallbacks = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-flash-latest"]
+    /// Models Google said are gone, skipped until the app restarts.
+    nonisolated(unsafe) private static var gone: Set<String> = []
+    /// Tells you once when your chosen model failed and another answered, so it isn't silent.
+    @MainActor private static var noted: Set<String> = []
+    private static func note(model: String, used: String, why: String) {
+        Task { @MainActor in
+            guard !noted.contains(model) else { return }
+            noted.insert(model)
+            Store.shared.show("\(model) isn't working (\(why.replacingOccurrences(of: model + ": ", with: ""))). Using \(used); change the model in Settings.")
+        }
     }
 
     /// Pulls the first JSON object out of a reply.

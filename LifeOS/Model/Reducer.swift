@@ -64,10 +64,11 @@ enum Reducer {
         case "task.add":
             let title = str(op["title"], 240).trimmingCharacters(in: .whitespacesAndNewlines)
             if title.isEmpty { throw OpError(message: "Task needs a title") }
-            var t: JSON = ["id": .string(op["id"].string ?? uid("task")), "title": .string(title), "note": .string(str(op["note"], 1500)), "src": .string(op["src"].string ?? "You"), "created": at]
+            var t: JSON = ["id": .string(op["id"].string ?? uid("task")), "title": .string(title), "note": .string(str(op["note"], 1500)), "src": .string(op["src"].string ?? "You"), "created": op["created"].isNull ? at : op["created"]]
             if let due = op["due"].string, !due.isEmpty { t["due"] = .string(String(due.prefix(10))) }
             if let p = op["priority"].string { t["priority"] = .string(p) }
             var l = list(doc, "tasks"); if idx(l, t["id"]) == nil { l.append(t) }; put(&doc, "tasks", l)
+            put(&doc, "deletedTasks", list(doc, "deletedTasks").filter { $0.str != t["id"].str })
         case "task.update":
             var l = list(doc, "tasks"); guard let i = idx(l, op["id"]) else { throw OpError(message: "No such task") }
             for k in ["title", "note", "due", "src", "priority"] where op.object[k] != nil { l[i][k] = op[k] }
@@ -85,7 +86,7 @@ enum Reducer {
         case "board.add":
             let title = str(op["title"].isNull ? op["t"] : op["title"], 240).trimmingCharacters(in: .whitespacesAndNewlines)
             if title.isEmpty { throw OpError(message: "Card needs a title") }
-            var b: JSON = ["id": .string(op["id"].string ?? uid("card")), "t": .string(title), "c": .number(Double(columnIndex(op["column"]) ?? 0)), "created": at]
+            var b: JSON = ["id": .string(op["id"].string ?? uid("card")), "t": .string(title), "c": .number(Double(columnIndex(op["column"]) ?? 0)), "created": op["created"].isNull ? at : op["created"]]
             if let due = op["due"].string, !due.isEmpty { b["due"] = .string(String(due.prefix(10))) }
             if op["filed"] == .bool(false) { b["filed"] = false }
             if let n = op["note"].string, !n.isEmpty { b["note"] = .string(n) }
@@ -109,7 +110,7 @@ enum Reducer {
             if !url.isEmpty && !url.lowercased().hasPrefix("http") { throw OpError(message: "Links must start with http:// or https://") }
             let title = str(op["title"].isNull ? op["t"] : op["title"], 240).trimmingCharacters(in: .whitespaces)
             if title.isEmpty { throw OpError(message: "Saved item needs a title") }
-            let s: JSON = ["id": .string(op["id"].string ?? uid("saved")), "t": .string(title), "url": .string(url), "n": .string(str(op["note"].isNull ? op["n"] : op["note"], 1500)), "s": .string(op["source"].string ?? op["s"].string ?? "You"), "c": at]
+            let s: JSON = ["id": .string(op["id"].string ?? uid("saved")), "t": .string(title), "url": .string(url), "n": .string(str(op["note"].isNull ? op["n"] : op["note"], 1500)), "s": .string(op["source"].string ?? op["s"].string ?? "You"), "c": op["created"].isNull ? at : op["created"]]
             var l = list(doc, "saved"); if idx(l, s["id"]) == nil { l.insert(s, at: 0) }; put(&doc, "saved", l)
         case "saved.update":
             var l = list(doc, "saved"); guard let i = idx(l, op["id"]) else { throw OpError(message: "No such item") }
@@ -140,6 +141,8 @@ enum Reducer {
             l.append(["id": .string(op["id"].string ?? uid("focus")), "date": .string(String(op["date"].str.prefix(10))), "minutes": .number(Double(m)), "label": .string(str(op["label"], 200)), "at": at])
             if l.count > 800 { l.removeFirst(l.count - 800) }
             put(&doc, "focus", l)
+        case "focus.remove":
+            put(&doc, "focus", list(doc, "focus").filter { $0["id"].str != op["id"].str })
         case "timetable.set":
             doc["state"]["timetable"] = .string(str(op["text"], 20000))
         case "draft.review":
@@ -191,6 +194,13 @@ enum Reducer {
             var arr = get(c, p).array
             if let i = idx(arr, v["id"]) { for (k, x) in v.object { arr[i][k] = x } } else { arr.append(v) }
             set(&c, p, .array(arr)); doc["content"] = c
+        case "content.put":
+            // replaces the whole item with the same id (or adds it); used by undo and import
+            let p = try parts(op["path"].str); var c = doc["content"]
+            let v = op["value"]; if v["id"].isNull { throw OpError(message: "content.put needs value.id") }
+            var arr = get(c, p).array
+            if let i = idx(arr, v["id"]) { arr[i] = v } else { arr.append(v) }
+            set(&c, p, .array(arr)); doc["content"] = c
         case "content.remove":
             let p = try parts(op["path"].str); var c = doc["content"]
             let cur = get(c, p)
@@ -199,6 +209,12 @@ enum Reducer {
             doc["content"] = c
         case "state.set":
             let p = try parts(op["path"].str); var s = doc["state"]; set(&s, p, op["value"]); doc["state"] = s
+        case "state.setKey":
+            // one key of a state map; keys may contain dots, so this isn't a path
+            let m = op["path"].str
+            guard ["priority", "snooze", "progress", "draftReviews"].contains(m) else { throw OpError(message: "state.setKey path must be priority, snooze, progress or draftReviews") }
+            let k = op["key"].str; if bad.contains(k) { throw OpError(message: "Bad key") }
+            doc["state"][m][k] = op["value"]
         case "profile.set":
             for (k, v) in op["value"].object where !bad.contains(k) { doc["profile"][k] = v }
         case "settings.set":
@@ -209,6 +225,7 @@ enum Reducer {
         default:
             throw OpError(message: "Unknown op " + name)
         }
+        stamp(&doc, op, at)
         if let opId = op["opId"].string {
             var a = doc["applied"].array; a.append(.string(opId)); if a.count > 400 { a.removeFirst(a.count - 400) }; doc["applied"] = .array(a)
         }
@@ -216,6 +233,21 @@ enum Reducer {
         let summary = op["title"].string ?? op["text"].string ?? op["path"].string ?? op["subject"].string ?? ""
         log.insert(["op": .string(name), "by": .string(op["by"].string ?? "you"), "at": at, "summary": .string(String(summary.prefix(120)))], at: 0)
         put(&doc, "log", Array(log.prefix(80)))
+    }
+
+    /// Labels the item an op touched with who changed it ("changedBy"), as the server does.
+    private static func stamp(_ doc: inout JSON, _ op: JSON, _ at: JSON) {
+        let name = op["op"].str, by = JSON.string(String((op["by"].string ?? "you").prefix(40)))
+        func mark(_ l: [JSON], _ id: JSON) -> [JSON]? {
+            guard let i = idx(l, id) else { return nil }
+            var l = l; l[i]["changedBy"] = by; l[i]["changedAt"] = at; return l
+        }
+        if let k = ["task": "tasks", "board": "board", "saved": "saved"][String(name.split(separator: ".").first ?? "")], !name.hasSuffix(".remove"), !name.hasSuffix(".done") {
+            if let l = mark(list(doc, k), op["id"]) { put(&doc, k, l) }
+        } else if name == "content.upsert" || name == "content.put", let p = try? parts(op["path"].str) {
+            var c = doc["content"]
+            if let l = mark(get(c, p).array, op["value"]["id"]) { set(&c, p, .array(l)); doc["content"] = c }
+        }
     }
 
     /// Ops that undo `op` when applied to the document as it was before `op`.
@@ -235,12 +267,12 @@ enum Reducer {
         case "board.update", "board.move": guard let b = find("board") else { return [] }
             return [["op": "board.update", "id": id, "title": b["t"], "due": b["due"].isNull ? .string("") : b["due"], "note": b["note"].isNull ? .string("") : b["note"], "column": b["c"]]]
         case "board.remove": guard let b = find("board") else { return [] }
-            return [["op": "board.add", "id": id, "title": b["t"], "column": b["c"], "due": b["due"], "note": b["note"]]]
+            return [["op": "board.add", "id": id, "title": b["t"], "column": b["c"], "due": b["due"], "note": b["note"], "created": b["created"]]]
         case "saved.add": return id.isNull ? [] : [["op": "saved.remove", "id": id]]
         case "saved.update": guard let s = find("saved") else { return [] }
             return [["op": "saved.update", "id": id, "title": s["t"], "url": s["url"], "note": s["n"]]]
         case "saved.remove": guard let s = find("saved") else { return [] }
-            return [["op": "saved.add", "id": id, "title": s["t"], "url": s["url"], "note": s["n"], "source": s["s"]]]
+            return [["op": "saved.add", "id": id, "title": s["t"], "url": s["url"], "note": s["n"], "source": s["s"], "created": s["c"]]]
         case "inbox.done": return [["op": "inbox.done", "id": id, "done": .bool(doc["state"]["inboxDone"].array.contains { $0.str == id.str })]]
         case "inbox.priority": return [["op": "inbox.priority", "id": id, "value": .string(doc["state"]["priority"][id.str].str)]]
         case "inbox.snooze": return [["op": "inbox.snooze", "id": id, "on": .bool(!doc["state"]["snooze"][id.str].isNull)]]
@@ -255,6 +287,39 @@ enum Reducer {
         case "settings.set": var v = JSON.object([:]); for k in op["value"].object.keys { v[k] = doc["settings"][k].isNull ? .string("") : doc["settings"][k] }; return [["op": "settings.set", "value": v]]
         default: return []
         }
+    }
+
+    // MARK: duplicates (same rules as the server's _core.mjs)
+    private static let stopWords: Set<String> = ["the", "a", "an", "and", "of", "for", "to", "in", "on", "at", "with", "re", "fwd", "fw"]
+    static func words(_ s: String) -> Set<String> {
+        let folded = s.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil).lowercased()
+        return Set(folded.split { !($0.isASCII && ($0.isLetter || $0.isNumber)) }.map(String.init).filter { !stopWords.contains($0) })
+    }
+    /// Nearly the same title: at least three quarters of the words in common, ignoring case, punctuation and order.
+    static func alike(_ a: String, _ b: String) -> Bool {
+        let x = words(a), y = words(b)
+        if x.isEmpty || y.isEmpty { return false }
+        return Double(x.intersection(y).count) / Double(x.union(y).count) >= 0.75
+    }
+    /// Visible events that look like copies of each other (same day, nearly the same title, within 90 minutes).
+    /// The copy to keep comes first: one with a time beats an all-day one.
+    static func duplicateEvents(_ doc: JSON) -> [[Event]] {
+        let list = doc["content"]["events"].array.filter { !$0["id"].isNull }.map(Event.init).filter(\.active)
+        func minutes(_ s: String) -> Int? {
+            guard let r = s.range(of: #"T\d\d:\d\d"#, options: .regularExpression) else { return nil }
+            let t = s[r].dropFirst()
+            return (Int(t.prefix(2)) ?? 0) * 60 + (Int(t.suffix(2)) ?? 0)
+        }
+        var used = Set<Int>(), out: [[Event]] = []
+        for (i, a) in list.enumerated() where !used.contains(i) {
+            var g = [a]
+            for (j, b) in list.enumerated() where j > i && !used.contains(j) && a.id != b.id && a.start.prefix(10) == b.start.prefix(10) && alike(a.title, b.title) {
+                if let x = minutes(a.start), let y = minutes(b.start), abs(x - y) > 90 { continue }
+                g.append(b); used.insert(j)
+            }
+            if g.count > 1 { out.append(g.sorted { ($0.timed ? 1 : 0) > ($1.timed ? 1 : 0) }) }
+        }
+        return out
     }
 
     /// Gives add-ops a stable id up front so they can be undone and synced.
@@ -272,5 +337,6 @@ enum Reducer {
     static let allOps = ["task.add", "task.update", "task.done", "task.remove", "board.add", "board.update", "board.move", "board.remove",
                          "saved.add", "saved.update", "saved.remove", "inbox.done", "inbox.priority", "inbox.snooze", "progress.set",
                          "focus.log", "timetable.set", "draft.review", "draft.email", "draft.remove", "message.add", "message.dismiss",
-                         "content.set", "content.merge", "content.push", "content.upsert", "content.remove", "state.set", "profile.set", "settings.set"]
+                         "content.set", "content.merge", "content.push", "content.upsert", "content.put", "content.remove", "state.set", "state.setKey",
+                         "focus.remove", "profile.set", "settings.set"]
 }

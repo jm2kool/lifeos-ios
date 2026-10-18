@@ -168,3 +168,78 @@ extension Store {
         switch doc["settings"]["theme"].string ?? "auto" { case "light": return .light; case "dark": return .dark; default: return nil }
     }
 }
+
+/// Draft text with light Markdown: # headings, - bullets, **bold**, _italic_ and links.
+struct RichText: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(text.components(separatedBy: .newlines).enumerated()), id: \.offset) { _, raw in
+                let l = raw.trimmingCharacters(in: .whitespaces)
+                if l.isEmpty {
+                    Color.clear.frame(height: 2)
+                } else if l.hasPrefix("#") {
+                    Text(md(String(l.drop { $0 == "#" }).trimmingCharacters(in: .whitespaces))).font(l.hasPrefix("##") ? .subheadline.weight(.semibold) : .headline)
+                } else if ["- ", "* ", "• "].contains(where: { l.hasPrefix($0) }) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) { Text("•").foregroundStyle(.secondary); Text(md(String(l.dropFirst(2)))) }.font(.subheadline)
+                } else {
+                    Text(md(l)).font(.subheadline)
+                }
+            }
+        }
+        .textSelection(.enabled)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    private func md(_ s: String) -> AttributedString {
+        (try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(s)
+    }
+}
+
+/// "Changed by FRIDAY" on anything an assistant added or edited. Shows nothing for your own changes.
+struct ChangedByTag: View {
+    @Environment(Store.self) private var store
+    let by: String
+    var body: some View {
+        if let who = store.changedBy(by) {
+            Label("Changed by " + who, systemImage: "person.crop.circle").font(.caption).foregroundStyle(.purple).labelStyle(.titleAndIcon)
+        }
+    }
+}
+
+/// On Today: what your assistants changed since you last looked, with Review and Undo all.
+struct ChangesBanner: View {
+    @Environment(Store.self) private var store
+    @State private var busy = false
+    var body: some View {
+        let list = store.unseenChanges
+        if !list.isEmpty {
+            let names = ListFormatter.localizedString(byJoining: Array(Set(list.map { $0["by"].str })).sorted())
+            let undoable = list.filter { !$0["undo"].isNull }.map { $0["id"].str }
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 10) {
+                    IconTile(symbol: "person.badge.clock.fill", color: .purple, size: 30)
+                    Text("\(names) made \(list.count) change\(list.count == 1 ? "" : "s")").font(.subheadline.weight(.semibold))
+                    Spacer(minLength: 0)
+                }
+                ForEach(Array(list.prefix(4).enumerated()), id: \.offset) { _, e in
+                    Text("• " + store.describe(e) + " · " + store.ago(e["at"].double ?? 0)).font(.footnote).foregroundStyle(.secondary).lineLimit(2)
+                }
+                if list.count > 4 { Text("and \(list.count - 4) more").font(.footnote).foregroundStyle(.tertiary) }
+                HStack {
+                    Button("Review") { store.sheet = .activity }.buttonStyle(.glass)
+                    if !undoable.isEmpty {
+                        Button {
+                            busy = true
+                            Task { await store.undoOnServer(undoable, label: "Undid \(undoable.count) change\(undoable.count == 1 ? "" : "s")"); busy = false }
+                        } label: { if busy { ProgressView() } else { Text("Undo all") } }
+                        .buttonStyle(.glass).disabled(busy)
+                    }
+                    Spacer()
+                    Button("OK") { withAnimation(.smooth) { store.markChangesSeen() } }.buttonStyle(.glassProminent)
+                }
+            }
+            .card(padding: 14).padding(.bottom, 10)
+        }
+    }
+}

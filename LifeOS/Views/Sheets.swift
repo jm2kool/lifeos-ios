@@ -481,16 +481,41 @@ struct ActivitySheet: View {
                         Button("Undo the last change", systemImage: "arrow.uturn.backward") { store.undoLast() }
                     }
                 }
-                Section("Recent changes") {
-                    ForEach(Array(store.state["log"].array.enumerated()), id: \.offset) { _, l in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(l["op"].str + (l["summary"].str.isEmpty ? "" : ": " + l["summary"].str)).font(.subheadline).lineLimit(2)
-                            Text((l["by"].str == "you" ? "You" : l["by"].str) + " · " + store.ago(l["at"].double ?? 0)).font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
+                Section {
+                    ForEach(Array(store.state["log"].array.enumerated()), id: \.offset) { _, l in ActivityRow(entry: l) }
+                } header: { Text("Recent changes") } footer: {
+                    Text(store.syncURL.isEmpty ? "Turn on sync to see and undo changes your assistants make." : "Anything changed through your server can be undone here, whoever made it. Undoing is logged too, so it can be undone again.")
                 }
             }
             .navigationTitle("Activity")
+            .onAppear { store.markChangesSeen() }
+        }
+    }
+}
+
+/// One change in Activity: what happened, who did it, and Undo.
+struct ActivityRow: View {
+    @Environment(Store.self) private var store
+    let entry: JSON
+    @State private var busy = false
+    var body: some View {
+        let undone = !entry["undone"].isNull
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(store.describe(entry)).font(.subheadline).lineLimit(3).strikethrough(undone, color: .secondary)
+                HStack(spacing: 6) {
+                    ChangedByTag(by: entry["by"].str)
+                    Text(store.ago(entry["at"].double ?? 0)).font(.caption).foregroundStyle(.secondary)
+                }
+                if undone { Text("Undone by \(entry["undone"]["by"].str) · \(store.ago(entry["undone"]["at"].double ?? 0))").font(.caption).foregroundStyle(.secondary) }
+            }
+            Spacer(minLength: 0)
+            if !undone && !entry["undo"].isNull && !entry["id"].isNull && !store.syncURL.isEmpty {
+                Button { busy = true; Task { await store.undoOnServer([entry["id"].str]); busy = false } } label: {
+                    if busy { ProgressView() } else { Text("Undo") }
+                }
+                .buttonStyle(.glass).controlSize(.small).disabled(busy)
+            }
         }
     }
 }

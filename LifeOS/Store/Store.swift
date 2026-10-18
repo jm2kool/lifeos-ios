@@ -157,12 +157,22 @@ final class Store {
 
     // MARK: sync (optional; same server your iMessage assistant talks to)
     var syncURL: String { doc["settings"]["sync"]["url"].str.trimmingCharacters(in: .whitespaces) }
+    /// The server's base address, e.g. https://lifeos.vercel.app (accepts the old …/api/lifeos form too).
+    private var serverRoot: String {
+        var s = syncURL
+        if s.hasSuffix("/api/lifeos") { s.removeLast("/api/lifeos".count) }
+        while s.hasSuffix("/") { s.removeLast() }
+        return s
+    }
     private func request(_ method: String, body: JSON? = nil) async throws -> JSON {
-        guard !syncURL.isEmpty, var comps = URLComponents(string: syncURL.hasSuffix("/api/lifeos") ? syncURL : syncURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/api/lifeos") else {
-            throw Reducer.OpError(message: "off")
-        }
-        if method == "GET" { comps.queryItems = [URLQueryItem(name: "since", value: base["rev"].str)] }
-        var req = URLRequest(url: comps.url!, timeoutInterval: 20)
+        try await api(method, "lifeos", query: method == "GET" ? ["since": base["rev"].str] : [:], body: body)
+    }
+    /// Calls /api/<path> on your LifeOS server with the sync key in the Authorization header (never in the URL).
+    func api(_ method: String, _ path: String, query: [String: String] = [:], body: JSON? = nil, timeout: TimeInterval = 20) async throws -> JSON {
+        guard !syncURL.isEmpty, var comps = URLComponents(string: serverRoot + "/api/" + path) else { throw Reducer.OpError(message: "Sync is off: add your server in Settings") }
+        if !query.isEmpty { comps.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) } }
+        guard let url = comps.url else { throw Reducer.OpError(message: "The server address isn't valid") }
+        var req = URLRequest(url: url, timeoutInterval: timeout)
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let key = Keychain.get("syncKey"), !key.isEmpty { req.setValue("Bearer " + key, forHTTPHeaderField: "Authorization") }
@@ -170,10 +180,108 @@ final class Store {
         let (data, res) = try await URLSession.shared.data(for: req)
         let code = (res as? HTTPURLResponse)?.statusCode ?? 0
         let j = JSON.parse(data) ?? .null
-        if code == 401 { throw Reducer.OpError(message: "Add your sync key in Settings") }
-        if code >= 400 { throw Reducer.OpError(message: j["error"].string ?? "Sync failed (\(code))") }
+        if code == 401 { throw Reducer.OpError(message: j["error"].string.map { "Sync key: " + $0 } ?? "Add your sync key in Settings") }
+        if code >= 400 { throw Reducer.OpError(message: [j["error"].string ?? "Server error (\(code))", j["fix"].string].compactMap { $0 }.joined(separator: " ")) }
         return j
     }
+
+    // MARK: import
+    struct ImportPlan: Identifiable {
+        let id = UUID()
+        let file: JSON
+        let viaServer: Bool
+        let summary: String       // "Would import 3 tasks, 40 events, 11 inbox items; 2 likely duplicates skipped."
+        let skipped: [String]     // what the duplicate check left out, and why
+        let failed: [String]
+    }
+    /// Checks a file before importing. With sync on, the server merges it with what it has (nothing is replaced).
+    func planImport(_ file: JSON) async throws -> ImportPlan {
+        if syncURL.isEmpty {
+            let c = Store.counts(file)
+            let dups = Reducer.duplicateEvents(file).map { g in "\(g.dropFirst().map(\.title).joined(separator: ", ")) (same as \(g[0].title), \(g[0].start.prefix(10)))" }
+            return ImportPlan(file: file, viaServer: false, summary: "This replaces what is on this iPhone with \(c). Sync is off, so nothing is sent anywhere.", skipped: dups.map { "Possible duplicate: " + $0 }, failed: [])
+        }
+        await push()
+        let j = try await api("POST", "import", body: ["doc": file, "dryRun": true], timeout: 60)
+        return ImportPlan(file: file, viaServer: true, summary: j["summary"].str, skipped: Store.describe(j["items"].array, "duplicate"), failed: Store.describe(j["items"].array, "failed"))
+    }
+    /// Runs the import and returns the confirmation to show ("Imported 3 tasks, 40 events, 11 inbox items…").
+    func runImport(_ plan: ImportPlan) async throws -> String {
+        guard plan.viaServer else {
+            replace(with: plan.file)
+            return "Imported \(Store.counts(plan.file)) on this iPhone."
+        }
+        let j = try await api("POST", "import", body: ["doc": plan.file, "returnDoc": true], timeout: 60)
+        if j["doc"].isObject { withAnimation(.smooth) { adopt(j["doc"]) } }
+        syncOn = true; syncStatus = "Synced " + Date().formatted(date: .omitted, time: .shortened)
+        // read it back so the confirmation reflects what the server really holds
+        guard let check = try? await api("GET", "lifeos"), check["doc"].isObject else { return j["summary"].str }
+        adopt(check["doc"])
+        return j["summary"].str + "\nYour server now has \(Store.counts(check["doc"]))."
+    }
+    static func counts(_ d: JSON) -> String {
+        let t = d["state"]["tasks"].array.count, e = d["content"]["events"].array.count, i = d["content"]["inbox"].array.count
+        return "\(t) task\(t == 1 ? "" : "s"), \(e) event\(e == 1 ? "" : "s"), \(i) inbox item\(i == 1 ? "" : "s")"
+    }
+    private static func describe(_ items: [JSON], _ status: String) -> [String] {
+        items.filter { $0["status"].str == status }.map { x in
+            let what = x["title"].string ?? "\(x["kind"].str) #\(x["index"].int.map { $0 + 1 } ?? 0)"
+            if status == "failed" { return what + ": " + x["error"].str }
+            return what + (x["duplicateTitle"].string.map { " (same as “\($0)”)" } ?? x["reason"].string.map { " (\($0))" } ?? "")
+        }
+    }
+
+    // MARK: changes made by others (your assistants, Gemini on the server)
+    /// Log entries made with a key other than this iPhone's, since you last looked. Gemini's Today refresh itself isn't listed.
+    var unseenChanges: [JSON] {
+        state["log"].array.filter { e in
+            !e["id"].isNull && e["undone"].isNull && !["owner", ""].contains(e["key"].str) && (e["at"].double ?? 0) > seenChangesAt
+                && !(e["op"].str == "content.set" && e["target"].str == "pulse")
+        }
+    }
+    var seenChangesAt: Double = {
+        let v = UserDefaults.standard.double(forKey: "seenChangesAt")
+        if v > 0 { return v }
+        let now = Date().timeIntervalSince1970 * 1000; UserDefaults.standard.set(now, forKey: "seenChangesAt"); return now
+    }()
+    func markChangesSeen() {
+        seenChangesAt = max(seenChangesAt, state["log"].array.compactMap { $0["at"].double }.max() ?? 0)
+        UserDefaults.standard.set(seenChangesAt, forKey: "seenChangesAt")
+    }
+    /// Undoes logged changes on the server (yours or anyone's). Each undo is itself logged and can be undone.
+    func undoOnServer(_ ids: [String], label: String = "Undone") async {
+        guard !ids.isEmpty else { return }
+        do {
+            await push()
+            let j = try await api("POST", "lifeos", body: ["undo": .array(ids.map { .string($0) })])
+            if j["doc"].isObject { withAnimation(.smooth) { adopt(j["doc"]) } }
+            show(label)
+        } catch { show(error.localizedDescription) }
+    }
+    /// "FRIDAY" for a change someone else made; nil for your own.
+    func changedBy(_ by: String) -> String? {
+        let b = by.trimmingCharacters(in: .whitespaces)
+        if b.isEmpty || ["you", "app"].contains(b.lowercased()) || b == profileName { return nil }
+        return b
+    }
+    /// A short human description of a log entry: "Added task “Revise Sound”".
+    func describe(_ e: JSON) -> String {
+        let verbs: [String: String] = [
+            "task.add": "Added task", "task.update": "Edited task", "task.done": "Ticked off a task", "task.remove": "Deleted task",
+            "board.add": "Added card", "board.update": "Edited card", "board.move": "Moved card", "board.remove": "Deleted card",
+            "saved.add": "Saved", "saved.update": "Edited saved item", "saved.remove": "Removed saved item",
+            "inbox.done": "Marked email done", "inbox.priority": "Set email priority", "inbox.snooze": "Snoozed email",
+            "draft.email": "Drafted email", "draft.remove": "Deleted draft", "draft.review": "Reviewed draft",
+            "timetable.set": "Changed timetable", "message.add": "Pinned a note", "message.dismiss": "Dismissed a note",
+            "content.upsert": "Updated", "content.put": "Updated", "content.remove": "Removed", "content.set": "Changed",
+            "focus.log": "Logged focus time", "import": "Imported", "undo": "Undid", "doc.replace": "Replaced everything",
+        ]
+        let op = e["op"].str, sum = e["summary"].str
+        if op == "import" || op == "undo" { return sum.isEmpty ? (verbs[op] ?? op) : sum }
+        let v = verbs[op] ?? op
+        return sum.isEmpty ? v : v + " “" + sum + "”"
+    }
+
     private func adopt(_ remote: JSON) {
         guard remote["state"].isObject else { return }
         let acked = Set(remote["applied"].array.map(\.str))

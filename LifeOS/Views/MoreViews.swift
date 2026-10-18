@@ -34,6 +34,23 @@ struct CalendarView: View {
                     }
                 }
             }
+            let dups = q.isEmpty && selected == nil ? Reducer.duplicateEvents(store.doc) : []
+            if !dups.isEmpty {
+                Section {
+                    ForEach(dups, id: \.self) { g in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Possible duplicate · " + store.relDay(store.day(g[0]))).font(.subheadline.weight(.semibold))
+                            ForEach(g) { e in
+                                Text((e.id == g[0].id ? "Keep: " : "Hide: ") + e.title + (e.timed ? ", " + store.time(store.start(e)) : ", all day")).font(.footnote).foregroundStyle(e.id == g[0].id ? .primary : .secondary)
+                            }
+                            Button(g.count > 2 ? "Hide the extra copies" : "Hide the extra copy") { hide(g) }.buttonStyle(.glass).controlSize(.small)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                } header: { Text("Check these") } footer: {
+                    Text("Same day and nearly the same title. Hiding marks the extra copy as superseded; you can undo it.")
+                }
+            }
             if groups.isEmpty { ContentUnavailableView(q.isEmpty ? "Nothing scheduled" : "No matches", systemImage: "calendar") }
             ForEach(groups, id: \.key) { day, events in
                 Section(store.relDay(day)) {
@@ -50,6 +67,13 @@ struct CalendarView: View {
         .searchable(text: $q, prompt: "Search events")
         .navigationTitle("Calendar")
         .pageBackground()
+    }
+    private func hide(_ g: [Event]) {
+        let ops: [JSON] = g.dropFirst().map { e in
+            ["op": "content.upsert", "path": "events", "title": .string(e.title),
+             "value": ["id": .string(e.id), "status": "superseded", "note": .string("Superseded: duplicate of “\(g[0].title)”. " + e.note)]]
+        }
+        store.act(ops, undo: "Duplicate hidden")
     }
 }
 

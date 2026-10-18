@@ -39,28 +39,65 @@ export function snapshot(doc) {
   }).slice(0, 24000);
 }
 
-// Tries the chosen model, then faster fallbacks when Google is slow or busy.
-export async function gemini(system, user, { json = true, fetcher = fetch } = {}) {
+export const FALLBACKS = ['gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-flash-latest'];
+// Models Google said are gone. Remembered while this server instance is warm, so later calls skip them.
+const gone = new Map();
+const GONE = /no longer (available|supported)|not found|not supported for generateContent|deprecated|unknown model|does not exist|is not available/i;
+export const _forgetGoneModels = () => gone.clear();
+
+/** Tries the chosen model, then fallbacks when a model is gone, slow, busy or answers with nothing usable.
+    Returns {value, model, fallback, attempts}. On total failure throws an error (status 502/504) carrying `attempts`. */
+export async function gemini(system, user, { json = true, fetcher = fetch, model = MODEL() } = {}) {
   if (!env.GEMINI_API_KEY) throw Object.assign(Error('Add GEMINI_API_KEY in Vercel'), { status: 503 });
-  const models = [...new Set([MODEL(), 'gemini-3.5-flash', 'gemini-2.5-flash'])];
-  let last = 'Gemini did not respond';
-  for (const [i, m] of models.entries()) {
+  const models = [...new Set([model, ...FALLBACKS])];
+  const attempts = [];
+  let timedOut = false;
+  for (let i = 0; i < models.length; i++) {
+    const m = models[i];
+    if (gone.has(m)) { attempts.push({ model: m, error: 'skipped: ' + gone.get(m) }); continue }
     const gen = { temperature: 0.4, maxOutputTokens: 4096, ...(json ? { responseMimeType: 'application/json' } : {}) };
     if (/^gemini-3/.test(m)) gen.thinkingConfig = { thinkingLevel: 'low' };
     else if (/^gemini-2\.5/.test(m)) gen.thinkingConfig = { thinkingBudget: 0 };
+    let plain = attempts.some(a => a.model === m && a.retryWithoutThinking);
+    if (plain) delete gen.thinkingConfig;
     const body = { systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts: [{ text: user }] }], generationConfig: gen };
     let r, j;
     try {
-      r = await fetcher('https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY }, body: JSON.stringify(body), signal: AbortSignal.timeout(i === 0 ? 40000 : 25000) });
+      r = await fetcher('https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY }, body: JSON.stringify(body), signal: AbortSignal.timeout(attempts.length === 0 ? 40000 : 25000) });
       j = await r.json().catch(() => ({}));
-    } catch (e) { last = m + ': ' + e.message; continue }
-    if (r.status === 400 && gen.thinkingConfig && /thinking/i.test(j.error?.message || '')) { delete gen.thinkingConfig; models.splice(i + 1, 0, m); continue }
-    if (!r.ok) { last = j.error?.message || 'Gemini error ' + r.status; if ([404, 429, 500, 502, 503, 504].includes(r.status)) continue; throw Object.assign(Error(last), { status: 502 }) }
+    } catch (e) { timedOut = true; attempts.push({ model: m, error: e.name === 'TimeoutError' ? 'timed out' : e.message }); continue }
+    const msg = j.error?.message || '';
+    if (r.status === 400 && gen.thinkingConfig && /thinking/i.test(msg) && !plain) { attempts.push({ model: m, status: 400, error: msg, retryWithoutThinking: true }); models.splice(i + 1, 0, m); continue }
+    if (!r.ok) {
+      attempts.push({ model: m, status: r.status, error: msg || 'Gemini error ' + r.status });
+      if (r.status === 404 || ((r.status === 400 || r.status === 403) && GONE.test(msg))) { gone.set(m, msg || 'not found'); continue }
+      if ([429, 500, 502, 503, 504].includes(r.status)) continue;
+      if ((r.status === 400 || r.status === 403) && /api key|permission|unauthori[sz]ed/i.test(msg)) throw Object.assign(Error('Gemini rejected the API key: ' + msg), { status: 502, attempts });
+      continue;
+    }
     const text = (j.candidates?.[0]?.content?.parts || []).filter(p => p.text && !p.thought).map(p => p.text).join('');
-    if (!json) return text;
-    try { return JSON.parse(text) } catch { const x = text.indexOf('{'), y = text.lastIndexOf('}'); return x >= 0 && y > x ? JSON.parse(text.slice(x, y + 1)) : {} }
+    if (!text.trim()) { attempts.push({ model: m, status: 200, error: 'empty reply' + (j.candidates?.[0]?.finishReason ? ' (' + j.candidates[0].finishReason + ')' : '') }); continue }
+    let value = text;
+    if (json) {
+      value = parseJSON(text);
+      if (!value) { attempts.push({ model: m, status: 200, error: 'reply was not JSON' }); continue }
+    }
+    return { value, model: m, fallback: m !== model, attempts };
   }
-  throw Object.assign(Error(last), { status: 504 });
+  const last = attempts.filter(a => !String(a.error).startsWith('skipped')).pop() || attempts[attempts.length - 1];
+  throw Object.assign(Error('Gemini failed on every model (' + attempts.map(a => a.model + ': ' + a.error).join('; ') + ')'), { status: timedOut && attempts.every(a => a.error === 'timed out' || String(a.error).startsWith('skipped')) ? 504 : 502, attempts, last });
+}
+function parseJSON(text) {
+  try { const v = JSON.parse(text); return v && typeof v === 'object' ? v : null } catch { }
+  const x = text.indexOf('{'), y = text.lastIndexOf('}');
+  if (x >= 0 && y > x) try { return JSON.parse(text.slice(x, y + 1)) } catch { }
+  return null;
+}
+/** A one-line note when a fallback model answered, so the failure is visible instead of silent. */
+export function fallbackNote(g, wanted = MODEL()) {
+  if (!g.fallback) return undefined;
+  const why = g.attempts.find(a => a.model === wanted);
+  return `${wanted} failed (${why ? why.error : 'unavailable'}); answered with ${g.model}. Set GEMINI_MODEL in Vercel to a working model.`;
 }
 
 // timetable text helpers (same format the app uses)
@@ -82,7 +119,7 @@ export function expand(doc, ops) {
       if (m) out.push({ from: m.f, to: m.sender, subject: 'Re: ' + m.t, ...op }); else out.push(op);
       continue;
     }
-    if (['settings.set', 'profile.set', 'state.set'].includes(op.op)) continue;
+    if (['settings.set', 'profile.set', 'state.set', 'state.setKey'].includes(op.op)) continue;
     out.push(op);
   }
   if (tt) out.push({ op: 'timetable.set', text: ttText(mine) });
