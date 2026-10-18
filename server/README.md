@@ -33,9 +33,17 @@ Every caller gets its own key. A key is **read only**, **write** (read and chang
 GET    /api/keys                                    list keys (admin)
 GET    /api/keys?view=audit&limit=100               who changed what, newest first
 POST   /api/keys     {"name":"FRIDAY","scope":"write"}   -> {"key":"lfo_…","record":{…}}  (key shown once)
+PATCH  /api/keys     {"id":"key-…","scope":"admin"} change what a key may do (also: touch and hold a key in the app)
 DELETE /api/keys     {"id":"key-…"}                 revoke ("legacy-agent" revokes LIFEOS_AGENT_TOKEN)
 GET    /api/lifeos?view=me                          which key am I? {"id","name","scope"}
 ```
+
+A Vercel setting can also make named keys admin: `LIFEOS_ADMIN_KEYS=Instinct` (comma-separated key names or
+ids). Remove it from Vercel and redeploy to take that back. A revoked key stays revoked either way.
+
+`PUT /api/lifeos` (replace the whole doc, admin) accepts an optional `"rev"`: if the doc changed since that rev
+you get a 409 instead of overwriting. The previous version is kept for 7 days, so a replace can be undone from
+Activity or with `{"undo": "<logId>"}`.
 
 ### The old shared key
 `LIFEOS_AGENT_TOKEN` keeps working as a **write** key named `LIFEOS_AGENT_NAME` (default `Assistant`).

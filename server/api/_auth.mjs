@@ -20,6 +20,9 @@ const parse = s => { try { return JSON.parse(s) } catch { return null } };
 const query = req => req.query || Object.fromEntries(new URL(req.url || '/', 'http://x').searchParams);
 
 export const can = (caller, scope) => !!caller && RANK[caller.scope] >= RANK[scope];
+// LIFEOS_ADMIN_KEYS: comma-separated key names or ids that get admin access (set in Vercel; no key values involved).
+const promoted = rec => String(env.LIFEOS_ADMIN_KEYS || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean).some(x => x === String(rec.id).toLowerCase() || x === String(rec.name).toLowerCase());
+const effective = rec => promoted(rec) ? 'admin' : rec.scope;
 const owner = () => ({ id: 'owner', name: String(env.LIFEOS_OWNER_NAME || 'You').slice(0, 40), scope: 'admin', builtin: true });
 const legacy = () => ({ id: 'legacy-agent', name: String(env.LIFEOS_AGENT_NAME || 'Assistant').slice(0, 40), scope: 'write', builtin: true, legacy: true });
 
@@ -41,7 +44,7 @@ export async function authenticate(req, store, { cron = false } = {}) {
   if (!rec) return { status: 401, error: 'Wrong key' };
   if (rec.revokedAt) return { status: 401, error: 'This key was revoked' };
   if (!rec.lastUsedAt || Date.now() - rec.lastUsedAt > 10 * 60e3) { rec.lastUsedAt = Date.now(); await store(['HSET', KEYS, h, JSON.stringify(rec)]).catch(() => {}) }
-  return { caller: { id: rec.id, name: rec.name, scope: rec.scope } };
+  return { caller: { id: rec.id, name: rec.name, scope: effective(rec) } };
 }
 
 /** Sends the auth failure, or returns the caller if it has `scope`. */
@@ -83,7 +86,7 @@ export async function listKeys(store) {
   const out = [owner(), legacy()].filter(k => k.id === 'owner' ? env.LIFEOS_TOKEN : env.LIFEOS_AGENT_TOKEN);
   const revokedLegacy = await store(['SISMEMBER', REVOKED, 'legacy-agent']).catch(() => 0);
   for (const k of out) if (k.legacy && revokedLegacy) k.revokedAt = true;
-  for (const [, v] of pairs(await store(['HGETALL', KEYS]))) { const r = parse(v); if (r) out.push(r) }
+  for (const [, v] of pairs(await store(['HGETALL', KEYS]))) { const r = parse(v); if (r) { if (!r.revokedAt && promoted(r)) { r.grantedScope = r.scope; r.scope = 'admin'; r.viaSetting = 'LIFEOS_ADMIN_KEYS' } out.push(r) } }
   return out.sort((a, b) => (a.builtin ? 0 : 1) - (b.builtin ? 0 : 1) || (a.createdAt || 0) - (b.createdAt || 0));
 }
 /** Returns the new key once; only its hash is kept. */
@@ -96,6 +99,21 @@ export async function createKey(store, { name, scope }, by) {
   const rec = { id: 'key-' + randomBytes(6).toString('hex'), name, scope, createdAt: Date.now(), createdBy: by, hint: key.slice(0, 8) + '…' };
   await store(['HSET', KEYS, sha(key), JSON.stringify(rec)]);
   return { key, record: rec };
+}
+/** Changes what a key may do. The key itself stays the same. */
+export async function updateKey(store, id, scope, by) {
+  if (!SCOPES.includes(scope)) throw Object.assign(Error('scope must be read, write or admin'), { status: 400 });
+  if (id === 'owner' || id === 'legacy-agent') throw Object.assign(Error('This key comes from a Vercel setting; its access can\'t be changed here'), { status: 400 });
+  for (const [h, v] of pairs(await store(['HGETALL', KEYS]))) {
+    const r = parse(v);
+    if (r && r.id === id) {
+      if (r.revokedAt) throw Object.assign(Error('This key was revoked'), { status: 409 });
+      r.scope = scope; r.changedAt = Date.now(); r.changedBy = by;
+      await store(['HSET', KEYS, h, JSON.stringify(r)]);
+      return Object.assign({}, r, promoted(r) ? { scope: 'admin', grantedScope: scope, viaSetting: 'LIFEOS_ADMIN_KEYS' } : {});
+    }
+  }
+  throw Object.assign(Error('No such key'), { status: 404 });
 }
 export async function revokeKey(store, id, by) {
   if (id === 'owner') throw Object.assign(Error('The owner key comes from LIFEOS_TOKEN in Vercel; change it there to rotate it'), { status: 400 });

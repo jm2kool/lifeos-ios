@@ -11,7 +11,7 @@ import Core from './_core.mjs';
 import { readFileSync } from 'node:fs';
 import { gate, audit, reservedNames, attribution } from './_auth.mjs';
 
-const KEY = 'lifeos:doc';
+const KEY = 'lifeos:doc', SNAP = 'lifeos:doc:before:';
 const env = process.env;
 const kvUrl = () => env.KV_REST_API_URL || env.UPSTASH_REDIS_REST_URL;
 const kvTok = () => env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN;
@@ -66,6 +66,24 @@ export async function commit(store, ops, caller, req) {
 }
 export async function undoChanges(store, ids, caller, req) {
   const batch = Core.uid('batch');
+  // undoing a whole-doc replace restores the saved previous version (keeping the log, so the undo is recorded)
+  const cur = await load(store);
+  const want = new Set((Array.isArray(ids) ? ids : [ids]).map(String));
+  const rep = cur.state.log.find(e => e && want.has(String(e.id)) && e.op === 'doc.replace');
+  if (rep) {
+    if (rep.undone) throw Object.assign(Error('Already undone'), { status: 409 });
+    if (caller.scope !== 'admin' && rep.key !== caller.id) throw Object.assign(Error('This key can only undo its own changes'), { status: 403 });
+    const raw = await store(['GET', rep.undo?.[0]?.snapshot || '']);
+    if (!raw) throw Object.assign(Error('The saved copy from before this replace has expired (kept 7 days)'), { status: 410 });
+    const r = await mutate(store, caller.name, now => {
+      const d = Core.normalize(JSON.parse(raw));
+      d.state.log = now.state.log.map(e => e.id === rep.id ? Object.assign({}, e, { undone: { by: caller.name, at: Date.now() } }) : e);
+      d.state.log.unshift({ id: Core.uid('log'), batch, op: 'undo', by: caller.name, key: caller.id, at: Date.now(), summary: 'Undid a whole-doc replace' });
+      return { doc: d, changed: true };
+    });
+    await audit(store, caller, [{ op: 'undo', target: rep.id, summary: 'Undid a whole-doc replace', ok: true, batch }], req);
+    return { doc: r.doc, results: [{ op: 'doc.restore', ok: true }], undone: [rep.id] };
+  }
   const r = await mutate(store, caller.name, doc => Object.assign(Core.undo(doc, ids, { by: caller.name, keyId: caller.id, batch, allow: e => caller.scope === 'admin' || e.key === caller.id }), { changed: true }));
   await audit(store, caller, [{ op: 'undo', target: r.undone.join(','), summary: 'Undid ' + r.undone.length + ' change(s)', ok: r.results.every(x => x.ok), batch }], req);
   return r;
@@ -128,11 +146,24 @@ export function createHandler({ store = kv } = {}) {
       if (req.method === 'PUT') {
         const caller = await gate(req, res, store, 'admin'); if (!caller) return;
         const b = await body(req);
+        let snapshotOf;
         if (!b.doc || typeof b.doc !== 'object' || !b.doc.content || !b.doc.state) return res.status(400).json({ error: 'Send {"doc":{...}} with content and state. To add to what is there instead, use POST /api/import.' });
         const by = attribution(caller, b.by, await reservedNames(store));
-        const r = await mutate(store, by, () => { const d = Core.normalize(b.doc); d.state.log.unshift({ id: Core.uid('log'), op: 'doc.replace', by, key: caller.id, at: Date.now(), summary: 'Replaced everything' }); return { doc: d, changed: true } });
-        await audit(store, caller, [{ op: 'doc.replace', by, ok: true }], req);
-        return res.status(200).json({ doc: r.doc });
+        const base = b.rev ?? b.baseRev;
+        const logId = Core.uid('log'), snap = SNAP + logId;
+        // keep the version being replaced for a week, so the replace can be undone from Activity
+        const r = await mutate(store, by, old => {
+          if (base != null && Number(base) !== Number(old.rev)) throw Object.assign(Error(`Conflict: the doc is at rev ${old.rev}, you sent rev ${base}. Re-read it (GET /api/lifeos) and try again, or send ops instead.`), { status: 409, rev: old.rev });
+          snapshotOf = old;
+          const d = Core.normalize(b.doc);
+          d.state.log = (old.state.log || []).slice();
+          d.state.log.unshift({ id: logId, op: 'doc.replace', by, key: caller.id, at: Date.now(), summary: 'Replaced the whole doc', undo: [{ op: 'doc.restore', snapshot: snap }] });
+          d.state.log.length = Math.min(d.state.log.length, 100);
+          return { doc: d, changed: true };
+        });
+        await store(['SET', snap, JSON.stringify(snapshotOf), 'EX', 7 * 86400]);
+        await audit(store, caller, [{ op: 'doc.replace', by, ok: true, target: logId }], req);
+        return res.status(200).json({ doc: r.doc, rev: r.doc.rev, logId });
       }
       return res.status(405).json({ error: 'Use GET, POST or PUT' });
     } catch (e) { return res.status(e.status || 500).json({ error: e.message || 'Server error' }) }

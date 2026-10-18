@@ -161,3 +161,43 @@ test('undo can be undone, view=me and view=duplicates work, pulse accepts CRON_S
   assert.equal((await call(h, { key: 'cron-secret' })).statusCode, 401, 'cron secret only works for pulse');
   delete process.env.CRON_SECRET;
 });
+
+test('LIFEOS_ADMIN_KEYS promotes only the named key; PATCH changes access; whole-doc replace is guarded and undoable', async () => {
+  const instinct = await newKey('Instinct', 'write'), other = await newKey('Other', 'write');
+  const h = lifeos({ store });
+  const doc = (await call(h, { key: OWNER })).body.doc;
+  // before the grant: write key can't replace the whole doc
+  assert.equal((await call(h, { method: 'PUT', key: instinct.key, body: { doc } })).statusCode, 403);
+  process.env.LIFEOS_ADMIN_KEYS = 'instinct';
+  try {
+    assert.equal((await call(h, { url: '/api/lifeos?view=me', key: instinct.key })).body.scope, 'admin');
+    assert.equal((await call(h, { url: '/api/lifeos?view=me', key: other.key })).body.scope, 'write', 'only Instinct is promoted');
+    const listed = (await call(keys({ store }), { key: OWNER })).body.keys.find(k => k.name === 'Instinct');
+    assert.equal(listed.scope, 'admin'); assert.equal(listed.viaSetting, 'LIFEOS_ADMIN_KEYS');
+    // read, then a harmless replace with the current rev
+    const cur = (await call(h, { key: instinct.key })).body.doc;
+    const edited = JSON.parse(JSON.stringify(cur)); edited.state.board.push({ id: 'c1', t: 'Test card', c: 0 });
+    let r = await call(h, { method: 'PUT', key: instinct.key, body: { doc: edited, rev: cur.rev } });
+    assert.equal(r.statusCode, 200); assert.equal(r.body.doc.state.board[0].t, 'Test card');
+    assert.equal(r.body.doc.state.log[0].op, 'doc.replace'); assert.equal(r.body.doc.state.log[0].by, 'Instinct');
+    // a stale rev is refused instead of overwriting
+    r = await call(h, { method: 'PUT', key: instinct.key, body: { doc: edited, rev: cur.rev } });
+    assert.equal(r.statusCode, 409); assert.match(r.body.error, /Conflict/);
+    // without a rev it still works (old clients)
+    const logId = (await call(h, { method: 'PUT', key: instinct.key, body: { doc: cur } })).body.logId;
+    // undo restores the version before that replace (the one with the test card)
+    r = await call(h, { method: 'POST', key: OWNER, body: { undo: logId } });
+    assert.equal(r.statusCode, 200); assert.equal(r.body.doc.state.board[0]?.t, 'Test card');
+    assert.ok(r.body.doc.state.log.find(e => e.id === logId).undone);
+    // ops still work for the admin key
+    r = await call(h, { method: 'POST', key: instinct.key, body: { ops: [{ op: 'state.setKey', path: 'draftReviews', key: 'p|1|w1|approve', value: { action: 'approve' } }] } });
+    assert.equal(r.statusCode, 200); assert.ok(r.body.doc.state.draftReviews['p|1|w1|approve']);
+  } finally { delete process.env.LIFEOS_ADMIN_KEYS }
+  // PATCH: owner changes Other to admin and back
+  let r = await call(keys({ store }), { method: 'PATCH', key: OWNER, body: { id: other.record.id, scope: 'admin' } });
+  assert.equal(r.statusCode, 200);
+  assert.equal((await call(h, { url: '/api/lifeos?view=me', key: other.key })).body.scope, 'admin');
+  assert.equal((await call(keys({ store }), { method: 'PATCH', key: instinct.key, body: { id: other.record.id, scope: 'read' } })).statusCode, 403, 'non-admin cannot change access');
+  await call(keys({ store }), { method: 'PATCH', key: OWNER, body: { id: other.record.id, scope: 'read' } });
+  assert.equal((await call(h, { url: '/api/lifeos?view=me', key: other.key })).body.scope, 'read');
+});

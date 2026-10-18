@@ -279,9 +279,16 @@ struct AccessKeysView: View {
                     .swipeActions {
                         if k["revokedAt"].isNull && k["id"].str != "owner" { Button("Revoke", role: .destructive) { revoking = k } }
                     }
+                    .contextMenu {
+                        if k["revokedAt"].isNull && !k["builtin"].bool && k["id"].str.hasPrefix("key-") {
+                            ForEach(["read", "write", "admin"], id: \.self) { sc in
+                                Button(Self.label(sc), systemImage: sc == (k["grantedScope"].string ?? k["scope"].str) ? "checkmark" : "") { Task { await change(k, to: sc) } }
+                            }
+                        }
+                    }
                 }
             } header: { Text("Keys") } footer: {
-                Text("Changes are labelled with the name of the key that made them, so a key can't pass itself off as another. Swipe left on a key to revoke it.")
+                Text("Changes are labelled with the name of the key that made them, so a key can't pass itself off as another. Touch and hold a key to change what it may do; swipe left to revoke it.")
             }
             Section {
                 TextField("Name, e.g. FRIDAY", text: $name).autocorrectionDisabled()
@@ -322,6 +329,7 @@ struct AccessKeysView: View {
         if k["id"].str == "owner" { return "This iPhone's sync key (LIFEOS_TOKEN in Vercel)" }
         if k["legacy"].bool { return "The old shared assistant key (LIFEOS_AGENT_TOKEN). Revoke it once each assistant has its own." }
         var parts = ["Created " + store.ago(k["createdAt"].double ?? 0)]
+        if !k["viaSetting"].isNull { parts.insert("Admin through the \(k["viaSetting"].str) setting in Vercel", at: 0) }
         parts.append(k["lastUsedAt"].double.map { "used " + store.ago($0) } ?? "never used")
         return parts.joined(separator: " · ")
     }
@@ -339,6 +347,10 @@ struct AccessKeysView: View {
             newKey = j["key"].str
             await load()
         } catch { problem = error.localizedDescription }
+    }
+    private func change(_ k: JSON, to scope: String) async {
+        do { _ = try await store.api("PATCH", "keys", body: ["id": k["id"], "scope": .string(scope)]); store.show(k["name"].str + ": " + Self.label(scope)); await load() }
+        catch { problem = error.localizedDescription }
     }
     private func revoke(_ k: JSON) async {
         do { _ = try await store.api("DELETE", "keys", body: ["id": k["id"]]); store.show("Revoked " + k["name"].str); await load() }
