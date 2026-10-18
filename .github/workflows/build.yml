@@ -1,0 +1,68 @@
+name: Build IPA
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['server/**', '**.md']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ipa
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use the newest Xcode
+        run: |
+          ls -d /Applications/Xcode*.app
+          XC=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          [ -z "$XC" ] && XC=/Applications/Xcode.app
+          sudo xcode-select -s "$XC"
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i iphoneos
+
+      - name: Build (unsigned)
+        run: |
+          xcodebuild -project LifeOS.xcodeproj -target LifeOS -configuration Release -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            SYMROOT="$PWD/build" build > build.log 2>&1 || {
+              echo "::group::Errors"; grep -E "error:|fatal error" build.log | sort -u | head -80; echo "::endgroup::"; exit 1; }
+          grep -c "warning:" build.log || true
+          test -d build/Release-iphoneos/LifeOS.app
+
+      - name: Package .ipa
+        run: |
+          rm -rf Payload && mkdir Payload
+          cp -R build/Release-iphoneos/LifeOS.app Payload/
+          zip -qry LifeOS.ipa Payload
+          ls -lh LifeOS.ipa
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: ignore
+
+      - name: Upload .ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: LifeOS-ipa
+          path: LifeOS.ipa
+
+      - name: Publish to the "latest" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag 2>/dev/null || true
+          gh release create latest LifeOS.ipa --title "LifeOS (latest build)" \
+            --notes "Unsigned build of ${GITHUB_SHA::7}. Install with Sideloadly using your Apple ID." --latest
