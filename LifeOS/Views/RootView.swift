@@ -19,7 +19,7 @@ struct RootView: View {
                 NavigationStack { StudyView() }.environment(\.ambientPalette, .study)
             }
             Tab("Library", systemImage: "square.grid.2x2", value: AppTab.library) {
-                NavigationStack { LibraryView() }.environment(\.ambientPalette, .library)
+                NavigationStack(path: $store.libraryPath) { LibraryView() }.environment(\.ambientPalette, .library)
             }
             .badge(store.pendingDrafts.count)
             Tab(value: AppTab.search, role: .search) {
@@ -107,26 +107,47 @@ struct NowAccessory: View {
                 Spacer(minLength: 0)
                 Button { store.sheet = .focus } label: { Image(systemName: "timer") }.accessibilityLabel("Start focus")
             } else {
+                let suggestion = store.pulse["focus"].string.flatMap { $0.isEmpty ? nil : $0 }
+                let target = suggestion.flatMap { store.target(for: $0, hint: store.pulse["focusTarget"]) }
                 Image(systemName: "sparkles").foregroundStyle(.tint).frame(width: 26)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(store.pulse["focus"].string ?? next.map { "Next: \($0.title)" } ?? "Ask Gemini anything")
+                    Text(suggestion ?? next.map { "Next: \($0.title)" } ?? "Ask Gemini anything")
                         .font(.subheadline.weight(.semibold)).lineLimit(1)
                     if placement != .inline {
-                        Text(next.map { store.relDay($0.day) + ", " + store.time($0.start) } ?? "Plan your day, draft replies, move things")
+                        Text(target.map(store.targetLabel) ?? (suggestion == nil ? next.map { store.relDay($0.day) + ", " + store.time($0.start) } : nil) ?? "Plan your day, draft replies, move things")
                             .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     }
                 }
                 Spacer(minLength: 0)
-                Button { store.sheet = .ask("") } label: { Image(systemName: "arrow.up.circle.fill").font(.title3) }
-                    .accessibilityLabel("Ask Gemini")
+                Image(systemName: target != nil || (suggestion == nil && next != nil) ? "chevron.right" : "arrow.up.circle.fill")
+                    .font(target != nil || (suggestion == nil && next != nil) ? .footnote.weight(.bold) : .title3)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
             }
         }
         .padding(.horizontal, placement == .inline ? 10 : 14)
         .contentShape(.rect)
-        .onTapGesture {
-            if focus.running || store.now.current == nil { store.sheet = focus.running ? .focus : .ask("") }
-            else { store.tab = .study }
+        .onTapGesture(perform: primary)
+    }
+
+    /// Tapping the bar goes where it points: the running focus session, your current block, or the screen Gemini's suggestion is about.
+    private func primary() {
+        if focus.running { store.sheet = .focus; return }
+        let (cur, next) = store.now
+        if cur != nil { store.tab = .study; return }
+        if let s = store.pulse["focus"].string, !s.isEmpty {
+            if let t = store.target(for: s, hint: store.pulse["focusTarget"]) { store.open(t) } else { store.sheet = .ask(s) }
+            return
         }
+        if let next {
+            switch next.kind {
+            case .calendar: store.open(["page": "calendar", "id": .string(String(next.id.dropFirst(3)))])
+            case .study: store.tab = .study
+            default: store.open(["page": "timetable"])
+            }
+            return
+        }
+        store.sheet = .ask("")
     }
 
     private func ring(_ p: Double, symbol: String?) -> some View {

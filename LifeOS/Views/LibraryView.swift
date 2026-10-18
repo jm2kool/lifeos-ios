@@ -271,7 +271,8 @@ struct DraftDetail: View {
             }
             .card()
         }
-        let meta: [String?] = [v.by.isEmpty ? nil : "Written by \(v.by)", "version \(v.version)", v.createdAt.isEmpty ? nil : store.ago(isoMillis(v.createdAt))].compactMap { $0 }
+        let parts: [String?] = [v.by.isEmpty ? nil : "Written by \(v.by)", "version \(v.version)", v.createdAt.isEmpty ? nil : store.ago(isoMillis(v.createdAt))]
+        let meta = parts.compactMap { $0 }
         Text(meta.joined(separator: " · ")).font(.caption).foregroundStyle(.tertiary)
     }
     private func isoMillis(_ s: String) -> Double { (ISO8601DateFormatter().date(from: s) ?? ISO8601DateFormatter.fractional.date(from: s) ?? .now).timeIntervalSince1970 * 1000 }

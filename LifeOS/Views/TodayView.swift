@@ -164,6 +164,7 @@ struct TodayView: View {
 struct GeminiCard: View {
     @Environment(Store.self) private var store
     @Environment(Assistant.self) private var assistant
+    @State private var expanded = false
 
     var body: some View {
         let p = store.pulse
@@ -180,31 +181,40 @@ struct GeminiCard: View {
                 }
             }
             if let brief = p["brief"].string, !brief.isEmpty {
-                Text(brief).font(.callout).fixedSize(horizontal: false, vertical: true)
-                if let f = p["focus"].string, !f.isEmpty {
-                    HStack(alignment: .top, spacing: 8) {
-                        Text("Do next").font(.footnote.weight(.semibold)).foregroundStyle(.tint)
-                        Text(f).font(.footnote.weight(.medium))
+                Text(brief).font(.callout).lineLimit(expanded ? nil : 3).fixedSize(horizontal: false, vertical: true)
+                    .contentShape(.rect).onTapGesture { withAnimation(.smooth) { expanded.toggle() } }
+                let rows = suggestions(p)
+                if !rows.isEmpty {
+                    VStack(spacing: 0) {
+                        ForEach(Array(rows.enumerated()), id: \.offset) { i, r in
+                            let t = store.target(for: r.text, hint: r.hint)
+                            Button { if let t { store.open(t) } else { store.sheet = .ask(r.text) } } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: r.lead ? "arrow.right.circle.fill" : icon(t?["page"].str ?? "")).font(.footnote).foregroundStyle(.tint).frame(width: 18)
+                                    Text(r.text).font(.footnote.weight(r.lead ? .semibold : .regular)).foregroundStyle(.primary).lineLimit(1)
+                                    Spacer(minLength: 4)
+                                    Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(.tertiary)
+                                }
+                                .padding(.vertical, 9).contentShape(.rect)
+                            }
+                            .buttonStyle(.plain)
+                            if i < rows.count - 1 { Divider().padding(.leading, 28) }
+                        }
                     }
-                    .padding(10).frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.accentColor.opacity(0.08), in: .rect(cornerRadius: 14, style: .continuous))
-                }
-                ForEach(p["highlights"].array, id: \.self) { h in
-                    Button { go(h["page"].str) } label: {
-                        HStack { Text(h["text"].str).font(.footnote).foregroundStyle(.primary); Spacer(); Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(.tertiary) }
-                    }.buttonStyle(.plain)
                 }
                 if !p["changes"].array.isEmpty {
-                    HStack {
-                        Text(p["changes"].array.map(\.str).joined(separator: " · ")).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    let n = p["changes"].array.count
+                    HStack(spacing: 6) {
+                        Text("Gemini made \(n) change\(n == 1 ? "" : "s")").font(.caption).foregroundStyle(.secondary)
                         Spacer()
+                        Button("Details") { store.sheet = .activity }.font(.caption.weight(.semibold)).buttonStyle(.plain).foregroundStyle(.tint)
                         if let u = UUID(uuidString: p["undo"].str), let e = store.undoStack.first(where: { $0.id == u }) {
                             Button("Undo") {
                                 store.undoStack.removeAll { $0.id == u }
                                 store.act(e.ops, quiet: true)
                                 var q = store.pulse; q["changes"] = []; q["undo"] = .null
                                 store.act(["op": "content.set", "path": "pulse", "value": q], quiet: true)
-                            }.font(.caption.weight(.semibold))
+                            }.font(.caption.weight(.semibold)).buttonStyle(.plain).foregroundStyle(.tint)
                         }
                     }
                 }
@@ -220,11 +230,27 @@ struct GeminiCard: View {
         }
         .card()
     }
-    private func go(_ page: String) {
+    private struct Suggestion { let text: String; let hint: JSON; let lead: Bool }
+    /// The next step first, then up to two highlights that say something different.
+    private func suggestions(_ p: JSON) -> [Suggestion] {
+        let focusText = p["focus"].str
+        var out: [Suggestion] = []
+        if !focusText.isEmpty { out.append(Suggestion(text: focusText, hint: p["focusTarget"], lead: true)) }
+        for h in p["highlights"].array where !h["text"].str.isEmpty && !Reducer.alike(h["text"].str, focusText) {
+            if out.count >= 3 { break }
+            out.append(Suggestion(text: h["text"].str, hint: ["page": h["page"], "id": h["id"]], lead: false))
+        }
+        return out
+    }
+    private func icon(_ page: String) -> String {
         switch page {
-        case "inbox": store.tab = .inbox
-        case "study": store.tab = .study
-        default: store.tab = .library
+        case "draft", "drafts": return "doc.text"
+        case "inbox", "email": return "tray"
+        case "calendar", "event": return "calendar"
+        case "board", "card": return "rectangle.split.3x1"
+        case "study": return "book.closed"
+        case "timetable": return "clock"
+        default: return "sparkles"
         }
     }
 }

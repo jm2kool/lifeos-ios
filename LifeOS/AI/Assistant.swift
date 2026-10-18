@@ -257,13 +257,15 @@ final class Assistant {
         let prompt = """
         It's \(s.time(Date())) on \(s.dayLabel(s.today)). Refresh my Today screen.
         Return JSON:
-        {"brief": "2-3 sentences: what matters today and right now, mentioning real times and deadlines",
-         "focus": "one short line: the single best next thing to do",
-         "highlights": [{"text": "short line", "page": "inbox"|"study"|"board"|"calendar"|"drafts"|"timetable"}],
+        {"brief": "one or two short sentences, at most 30 words: what matters today, with real times and deadlines. No lists.",
+         "focus": "the single best next thing to do, at most 8 words, starting with a verb",
+         "focusTarget": {"page": "draft"|"inbox"|"calendar"|"board"|"study"|"timetable", "id": "the exact id from the snapshot of the draft, email, event or card it is about, or null"},
+         "highlights": [{"text": "at most 8 words", "page": "draft"|"inbox"|"calendar"|"board"|"study"|"timetable", "id": "exact id from the snapshot or null"}],
          "ops": [ … ]}
+        Highlights: at most 2, only things that matter today, never the same as focus. Reviewing a reply draft points at the draft's id, not the email.
         Rules for ops: at most 6. Allowed: task.add, task.update, board.add, board.move, board.update, inbox.priority, draft.email.
         Draft a reply (draft.email with inboxId) only for emails that clearly need my answer and have reply_draft false.
-        Don't duplicate existing tasks or cards. Don't delete anything. Keep highlights to 3 or fewer.
+        Don't duplicate existing tasks or cards. Don't delete anything.
 
         Snapshot (JSON):
         \(snapshot())
@@ -273,7 +275,7 @@ final class Assistant {
             guard let j = Gemini.object(from: raw) else { return }
             let allowed: Set<String> = ["task.add", "task.update", "board.add", "board.move", "board.update", "inbox.priority", "draft.email"]
             let ops = expand(Array(j["ops"].array.filter { allowed.contains($0["op"].str) }.prefix(6)))
-            var p: JSON = ["at": .now, "by": "Gemini", "brief": j["brief"], "focus": j["focus"], "highlights": .array(Array(j["highlights"].array.prefix(3)))]
+            var p: JSON = ["at": .now, "by": "Gemini", "brief": j["brief"], "focus": j["focus"], "focusTarget": j["focusTarget"], "highlights": .array(Array(j["highlights"].array.prefix(3)))]
             p["changes"] = .array(ops.map { .string(Assistant.describe($0, store: s)) })
             s.act(["op": "content.set", "path": "pulse", "value": p], by: "Gemini", quiet: true)
             if !ops.isEmpty { s.act(ops, by: "Gemini", undo: "Gemini updated your dashboard", quiet: true) }

@@ -50,6 +50,7 @@ final class Store {
     var undoStack: [UndoEntry] = []
     var sheet: SheetRoute?
     var tab: AppTab = .today
+    var libraryPath: [LibraryPage] = []   // lets a suggestion open a page (and item) inside Library
     var lockShown = false       // study lock screen
     static let shared = Store()
     var syncStatus: String = "Sync is off. Everything stays on this iPhone."
@@ -228,6 +229,82 @@ final class Store {
             let what = x["title"].string ?? "\(x["kind"].str) #\(x["index"].int.map { $0 + 1 } ?? 0)"
             if status == "failed" { return what + ": " + x["error"].str }
             return what + (x["duplicateTitle"].string.map { " (same as “\($0)”)" } ?? x["reason"].string.map { " (\($0))" } ?? "")
+        }
+    }
+
+    // MARK: where a Gemini suggestion points
+    /// Opens the screen a suggestion is about, with the item already open: a draft, an email, an event, the board…
+    func open(_ t: JSON) {
+        let page = t["page"].str, id = t["id"].str
+        sheet = nil
+        switch page {
+        case "draft", "drafts":
+            tab = .library
+            libraryPath = drafts.contains { $0.id == id } ? [.drafts, .draft(id)] : [.drafts]
+        case "inbox", "email":
+            tab = .inbox
+            if mail.contains(where: { $0.id == id }) { present(.inbox(id)) }
+        case "calendar", "event":
+            tab = .library; libraryPath = [.calendar]
+            if allEvents.contains(where: { $0.id == id }) { present(.event(id)) }
+        case "board", "card": tab = .library; libraryPath = [.board]
+        case "timetable": tab = .library; libraryPath = [.timetable]
+        case "saved": tab = .library; libraryPath = [.saved]
+        case "feed":
+            tab = .library; libraryPath = [.feed]
+            if feed.contains(where: { $0.id == id }) { present(.feed(id)) }
+        case "study": tab = .study
+        default: tab = .today
+        }
+    }
+    /// Sheets can't open while another is closing, so wait a moment.
+    private func present(_ route: SheetRoute) {
+        Task { try? await Task.sleep(for: .milliseconds(350)); sheet = route }
+    }
+
+    /// Where a suggestion points. Uses Gemini's own target when it names something that exists,
+    /// otherwise matches the words against pending drafts, emails, cards, tasks and upcoming events.
+    func target(for text: String, hint: JSON = .null) -> JSON? {
+        if hint.isObject, !hint["page"].str.isEmpty, !hint["id"].str.isEmpty, exists(hint["id"].str) { return ["page": hint["page"], "id": hint["id"]] }
+        let lower = text.lowercased(), w = Reducer.words(text)
+        let wantsDraft = ["draft", "repl", "approve", "review the plan"].contains { lower.contains($0) }
+        var best: (JSON, Int)?
+        func consider(_ page: String, _ id: String, _ title: String, bonus: Int = 0) {
+            let n = Reducer.words(title).intersection(w).count
+            guard n > 0 else { return }
+            if n + bonus >= 2, n + bonus > (best?.1 ?? 0) { best = (["page": .string(page), "id": .string(id)], n + bonus) }
+        }
+        for d in pendingDrafts { consider("draft", d.id, d.title + " " + (d.latest?.subject ?? ""), bonus: wantsDraft ? 1 : 0) }
+        for m in inboxTodo {
+            if wantsDraft, let d = replyDraft(for: m) { consider("draft", d.id, m.title + " " + m.senderName, bonus: 1) }
+            else { consider("inbox", m.id, m.title + " " + m.senderName) }
+        }
+        for c in cards where c.column < 2 { consider("board", c.id, c.title) }
+        for e in upcoming.prefix(30) { consider("calendar", e.id, e.title) }
+        if let best { return best.0 }
+        if hint.isObject, !hint["page"].str.isEmpty { return ["page": hint["page"]] }
+        // no item matched: go by what kind of thing it is
+        if wantsDraft { return pendingDrafts.count == 1 ? ["page": "draft", "id": .string(pendingDrafts[0].id)] : ["page": "drafts"] }
+        let kinds: [(String, [String])] = [("inbox", ["email", "inbox", "mail"]), ("study", ["study", "revise", "revision", "chapter", "practice", "focus"]),
+                                           ("calendar", ["exam", "class", "tuition", "event", "calendar"]), ("board", ["board", "card"]), ("timetable", ["timetable"])]
+        return kinds.first { $0.1.contains { lower.contains($0) } }.map { ["page": .string($0.0)] }
+    }
+    private func exists(_ id: String) -> Bool {
+        drafts.contains { $0.id == id } || mail.contains { $0.id == id } || allEvents.contains { $0.id == id } || cards.contains { $0.id == id } || feed.contains { $0.id == id }
+    }
+    /// "Opens draft · Reply: MUN conference" for the bar under a suggestion.
+    func targetLabel(_ t: JSON) -> String {
+        let id = t["id"].str
+        switch t["page"].str {
+        case "draft", "drafts": return drafts.first { $0.id == id }.map { "Opens draft · " + $0.title } ?? "Opens Drafts"
+        case "inbox", "email": return mail.first { $0.id == id }.map { "Opens email · " + $0.title } ?? "Opens Inbox"
+        case "calendar", "event": return allEvents.first { $0.id == id }.map { "Opens " + $0.title + " · " + relDay(day($0)) } ?? "Opens Calendar"
+        case "board", "card": return cards.first { $0.id == id }.map { "Opens Board · " + $0.title } ?? "Opens Board"
+        case "feed": return "Opens Feed"
+        case "study": return "Opens Study"
+        case "timetable": return "Opens Timetable"
+        case "saved": return "Opens Saved"
+        default: return "Opens Today"
         }
     }
 

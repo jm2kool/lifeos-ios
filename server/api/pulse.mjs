@@ -19,7 +19,7 @@ export function createHandler({ store = kv, fetcher } = {}) {
       catch (e) { return res.status(e.status || 502).json({ error: 'Gemini could not refresh Today; nothing was changed. ' + e.message, attempts: e.attempts }) }
       const j = g.value;
       const ops = expand(doc, (Array.isArray(j.ops) ? j.ops : []).filter(o => o && ALLOWED.has(o.op)).slice(0, 6));
-      const pulse = { at: Date.now(), by: 'Gemini', model: g.model, warning: fallbackNote(g, MODEL()), brief: j.brief || '', focus: j.focus || '', highlights: (j.highlights || []).slice(0, 3), changes: ops.map(o => o.op === 'draft.email' ? 'Drafted “' + (o.subject || 'a reply') + '”' : (o.title ? o.op + ': ' + o.title : o.op)) };
+      const pulse = { at: Date.now(), by: 'Gemini', model: g.model, warning: fallbackNote(g, MODEL()), brief: j.brief || '', focus: j.focus || '', focusTarget: j.focusTarget && typeof j.focusTarget === 'object' ? { page: String(j.focusTarget.page || ''), id: j.focusTarget.id == null ? null : String(j.focusTarget.id) } : undefined, highlights: (Array.isArray(j.highlights) ? j.highlights : []).slice(0, 3), changes: ops.map(o => o.op === 'draft.email' ? 'Drafted “' + (o.subject || 'a reply') + '”' : (o.title ? o.op + ': ' + o.title : o.op)) };
       const r = await commit(store, [{ op: 'content.set', path: 'pulse', value: pulse }, ...ops].map(o => Object.assign({ by: 'Gemini' }, o)), caller, req);
       return res.status(200).json({ ok: true, pulse, results: r.results, batch: r.batch });
     } catch (e) { return res.status(e.status || 500).json({ error: e.message }) }
