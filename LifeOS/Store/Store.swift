@@ -44,8 +44,8 @@ enum AppTab: Hashable { case today, inbox, study, library, search }
 @Observable
 final class Store {
     private(set) var doc: JSON
-    private var base: JSON
-    private var pending: [JSON]
+    @ObservationIgnored private var base: JSON
+    @ObservationIgnored private var pending: [JSON]
     var toast: Toast?
     var undoStack: [UndoEntry] = []
     var sheet: SheetRoute?
@@ -58,17 +58,21 @@ final class Store {
 
     init() {
         let seed = Store.loadSeed()
+        var b: JSON
         if let saved = Store.read("doc.json") {
-            base = Reducer.normalize(saved)
-            if (seed["rev"].int ?? 0) > (base["rev"].int ?? 0) && base["server"].isNull {
-                base["content"] = seed["content"]; base["rev"] = seed["rev"]
+            b = Reducer.normalize(saved)
+            if (seed["rev"].int ?? 0) > (b["rev"].int ?? 0) && b["server"].isNull {
+                b["content"] = seed["content"]; b["rev"] = seed["rev"]
             }
         } else {
-            base = Reducer.normalize(seed)
+            b = Reducer.normalize(seed)
         }
-        pending = Store.read("pending.json")?.array ?? []
-        doc = base
-        rebuild()
+        let p = Store.read("pending.json")?.array ?? []
+        var d = b
+        for op in p { try? Reducer.apply(&d, op) }
+        base = b
+        pending = p
+        doc = d
         Task { await self.pull(quiet: true) }
     }
 

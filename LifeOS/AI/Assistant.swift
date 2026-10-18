@@ -48,23 +48,57 @@ final class Assistant {
         if let cur { j["now_block"] = ["title": .string(cur.title), "until": .string(s.time(cur.end))] }
         if let next { j["next_block"] = ["title": .string(next.title), "day": .string(next.day), "at": .string(s.time(next.start))] }
         if let b = s.bigThing { j["countdown"] = ["title": .string(b.title), "start": .string(b.start)] }
-        j["tasks_open"] = .array(s.openTasks.map { ["id": .string($0.id), "title": .string($0.title), "due": JSON($0.due), "note": .string(String($0.note.prefix(200)))] })
-        j["board"] = .array(s.cards.map { ["id": .string($0.id), "title": .string($0.title), "column": .string(Reducer.columns[min(2, max(0, $0.column))]), "due": JSON($0.due)] })
-        j["upcoming_events"] = .array(s.upcoming.filter { s.start($0).timeIntervalSinceNow < 14 * 86400 }.prefix(25).map {
-            ["id": .string($0.id), "title": .string($0.title), "day": .string(s.day($0)), "time": .string($0.timed ? s.time(s.start($0)) + "–" + s.time(s.end($0)) : "all day"), "note": .string(String($0.note.prefix(160)))]
-        })
-        j["timetable_next"] = .array(s.timetableBlocks.filter { $0.end > Date() }.prefix(20).map { ["day": .string($0.day), "start": .string(s.time($0.start)), "end": .string(s.time($0.end)), "title": .string($0.title)] })
-        j["inbox_to_review"] = .array(s.inboxTodo.map { m in
-            ["id": .string(m.id), "account": .string(m.account), "from": .string(m.sender), "subject": .string(m.title), "priority": .string(s.priority(m)),
-             "gist": .string(m.gist), "body": .string(String(m.body.prefix(700))), "reply_draft": .bool(s.replyDraft(for: m) != nil)]
-        })
-        j["drafts"] = .array(s.drafts.map { ["id": .string($0.id), "title": .string($0.title), "type": .string($0.isEmail ? "email" : "plan"), "inboxId": .string($0.inboxId)] })
+        var tasks: [JSON] = []
+        for t in s.openTasks {
+            var o: JSON = ["id": .string(t.id), "title": .string(t.title)]
+            o["due"] = JSON(t.due); o["note"] = .string(String(t.note.prefix(200)))
+            tasks.append(o)
+        }
+        j["tasks_open"] = .array(tasks)
+        var board: [JSON] = []
+        for c in s.cards {
+            var o: JSON = ["id": .string(c.id), "title": .string(c.title)]
+            o["column"] = .string(Reducer.columns[min(2, max(0, c.column))]); o["due"] = JSON(c.due)
+            board.append(o)
+        }
+        j["board"] = .array(board)
+        var events: [JSON] = []
+        for e in s.upcoming where s.start(e).timeIntervalSinceNow < 14 * 86400 {
+            if events.count >= 25 { break }
+            let when: String = e.timed ? s.time(s.start(e)) + "-" + s.time(s.end(e)) : "all day"
+            var o: JSON = ["id": .string(e.id), "title": .string(e.title)]
+            o["day"] = .string(s.day(e)); o["time"] = .string(when); o["note"] = .string(String(e.note.prefix(160)))
+            events.append(o)
+        }
+        j["upcoming_events"] = .array(events)
+        var blocks: [JSON] = []
+        for b in s.timetableBlocks where b.end > Date() {
+            if blocks.count >= 20 { break }
+            var o: JSON = ["day": .string(b.day), "title": .string(b.title)]
+            o["start"] = .string(s.time(b.start)); o["end"] = .string(s.time(b.end))
+            blocks.append(o)
+        }
+        j["timetable_next"] = .array(blocks)
+        var inbox: [JSON] = []
+        for m in s.inboxTodo {
+            var o: JSON = ["id": .string(m.id), "account": .string(m.account), "from": .string(m.sender), "subject": .string(m.title)]
+            o["priority"] = .string(s.priority(m)); o["gist"] = .string(m.gist); o["body"] = .string(String(m.body.prefix(700)))
+            o["reply_draft"] = .bool(s.replyDraft(for: m) != nil)
+            inbox.append(o)
+        }
+        j["inbox_to_review"] = .array(inbox)
+        var drafts: [JSON] = []
+        for d in s.drafts {
+            let o: JSON = ["id": .string(d.id), "title": .string(d.title), "type": .string(d.isEmail ? "email" : "plan"), "inboxId": .string(d.inboxId)]
+            drafts.append(o)
+        }
+        j["drafts"] = .array(drafts)
         let st = s.content["study"]
         j["study"] = ["focus": st["block"], "plan_date": st["date"], "now": .string(s.studyNow.title), "note": .string(String(st["note"].str.prefix(1500)))]
-        j["coverage"] = .array(s.coverage.map { ["set": .string($0.name), "done": JSON(s.doneCount($0)), "total": JSON($0.items.count)] })
+        j["coverage"] = .array(s.coverage.map { (c: CoverageSet) -> JSON in ["set": .string(c.name), "done": JSON(s.doneCount(c)), "total": JSON(c.items.count)] })
         j["focus_minutes_today"] = JSON(s.focusMinutes(s.today)); j["streak_days"] = JSON(s.streak)
-        j["saved"] = .array(s.saved.prefix(15).map { ["id": .string($0.id), "title": .string($0.title)] })
-        j["feed"] = .array(s.feed.prefix(6).map { ["id": .string($0.id), "title": .string($0.title)] })
+        j["saved"] = .array(s.saved.prefix(15).map { (x: SavedItem) -> JSON in ["id": .string(x.id), "title": .string(x.title)] })
+        j["feed"] = .array(s.feed.prefix(6).map { (x: FeedItem) -> JSON in ["id": .string(x.id), "title": .string(x.title)] })
         return String(j.text().prefix(24000))
     }
 
