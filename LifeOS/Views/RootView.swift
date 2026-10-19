@@ -10,7 +10,7 @@ struct RootView: View {
         TabView(selection: $store.tab) {
             ForEach(store.barTabs, id: \.self) { t in
                 Tab(t.title, systemImage: t.symbol, value: t) { screen(t) }
-                    .badge(badge(t))
+                    .badge(tabBadge(t))
             }
             Tab(AppTab.library.title, systemImage: AppTab.library.symbol, value: AppTab.library) {
                 NavigationStack(path: $store.libraryPath) { LibraryView().voiceCaptureButton() }.environment(\.ambientPalette, .library)
@@ -70,7 +70,7 @@ extension RootView {
         }
     }
     /// Inbox shows how many emails are left; Drafts shows a dot while a draft waits for your review.
-    func badge(_ t: AppTab) -> Text? {
+    func tabBadge(_ t: AppTab) -> Text? {
         switch t {
         case .inbox: return store.inboxTodo.isEmpty ? nil : Text("\(store.inboxTodo.count)")
         case .drafts: return store.pendingDrafts.isEmpty ? nil : Text("")
