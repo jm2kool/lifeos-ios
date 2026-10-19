@@ -22,6 +22,24 @@ struct StudyView: View {
 
                 SectionHeader(title: "Focus")
                 FocusCard()
+                let sessions = store.content["sessions"].array.filter { $0["date"].str == store.today && $0["status"].str != "cancelled" }
+                if !sessions.isEmpty {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("Study sessions today").font(.footnote.weight(.semibold)).foregroundStyle(.secondary).padding(.bottom, 4)
+                        ForEach(sessions, id: \.self) { s in
+                            let running = s["status"].str == "running" && focus.running
+                            HStack {
+                                Image(systemName: running ? "timer" : "checkmark.circle.fill").foregroundStyle(running ? AnyShapeStyle(.tint) : AnyShapeStyle(.green))
+                                Text(s["title"].str).lineLimit(1)
+                                Spacer()
+                                Text(running ? "Now, until " + s["end"].str : s["start"].str + "–" + s["end"].str + (s["minutes"].int.map { " · \($0) min" } ?? ""))
+                                    .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                            }
+                            .font(.subheadline).padding(.vertical, 6)
+                        }
+                    }
+                    .card().padding(.top, 10)
+                }
 
                 if !st["blocks"].array.isEmpty {
                     SectionHeader(title: st["date"].str < store.today ? "Last plan" : (L["today"].string ?? "Plan"))

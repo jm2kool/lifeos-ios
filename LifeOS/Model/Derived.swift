@@ -181,11 +181,21 @@ extension Store {
             return Block(id: "st-" + b["id"].str + day + b["start"].str, day: day, title: b["title"].str, start: date(day, minutes: a), end: date(day, minutes: z), kind: rest ? .rest : .study, detail: b["status"].str)
         }
     }
-    /// Timetable, study plan and timed calendar events on one line.
+    /// Focus runs, which count as study blocks (content.sessions, written by FocusTimer). Cancelled ones are left out.
+    var sessionBlocks: [Block] {
+        func m(_ s: String) -> Int? { let p = s.split(separator: ":"); guard p.count == 2, let h = Int(p[0]), let mi = Int(p[1]) else { return nil }; return h * 60 + mi }
+        return content["sessions"].array.compactMap { s in
+            let day = s["date"].str
+            guard s["status"].str != "cancelled", let a = m(s["start"].str), var z = m(s["end"].str), day.count == 10 else { return nil }
+            if z <= a { z += 24 * 60 }
+            return Block(id: "fs-" + s["id"].str, day: day, title: s["title"].str, start: date(day, minutes: a), end: date(day, minutes: z), kind: .study, detail: "Focus session")
+        }
+    }
+    /// Timetable, study plan, focus sessions and timed calendar events on one line.
     var timeline: [Block] {
         let calBlocks = events.filter(\.timed).map { Block(id: "ev-" + $0.id, day: day($0), title: $0.title, start: start($0), end: end($0), kind: .calendar, detail: $0.note) }
         var seen = Set<String>()
-        return (timetableBlocks + studyBlocks + calBlocks).sorted { $0.start < $1.start }.filter { seen.insert($0.title.lowercased() + "\($0.start.timeIntervalSince1970)").inserted }
+        return (timetableBlocks + studyBlocks + sessionBlocks + calBlocks).sorted { $0.start < $1.start }.filter { seen.insert($0.title.lowercased() + "\($0.start.timeIntervalSince1970)").inserted }
     }
     func blocks(on day: String) -> [Block] { timeline.filter { $0.day == day } }
     var now: (current: Block?, next: Block?) {

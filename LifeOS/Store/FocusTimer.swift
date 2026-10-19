@@ -13,19 +13,20 @@ final class FocusTimer {
     var startedAt: Date?
     var pausedAt: Date?
     var spent: TimeInterval = 0     // time counted before the last pause
+    var sessionID: String?          // the study session this focus run is logged as (content.sessions)
     @ObservationIgnored weak var store: Store?
 
     init() {
         let d = UserDefaults.standard
         if let s = d.object(forKey: "focus.start") as? Date { startedAt = s }
         if let p = d.object(forKey: "focus.paused") as? Date { pausedAt = p }
-        spent = d.double(forKey: "focus.spent"); minutes = max(1, d.integer(forKey: "focus.minutes")); label = d.string(forKey: "focus.label") ?? ""
+        spent = d.double(forKey: "focus.spent"); sessionID = d.string(forKey: "focus.session"); minutes = max(1, d.integer(forKey: "focus.minutes")); label = d.string(forKey: "focus.label") ?? ""
         if d.integer(forKey: "focus.minutes") == 0 { minutes = 25 }
     }
     private func save() {
         let d = UserDefaults.standard
         d.set(startedAt, forKey: "focus.start"); d.set(pausedAt, forKey: "focus.paused"); d.set(spent, forKey: "focus.spent")
-        d.set(minutes, forKey: "focus.minutes"); d.set(label, forKey: "focus.label")
+        d.set(minutes, forKey: "focus.minutes"); d.set(label, forKey: "focus.label"); d.set(sessionID, forKey: "focus.session")
     }
 
     var running: Bool { startedAt != nil }
@@ -40,6 +41,13 @@ final class FocusTimer {
 
     func start(minutes m: Int, label l: String) {
         minutes = m; label = l.isEmpty ? "Focus" : l; startedAt = Date(); pausedAt = nil; spent = 0
+        attach()
+        // Starting focus counts as a study block: it shows in Study and the timeline, and the study lock covers it.
+        if let store {
+            let id = "fs-" + UUID().uuidString.prefix(8).lowercased()
+            let start = startedAt ?? Date()
+            if store.act(Self.session(id: id, title: label, start: start, end: start.addingTimeInterval(Double(m) * 60), status: "running", store: store), quiet: true) { sessionID = id }
+        }
         save(); notify()
         FocusActivityController.start(label: label, state: activityState)
     }
@@ -52,14 +60,37 @@ final class FocusTimer {
     }
     func stop(complete: Bool = false) {
         let mins = complete ? minutes : Int(elapsed / 60)
-        let l = label
+        let l = label, sid = sessionID
         var last = activityState; last.done = complete; last.remaining = 0
-        startedAt = nil; pausedAt = nil; spent = 0; save(); cancelNotification()
+        startedAt = nil; pausedAt = nil; spent = 0; sessionID = nil; save(); cancelNotification()
         FocusActivityController.end(last, linger: complete)
+        attach()
         guard let store else { return }
+        // The study session ends now (or keeps its planned end when it ran to the end).
+        var ops: [JSON] = []
+        if let sid, mins >= 1 {
+            var v: JSON = ["id": .string(sid), "status": .string(complete ? "done" : "ended"), "minutes": JSON(mins)]
+            if !complete { v["end"] = .string(Self.hhmm(Date(), store: store)) }
+            ops.append(["op": "content.upsert", "path": "sessions", "value": v])
+        }
         if mins >= 1 {
-            store.act(["op": "focus.log", "date": .string(store.today), "minutes": JSON(mins), "label": .string(l)], undo: "\(mins) min of focus logged")
-        } else { store.show("Session ended") }
+            ops.append(["op": "focus.log", "date": .string(store.today), "minutes": JSON(mins), "label": .string(l)])
+            store.act(ops, undo: "\(mins) min of study logged")
+        } else {
+            if let sid { store.act(["op": "content.remove", "path": "sessions", "id": .string(sid)], quiet: true) }
+            store.show("Session ended")
+        }
+    }
+
+    /// A focus run as a study session: {id, date, start, end, title, status, minutes} under content.sessions.
+    static func session(id: String, title: String, start: Date, end: Date, status: String, store: Store) -> JSON {
+        let v: JSON = ["id": .string(id), "date": .string(store.dayKey(start)), "start": .string(hhmm(start, store: store)), "end": .string(hhmm(max(end, start.addingTimeInterval(60)), store: store)),
+                       "title": .string(title), "status": .string(status), "at": .now]
+        return ["op": "content.upsert", "path": "sessions", "value": v]
+    }
+    static func hhmm(_ d: Date, store: Store) -> String {
+        let f = DateFormatter(); f.calendar = store.cal; f.timeZone = store.tz; f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "HH:mm"
+        return f.string(from: d)
     }
     func checkFinished() { if running && !paused && remaining <= 0 { stop(complete: true) } }
 
