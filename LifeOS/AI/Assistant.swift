@@ -21,6 +21,9 @@ final class Assistant {
     var pulsing = false
     @ObservationIgnored weak var store: Store?
 
+    /// The one Gemini assistant, shared by the app and its App Intents (which can run without the app on screen).
+    static let shared: Assistant = { let a = Assistant(); a.store = Store.shared; return a }()
+
     init() {}
 
     private var model: String { store?.doc["settings"]["ai"]["model"].string.flatMap { $0.isEmpty ? nil : $0 } ?? "gemini-3.5-flash" }
@@ -33,7 +36,7 @@ final class Assistant {
         let base = s.syncURL.replacingOccurrences(of: "/api/lifeos", with: "").trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         return (base + "/api/ai", Keychain.get("syncKey"))
     }
-    private func ask(system: String, _ messages: [(role: String, text: String)], json: Bool) async throws -> String {
+    func ask(system: String, _ messages: [(role: String, text: String)], json: Bool) async throws -> String {
         let (p, k) = proxy()
         return try await Gemini.generate(model: model, system: system, messages: messages, json: json, proxy: p, proxyKey: k)
     }
@@ -239,12 +242,6 @@ final class Assistant {
         let raw = try await ask(system: "You write short, natural email replies. Reply with only JSON.", [("user", prompt)], json: true)
         guard let j = Gemini.object(from: raw), let body = j["body"].string, !body.isEmpty else { throw Gemini.Failure(message: "Gemini didn't return a draft.") }
         s.act(["op": "draft.email", "inboxId": .string(m.id), "to": .string(m.sender), "from": .string(m.account), "subject": .string(j["subject"].string ?? "Re: " + m.title), "body": .string(body)], by: "Gemini", undo: "Reply drafted")
-    }
-    func sortCapture(_ text: String) async throws -> JSON {
-        guard let s = store else { return .null }
-        let raw = try await ask(system: "You file quick notes for a personal dashboard. Today is \(s.today) (\(s.dayLabel(s.today))), timezone \(s.tz.identifier). Reply with only JSON.",
-                                [("user", "Note: \(text)\n\nReturn JSON {\"type\": \"task\"|\"board\"|\"saved\"|\"block\", \"title\": string, \"due\": \"YYYY-MM-DD\"|null, \"url\": string|null, \"date\": \"YYYY-MM-DD\"|null, \"start\": \"HH:MM\"|null, \"end\": \"HH:MM\"|null}. Use block only for a specific time on a specific day, task when there is a deadline, saved for links, otherwise board.")], json: true)
-        return Gemini.object(from: raw) ?? .null
     }
 
     // MARK: pulse: Gemini refreshes Today on its own

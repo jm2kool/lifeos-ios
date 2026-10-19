@@ -8,6 +8,7 @@ struct SheetHost: View {
         switch route {
         case .ask(let q): AskView(prefill: q).presentationDetents([.large])
         case .capture: CaptureSheet().presentationDetents([.medium, .large])
+        case .voice: VoiceCaptureSheet().presentationDetents([.height(330)])
         case .focus: FocusSheet().presentationDetents([.large])
         case .inbox(let id): NavigationStack { if let m = store.mail.first(where: { $0.id == id }) { MailDetail(mail: m) } }
         case .feed(let id): FeedSheet(id: id).presentationDetents([.medium, .large])
@@ -167,8 +168,12 @@ struct CaptureSheet: View {
                     if assistant.available {
                         Button {
                             sorting = true
-                            Task { do { let p = try await assistant.sortCapture(text); if p["type"].string != nil { parsed = p } } catch { store.show(error.localizedDescription) }; sorting = false }
-                        } label: { HStack { Text("Sort it with Gemini"); Spacer(); if sorting { ProgressView() } } }.disabled(text.isEmpty || sorting)
+                            Task {
+                                let o = await CaptureFiler.file(text, store: store, assistant: assistant, source: "you")
+                                sorting = false; store.toast = Toast(text: o.summary, undo: true)
+                                if let f = o.friday { dismiss(); store.sheet = .delegate(f) } else { dismiss() }
+                            }
+                        } label: { HStack { Text("File it with Gemini"); Spacer(); if sorting { ProgressView() } } }.disabled(text.isEmpty || sorting)
                     }
                 }
                 Section("Or put it in") {

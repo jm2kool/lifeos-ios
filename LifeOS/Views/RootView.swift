@@ -9,21 +9,21 @@ struct RootView: View {
         @Bindable var store = store
         TabView(selection: $store.tab) {
             Tab("Today", systemImage: "sun.max", value: AppTab.today) {
-                NavigationStack { TodayView() }.environment(\.ambientPalette, .today)
+                NavigationStack { TodayView().voiceCaptureButton() }.environment(\.ambientPalette, .today)
             }
             Tab("Inbox", systemImage: "tray", value: AppTab.inbox) {
-                NavigationStack { InboxView() }.environment(\.ambientPalette, .inbox)
+                NavigationStack { InboxView().voiceCaptureButton() }.environment(\.ambientPalette, .inbox)
             }
             .badge(store.inboxTodo.count)
             Tab("Study", systemImage: "book.closed", value: AppTab.study) {
-                NavigationStack { StudyView() }.environment(\.ambientPalette, .study)
+                NavigationStack { StudyView().voiceCaptureButton() }.environment(\.ambientPalette, .study)
             }
             Tab("Library", systemImage: "square.grid.2x2", value: AppTab.library) {
-                NavigationStack(path: $store.libraryPath) { LibraryView() }.environment(\.ambientPalette, .library)
+                NavigationStack(path: $store.libraryPath) { LibraryView().voiceCaptureButton() }.environment(\.ambientPalette, .library)
             }
             .badge(store.pendingDrafts.count)
             Tab(value: AppTab.search, role: .search) {
-                NavigationStack { SearchView() }.environment(\.ambientPalette, .search)
+                NavigationStack { SearchView().voiceCaptureButton() }.environment(\.ambientPalette, .search)
             }
         }
         .tabBarMinimizeBehavior(.onScrollDown)

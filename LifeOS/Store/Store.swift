@@ -17,11 +17,12 @@ struct UndoEntry: Identifiable {
 }
 
 enum SheetRoute: Identifiable, Equatable {
-    case ask(String), capture, focus, inbox(String), feed(String), event(String), addTask, addSaved, addBlock, editTimetable, settings, onboarding, delegate(String), activity
+    case ask(String), capture, voice, focus, inbox(String), feed(String), event(String), addTask, addSaved, addBlock, editTimetable, settings, onboarding, delegate(String), activity
     var id: String {
         switch self {
         case .ask: return "ask"
         case .capture: return "capture"
+        case .voice: return "voice"
         case .focus: return "focus"
         case .inbox(let i): return "inbox-\(i)"
         case .feed(let i): return "feed-\(i)"
@@ -108,6 +109,12 @@ final class Store {
             try? await Task.sleep(for: .milliseconds(250))
             Store.write("doc.json", b); Store.write("pending.json", p)
         }
+    }
+
+    /// Writes to disk straight away (an App Intent may be suspended as soon as it returns).
+    func saveNow() {
+        saveTask?.cancel()
+        Store.write("doc.json", base); Store.write("pending.json", .array(pending))
     }
 
     // MARK: changes

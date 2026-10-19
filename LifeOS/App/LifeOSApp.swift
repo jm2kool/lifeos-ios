@@ -7,7 +7,7 @@ let pulseTaskID = "com.jm2kool.lifeos.pulse"
 @main
 struct LifeOSApp: App {
     @State private var store = Store.shared
-    @State private var assistant = Assistant()
+    @State private var assistant = Assistant.shared
     @State private var focus = FocusTimer.shared
 
     init() {

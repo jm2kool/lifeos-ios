@@ -50,6 +50,8 @@ struct LifeOSShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(intent: StudyLockCheckIntent(), phrases: ["Check my study lock in \(.applicationName)"],
                     shortTitle: "Study lock check", systemImageName: "lock")
+        AppShortcut(intent: CaptureIntent(), phrases: ["Capture in \(.applicationName)", "Add to \(.applicationName)", "Note in \(.applicationName)", "Tell \(.applicationName)"],
+                    shortTitle: "Capture", systemImageName: "mic")
         AppShortcut(intent: IsStudyTimeIntent(), phrases: ["Is it study time in \(.applicationName)", "Should I be studying in \(.applicationName)"],
                     shortTitle: "Is it study time?", systemImageName: "book.closed")
     }

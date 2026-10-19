@@ -10,6 +10,10 @@
 	<array>
 		<string>fetch</string>
 	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>LifeOS listens when you tap the mic so you can capture to-dos, notes and plans by voice.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>LifeOS turns what you say into text so it can file it as a to-do, note, email draft or calendar item.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>ITSAppUsesNonExemptEncryption</key>
