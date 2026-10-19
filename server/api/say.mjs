@@ -34,7 +34,7 @@ export function createHandler({ store = kv, fetcher } = {}) {
       const doc = await load(store);
       let g;
       try {
-        g = await gemini(SYSTEM(doc.profile?.name), `Snapshot (JSON):\n${snapshot(doc)}\n\nMessage from ${caller.name}: ${text}\n\nReply with only JSON: {"reply": string, "ops": [op, …]}. Use an empty ops list for questions. At most ${MAX_OPS} ops.`, { fetcher });
+        g = await gemini(SYSTEM(doc.profile?.name), `Snapshot (JSON):\n${snapshot(doc)}\n\nMessage from ${caller.name}: ${text}\n\nReply with only JSON: {"reply": string, "ops": [op, …]}. Use an empty ops list for questions. At most ${MAX_OPS} ops.`, { fetcher, store });
       } catch (e) {
         return res.status(e.status || 502).json({ error: 'Gemini could not answer, so nothing was changed. ' + e.message, attempts: e.attempts, retry: true });
       }

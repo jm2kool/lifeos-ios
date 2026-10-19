@@ -1,4 +1,5 @@
 // Gemini helpers shared by /api/say and /api/pulse. Mirrors LifeOS/AI/Assistant.swift in the app.
+import { withKeys } from './_keys.mjs';
 const env = process.env;
 export const MODEL = () => env.GEMINI_MODEL || 'gemini-3.5-flash';
 
@@ -47,11 +48,10 @@ export const _forgetGoneModels = () => gone.clear();
 
 /** Tries the chosen model, then fallbacks when a model is gone, slow, busy or answers with nothing usable.
     Returns {value, model, fallback, attempts}. On total failure throws an error (status 502/504) carrying `attempts`. */
-export async function gemini(system, user, { json = true, fetcher = fetch, model = MODEL() } = {}) {
-  if (!env.GEMINI_API_KEY) throw Object.assign(Error('Add GEMINI_API_KEY in Vercel'), { status: 503 });
+export async function gemini(system, user, { json = true, fetcher = fetch, model = MODEL(), store } = {}) {
   const models = [...new Set([model, ...FALLBACKS])];
   const attempts = [];
-  let timedOut = false;
+  let timedOut = false, keyProblem = null;
   for (let i = 0; i < models.length; i++) {
     const m = models[i];
     if (gone.has(m)) { attempts.push({ model: m, error: 'skipped: ' + gone.get(m) }); continue }
@@ -61,18 +61,24 @@ export async function gemini(system, user, { json = true, fetcher = fetch, model
     let plain = attempts.some(a => a.model === m && a.retryWithoutThinking);
     if (plain) delete gen.thinkingConfig;
     const body = { systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts: [{ text: user }] }], generationConfig: gen };
-    let r, j;
+    let r, j, key, rotated;
     try {
-      r = await fetcher('https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY }, body: JSON.stringify(body), signal: AbortSignal.timeout(attempts.length === 0 ? 40000 : 25000) });
-      j = await r.json().catch(() => ({}));
-    } catch (e) { timedOut = true; attempts.push({ model: m, error: e.name === 'TimeoutError' ? 'timed out' : e.message }); continue }
-    const msg = j.error?.message || '';
-    if (r.status === 400 && gen.thinkingConfig && /thinking/i.test(msg) && !plain) { attempts.push({ model: m, status: 400, error: msg, retryWithoutThinking: true }); models.splice(i + 1, 0, m); continue }
-    if (!r.ok) {
-      attempts.push({ model: m, status: r.status, error: msg || 'Gemini error ' + r.status });
-      if (r.status === 404 || ((r.status === 400 || r.status === 403) && GONE.test(msg))) { gone.set(m, msg || 'not found'); continue }
-      if ([429, 500, 502, 503, 504].includes(r.status)) continue;
-      if ((r.status === 400 || r.status === 403) && /api key|permission|unauthori[sz]ed/i.test(msg)) throw Object.assign(Error('Gemini rejected the API key: ' + msg), { status: 502, attempts });
+      // Each usable key in turn: a key that is rate limited or out of quota cools down and the next one is tried.
+      ({ status: r, json: j, key, rotated, allRejected: keyProblem } = await withKeys(store, m, async value => {
+        const res = await fetcher('https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': value }, body: JSON.stringify(body), signal: AbortSignal.timeout(attempts.length === 0 ? 40000 : 25000) });
+        return { status: res.status, json: await res.json().catch(() => ({})) };
+      }));
+    } catch (e) {
+      if (e.status === 503) throw e;
+      timedOut = true; attempts.push({ model: m, error: e.name === 'TimeoutError' ? 'timed out' : e.message }); continue;
+    }
+    const msg = j?.error?.message || '';
+    const ok = r >= 200 && r < 300;
+    if (r === 400 && gen.thinkingConfig && /thinking/i.test(msg) && !plain) { attempts.push({ model: m, status: 400, error: msg, retryWithoutThinking: true }); models.splice(i + 1, 0, m); continue }
+    if (!ok) {
+      attempts.push({ model: m, status: r, error: msg || 'Gemini error ' + r, ...(rotated ? { keysTried: rotated } : {}) });
+      if (keyProblem) throw Object.assign(Error('Gemini rejected the API key' + (rotated > 1 ? 's' : '') + ': ' + msg), { status: 502, attempts });
+      if (r === 404 || ((r === 400 || r === 403) && GONE.test(msg))) { gone.set(m, msg || 'not found'); continue }
       continue;
     }
     const text = (j.candidates?.[0]?.content?.parts || []).filter(p => p.text && !p.thought).map(p => p.text).join('');
@@ -82,7 +88,7 @@ export async function gemini(system, user, { json = true, fetcher = fetch, model
       value = parseJSON(text);
       if (!value) { attempts.push({ model: m, status: 200, error: 'reply was not JSON' }); continue }
     }
-    return { value, model: m, fallback: m !== model, attempts };
+    return { value, model: m, fallback: m !== model, attempts, key, rotated };
   }
   const last = attempts.filter(a => !String(a.error).startsWith('skipped')).pop() || attempts[attempts.length - 1];
   throw Object.assign(Error('Gemini failed on every model (' + attempts.map(a => a.model + ': ' + a.error).join('; ') + ')'), { status: timedOut && attempts.every(a => a.error === 'timed out' || String(a.error).startsWith('skipped')) ? 504 : 502, attempts, last });

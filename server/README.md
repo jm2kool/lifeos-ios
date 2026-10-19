@@ -11,6 +11,8 @@ is closed. Deploy it once; after that nobody touches code or Vercel.
    - `LIFEOS_TOKEN` – a long random string. This is the **owner key**: paste it into the app (Settings › Sync key).
    - `GEMINI_API_KEY` – your Gemini key (used by `/api/say`, `/api/pulse`, `/api/ai`).
    - Optional: `GEMINI_MODEL` (default `gemini-3.5-flash`), `LIFEOS_OWNER_NAME` (default `You`).
+   - Optional: `GEMINI_KEYS_SECRET` – any long random string (16+ characters). Lets you add more Gemini keys
+     from the app; they're encrypted with it before they're stored (see "Several Gemini keys").
    - Optional, older setups: `LIFEOS_AGENT_TOKEN` + `LIFEOS_AGENT_NAME` (see "The old shared key" below).
 4. In the app: Settings › Sync › server = your Vercel URL, sync key = `LIFEOS_TOKEN`.
 5. In the app: Settings › Access keys › create one key per assistant (e.g. "FRIDAY", *Read and change*).
@@ -82,6 +84,27 @@ Reply (200, or 207 if some changes failed):
 - If every model fails you get a **502** (504 if they all timed out) with `"error"`, `"attempts"`
   (each model and its error) and `"retry": true`, never an empty reply. Nothing is changed in that case.
 - At most 30 changes per sentence; more are cut and `warnings` says so.
+
+## Several Gemini keys
+Free Gemini keys have small per-minute and per-day limits. Add more keys in the app (Settings › Gemini › API keys ›
+On your server) and the server uses them in turn: when a key is rate limited or out of quota it cools down (for
+Google's suggested wait, or until the daily reset at midnight Pacific for a daily quota) and the next key answers.
+A key Google rejects rests for 6 hours. Cooldowns are per model, since Google's free quotas are. `GEMINI_API_KEY` is
+always first in the pool.
+
+- Added keys are encrypted (AES-256-GCM with `GEMINI_KEYS_SECRET`) before they reach Redis. Changing or removing
+  that secret makes them unreadable: add them again.
+- Key values are never returned, logged or put in an error message, and a key is checked with Google before it's added.
+- `/api/say`, `/api/pulse` and the app's `/api/ai` proxy all use the pool. `/api/ai` answers with the header
+  `X-LifeOS-Keys: <active>/<total>`, which is how the app shows the count.
+- Keys added on the iPhone itself stay in its Keychain and are never sent here.
+
+```
+GET    /api/gemini-keys                         {keys: [{id, label, status: active|cooling|rejected, reason, until}], active, total}   (admin)
+POST   /api/gemini-keys {"key":"AIza…","label":"Spare 1"}
+PATCH  /api/gemini-keys {"id":"gk-…","reset":true}   clear a cooldown
+DELETE /api/gemini-keys {"id":"gk-…"}
+```
 
 ## Bulk import: `/api/import`
 Exact, doesn't go through Gemini, and reports every item. Use it for anything more than a few items.

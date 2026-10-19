@@ -15,7 +15,7 @@ export function createHandler({ store = kv, fetcher } = {}) {
       const caller = await gate(req, res, store, 'write', { cron: true }); if (!caller) return;
       const doc = await load(store);
       let g;
-      try { g = await gemini(SYSTEM(doc.profile?.name), PULSE_PROMPT(snapshot(doc)), { fetcher }) }
+      try { g = await gemini(SYSTEM(doc.profile?.name), PULSE_PROMPT(snapshot(doc)), { fetcher, store }) }
       catch (e) { return res.status(e.status || 502).json({ error: 'Gemini could not refresh Today; nothing was changed. ' + e.message, attempts: e.attempts }) }
       const j = g.value;
       const ops = expand(doc, (Array.isArray(j.ops) ? j.ops : []).filter(o => o && ALLOWED.has(o.op)).slice(0, 6));

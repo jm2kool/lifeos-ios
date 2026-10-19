@@ -8,7 +8,6 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var timezone = ""
-    @State private var geminiKey = ""
     @State private var model = ""
     @State private var assistantName = ""
     @State private var assistantAddress = ""
@@ -62,7 +61,7 @@ struct SettingsView: View {
                     Text("Study blocks are the ones on your timetable and study plan. Lunch, breaks and school calendar events don't count.")
                 }
                 Section {
-                    SecureField("Gemini API key", text: $geminiKey).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    NavigationLink { GeminiKeysView() } label: { LabeledContent("API keys", value: GeminiKeys.summary(model: model)) }
                     TextField("Model", text: $model).textInputAutocapitalization(.never).autocorrectionDisabled()
                     Picker("Update Today", selection: Binding(get: { assistant.intervalHours }, set: { store.act(["op": "settings.set", "value": ["ai": ["interval": JSON($0)]]]) })) {
                         Text("Every hour").tag(1); Text("Every 2 hours").tag(2); Text("Off").tag(0)
@@ -72,9 +71,8 @@ struct SettingsView: View {
                         save(); testing = true
                         Task { await assistant.runPulse(force: true); testing = false; if store.pulse["brief"].string != nil { store.show("Gemini is working") } }
                     } label: { HStack { Text("Save and run Gemini now"); Spacer(); if testing { ProgressView() } } }
-                    Link("Get a key in Google AI Studio", destination: URL(string: "https://aistudio.google.com/apikey")!)
                 } header: { Text("Gemini") } footer: {
-                    Text("Your key is stored in the iPhone Keychain and only sent to Google. Gemini refreshes Today, drafts email replies and can move things around; every change is logged in Activity and can be undone.")
+                    Text("Add several free keys: when one hits its limit the next takes over. Keys on this iPhone stay in the Keychain and are only sent to Google. Gemini refreshes Today, drafts email replies and can move things around; every change is logged in Activity and can be undone.")
                 }
                 Section {
                     TextField("Name", text: $assistantName)
@@ -126,12 +124,11 @@ struct SettingsView: View {
     private func load() {
         let d = store.doc
         name = d["profile"]["name"].str; timezone = d["profile"]["timezone"].string ?? TimeZone.current.identifier
-        geminiKey = Keychain.get("geminiKey") ?? ""; model = d["settings"]["ai"]["model"].string ?? "gemini-3.5-flash"
+        model = d["settings"]["ai"]["model"].string ?? "gemini-3.5-flash"
         assistantName = d["profile"]["assistant"]["name"].str; assistantAddress = d["profile"]["assistant"]["imessage"].str; assistantEmail = store.assistantEmail
         syncURL = d["settings"]["sync"]["url"].str; syncKey = Keychain.get("syncKey") ?? ""
     }
     private func save() {
-        Keychain.set("geminiKey", geminiKey.trimmingCharacters(in: .whitespacesAndNewlines))
         Keychain.set("syncKey", syncKey.trimmingCharacters(in: .whitespacesAndNewlines))
         var ops: [JSON] = []
         if name != store.profileName || assistantName != store.doc["profile"]["assistant"]["name"].str || assistantAddress != store.assistantAddress || assistantEmail != store.assistantEmail {
@@ -178,7 +175,7 @@ struct OnboardingView: View {
                 Text("Paste your Gemini API key and Gemini will plan your day, draft email replies and keep Today fresh. It stays in your Keychain. You can do this later in Settings.")
                     .multilineTextAlignment(.center).foregroundStyle(.secondary)
                 SecureField("Gemini API key", text: $key).textFieldStyle(.roundedBorder).padding(.horizontal, 30)
-                Button("Finish") { Keychain.set("geminiKey", key.trimmingCharacters(in: .whitespacesAndNewlines)); dismiss() }.buttonStyle(.glassProminent).controlSize(.large)
+                Button("Finish") { if !key.trimmingCharacters(in: .whitespaces).isEmpty { GeminiKeys.add(key) }; dismiss() }.buttonStyle(.glassProminent).controlSize(.large)
             }
             Spacer()
         }

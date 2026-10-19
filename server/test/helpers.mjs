@@ -11,6 +11,7 @@ export function memoryStore() {
       case 'SET': kv.set(a[0], a[1]); return 'OK';
       case 'HGET': return h(a[0]).get(a[1]) ?? null;
       case 'HSET': h(a[0]).set(a[1], a[2]); return 1;
+      case 'HDEL': return h(a[0]).delete(a[1]) ? 1 : 0;
       case 'HGETALL': return [...h(a[0])].flat();
       case 'LPUSH': l(a[0]).unshift(...a.slice(1).reverse()); return l(a[0]).length;
       case 'LTRIM': lists.set(a[0], l(a[0]).slice(Number(a[1]), Number(a[2]) + 1)); return 'OK';
