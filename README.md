@@ -31,6 +31,19 @@ and the review dot lights up.
   Then Settings › Action Button › Shortcut › pick it. You get the small dictation bubble, stay in your current app,
   and LifeOS files it in the background and shows what it did.
 
+## Study block Live Activity from Shortcuts
+LifeOS shows a Live Activity before and during your study blocks. To get it without opening the app, use the
+Shortcuts actions (they start it in the background; no server or paid Apple account needed):
+- **Show study block**: Block, Starts, Ends (and an optional Note). Shows "starts in", then the time left.
+  Running it again for the same block updates it rather than adding another.
+- **Show next study block**: no inputs; shows the block that's on now, or the next one from your timetable.
+
+Shortcuts has no "10 minutes before each block" trigger, so pick one:
+- Automation › **Time of Day** (e.g. 6:50 daily) → *Show next study block*.
+- Automation › **Calendar** (event starts, if your blocks are in iOS Calendar) → *Show study block* with the event's
+  title, start and end.
+- The Action Button, a widget, or Siri: "Show my next study block in LifeOS".
+
 ## Build
 Every push to `main` builds an unsigned .ipa on GitHub Actions (`.github/workflows/build.yml`)
 and attaches it to the `latest` release. No local Xcode needed.

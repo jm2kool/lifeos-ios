@@ -26,4 +26,12 @@ struct StudyBlockAttributes: ActivityAttributes {
         }
     }
     var blockID: String
+    /// Started from Shortcuts or Siri (not from your timetable): the app's own refresh leaves it alone until it's over.
+    var manual: Bool? = nil
+
+    /// One id per block, the same whether the app or a Shortcut shows it, so the same block is never shown twice.
+    static func id(title: String, start: Date) -> String {
+        let name = title.lowercased().split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        return "sb-\(name)@\(Int(start.timeIntervalSince1970 / 60))"
+    }
 }

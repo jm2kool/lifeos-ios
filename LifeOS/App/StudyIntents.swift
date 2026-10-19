@@ -52,6 +52,8 @@ struct LifeOSShortcuts: AppShortcutsProvider {
                     shortTitle: "Study lock check", systemImageName: "lock")
         AppShortcut(intent: CaptureIntent(), phrases: ["Capture in \(.applicationName)", "Add to \(.applicationName)", "Note in \(.applicationName)", "Tell \(.applicationName)"],
                     shortTitle: "Capture", systemImageName: "mic")
+        AppShortcut(intent: NextStudyBlockActivityIntent(), phrases: ["Show my next study block in \(.applicationName)", "Next study block in \(.applicationName)"],
+                    shortTitle: "Next study block", systemImageName: "book")
         AppShortcut(intent: IsStudyTimeIntent(), phrases: ["Is it study time in \(.applicationName)", "Should I be studying in \(.applicationName)"],
                     shortTitle: "Is it study time?", systemImageName: "book.closed")
     }
