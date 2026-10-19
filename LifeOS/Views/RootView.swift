@@ -10,12 +10,12 @@ struct RootView: View {
         TabView(selection: $store.tab) {
             ForEach(store.barTabs, id: \.self) { t in
                 Tab(t.title, systemImage: t.symbol, value: t) { screen(t) }
-                    .badge(barBadge(t))
+                    .badge(badge(t))
             }
             Tab(AppTab.library.title, systemImage: AppTab.library.symbol, value: AppTab.library) {
                 NavigationStack(path: $store.libraryPath) { LibraryView().voiceCaptureButton() }.environment(\.ambientPalette, .library)
             }
-            .badge(store.moreTabs.contains(.drafts) ? store.pendingDrafts.count : 0)
+            .badge(store.moreNeedsReview ? Text("") : nil)   // a dot: something under More waits for your review
             Tab(value: AppTab.search, role: .search) {
                 NavigationStack { SearchView().voiceCaptureButton() }.environment(\.ambientPalette, .search)
             }
@@ -69,11 +69,12 @@ extension RootView {
             .environment(\.ambientPalette, t.palette)
         }
     }
-    func barBadge(_ t: AppTab) -> Int {
+    /// Inbox shows how many emails are left; Drafts shows a dot while a draft waits for your review.
+    func badge(_ t: AppTab) -> Text? {
         switch t {
-        case .inbox: return store.inboxTodo.count
-        case .drafts: return store.pendingDrafts.count
-        default: return 0
+        case .inbox: return store.inboxTodo.isEmpty ? nil : Text("\(store.inboxTodo.count)")
+        case .drafts: return store.pendingDrafts.isEmpty ? nil : Text("")
+        default: return nil
         }
     }
 

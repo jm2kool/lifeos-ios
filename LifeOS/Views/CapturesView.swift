@@ -3,11 +3,14 @@ import SwiftUI
 extension Store {
     /// Captures Gemini wasn't sure about (or couldn't sort), waiting for you to check where they went.
     var capturesToReview: [JSON] { content["captures"].array.filter { $0["review"].bool } }
+    /// The More tab gets a review dot while a draft (if Drafts is under More) or an unsure capture waits for you.
+    var moreNeedsReview: Bool { (moreTabs.contains(.drafts) && !pendingDrafts.isEmpty) || !capturesToReview.isEmpty }
+    /// Screens whose row in More shows a review dot instead of a count.
+    func reviewDot(for t: AppTab) -> Bool { t == .drafts && !pendingDrafts.isEmpty }
     /// The count shown next to a screen's row in More.
     func badge(for t: AppTab) -> Int {
         switch t {
         case .inbox: return inboxTodo.count
-        case .drafts: return pendingDrafts.count
         case .board: return cards.filter { $0.column < 2 }.count
         default: return 0
         }
@@ -60,5 +63,12 @@ struct CapturesView: View {
         var c = URLComponents(); c.scheme = "sms"; c.path = store.assistantAddress
         c.queryItems = [URLQueryItem(name: "body", value: text)]
         if let u = c.url { openURL(u) }
+    }
+}
+
+/// The small red dot that means "waiting for your review".
+struct ReviewDot: View {
+    var body: some View {
+        Circle().fill(.red).frame(width: 9, height: 9).accessibilityLabel("Waiting for review")
     }
 }

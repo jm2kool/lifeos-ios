@@ -29,10 +29,10 @@ struct LibraryView: View {
         List {
             Section {
                 ForEach(store.moreTabs, id: \.self) { t in
-                    if let p = t.page { link(p, t.title, t.tile.0, t.tile.1, badge: store.badge(for: t)) }
+                    if let p = t.page { link(p, t.title, t.tile.0, t.tile.1, badge: store.badge(for: t), dot: store.reviewDot(for: t)) }
                 }
                 if !store.content["captures"].array.isEmpty {
-                    link(.captures, "Captured", "mic.fill", .purple, badge: store.capturesToReview.count)
+                    link(.captures, "Captured", "mic.fill", .purple, dot: !store.capturesToReview.isEmpty)
                 }
             }
             Section("Assistant") {
@@ -53,13 +53,13 @@ struct LibraryView: View {
         .pageBackground()
         .navigationDestination(for: LibraryPage.self) { $0.view }
     }
-    private func link(_ p: LibraryPage, _ title: String, _ symbol: String, _ color: Color, badge: Int = 0) -> some View {
+    private func link(_ p: LibraryPage, _ title: String, _ symbol: String, _ color: Color, badge: Int = 0, dot: Bool = false) -> some View {
         NavigationLink(value: p) {
             HStack(spacing: 12) {
                 IconTile(symbol: symbol, color: color)
                 Text(title)
                 Spacer()
-                if badge > 0 { Text("\(badge)").foregroundStyle(.secondary) }
+                if dot { ReviewDot() } else if badge > 0 { Text("\(badge)").foregroundStyle(.secondary) }
             }
         }
     }
@@ -173,6 +173,8 @@ struct DraftsView: View {
                             Text(d.title).font(.body.weight(.medium)).lineLimit(2)
                             Text(d.isEmail ? (n > 0 ? "Approved" : "Email draft · v\(v)") : "\(n) of \(d.parts.count) weeks approved · v\(v)").font(.footnote).foregroundStyle(.secondary)
                         }
+                        Spacer(minLength: 0)
+                        if store.pendingDrafts.contains(where: { $0.id == d.id }) { ReviewDot() }
                     }
                 }
                 .swipeActions { if d.isEmail { Button("Delete", systemImage: "trash", role: .destructive) { store.act(["op": "draft.remove", "id": .string(d.id)], undo: "Draft deleted") } } }
