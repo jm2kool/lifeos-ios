@@ -49,6 +49,7 @@ final class FocusTimer {
             if store.act(Self.session(id: id, title: label, start: start, end: start.addingTimeInterval(Double(m) * 60), status: "running", store: store), quiet: true) { sessionID = id }
         }
         save(); notify()
+        StudyActivityController.endAll()
         FocusActivityController.start(label: label, state: activityState)
     }
     func togglePause() {
@@ -65,6 +66,7 @@ final class FocusTimer {
         startedAt = nil; pausedAt = nil; spent = 0; sessionID = nil; save(); cancelNotification()
         FocusActivityController.end(last, linger: complete)
         attach()
+        if let store { StudyActivityController.refresh(store) }
         guard let store else { return }
         // The study session ends now (or keeps its planned end when it ran to the end).
         var ops: [JSON] = []

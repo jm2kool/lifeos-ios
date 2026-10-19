@@ -31,7 +31,7 @@ struct RootView: View {
         .fullScreenCover(isPresented: $store.lockShown) {
             StudyLockView().environment(store).environment(focus).tint(store.tint)
         }
-        .task(id: store.studyAlertKey) { await StudyAlerts.reschedule(store) }
+        .task(id: store.studyAlertKey) { await StudyAlerts.reschedule(store); StudyActivityController.refresh(store) }
         .sheet(item: $store.sheet) { route in
             SheetHost(route: route)
                 .environment(store).environment(assistant).environment(focus)
@@ -55,6 +55,7 @@ struct RootView: View {
                 try? await Task.sleep(for: .seconds(20))
                 store.tick = Date()
                 focus.checkFinished()
+                StudyActivityController.refresh(store)
             }
         }
     }

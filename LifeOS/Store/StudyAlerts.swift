@@ -101,7 +101,12 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate {
 enum StudyLock {
     private static let key = "studyLock.snoozeUntil"
     static var snoozed: Bool { (UserDefaults.standard.object(forKey: key) as? Date).map { $0 > Date() } ?? false }
-    static func snooze(minutes: Int) { UserDefaults.standard.set(Date().addingTimeInterval(Double(minutes) * 60), forKey: key) }
+    /// When the current break ends, if you're on one.
+    static var until: Date? { (UserDefaults.standard.object(forKey: key) as? Date).flatMap { $0 > Date() ? $0 : nil } }
+    static func snooze(minutes: Int) {
+        UserDefaults.standard.set(Date().addingTimeInterval(Double(minutes) * 60), forKey: key)
+        Task { @MainActor in StudyActivityController.refresh(Store.shared) }
+    }
     static func clear() { UserDefaults.standard.removeObject(forKey: key) }
 }
 
