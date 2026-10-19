@@ -8,7 +8,7 @@ const { createHandler: say } = await import('../api/say.mjs');
 const { createHandler: ai } = await import('../api/ai.mjs');
 const { createHandler: keys } = await import('../api/keys.mjs');
 const { _forgetGoneModels } = await import('../api/_ai.mjs');
-const { classify, nextQuotaReset, scrub } = await import('../api/_keys.mjs');
+const { classify, nextQuotaReset, scrub, cleanKey } = await import('../api/_keys.mjs');
 
 const OWNER = 'owner-secret';
 const K1 = 'AIzaSyTESTKEY1aaaaaaaaaaaaaaaaaaaaaaaaa', K2 = 'AIzaSyTESTKEY2bbbbbbbbbbbbbbbbbbbbbbbbb';
@@ -124,4 +124,15 @@ test('classify, scrub and the quota reset', () => {
   assert.equal(scrub('bad AIzaSyABCDEFGHIJKLMNOPQRSTUVWX123 here', []), 'bad [key] here');
   const t = nextQuotaReset(new Date('2026-10-19T12:00:00Z'));
   assert.equal(new Date(t).toISOString(), '2026-10-20T07:01:00.000Z'); // midnight PDT + 1 min
+});
+
+test('pasted keys: invisible characters, spaces and quotes are taken out; other key formats are accepted', async () => {
+  assert.equal(cleanKey('\u200b ' + K1 + '\u00a0\n'), K1);
+  assert.equal(cleanKey('“' + K1 + '”'), K1);
+  let r = await add('\ufeff' + K1 + ' \u200b', 'Pasted');
+  assert.equal(r.statusCode, 201, JSON.stringify(r.body));
+  const other = 'AQ.Ab8RN6Kx_new-style.key0123456789abcdef';
+  r = await add(other, 'New format');
+  assert.equal(r.statusCode, 201, JSON.stringify(r.body));
+  assert.equal((await add('short', 'x')).statusCode, 400);
 });

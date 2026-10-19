@@ -26,10 +26,34 @@ enum GeminiKeys {
         Keychain.set(account, keys.isEmpty ? nil : String(decoding: d, as: UTF8.self))
     }
 
+    /// What's left of a pasted key once spaces, line breaks, invisible characters (zero-width and non-breaking spaces,
+    /// which copying from a web page often brings along) and wrapping quotes are taken out.
+    static func clean(_ raw: String) -> String {
+        let junk = CharacterSet.whitespacesAndNewlines.union(.controlCharacters).union(.illegalCharacters)
+            .union(CharacterSet(charactersIn: "\u{200B}\u{200C}\u{200D}\u{2060}\u{FEFF}\u{00A0}\"'“”‘’`<>"))
+        return String(String.UnicodeScalarView(raw.unicodeScalars.filter { !junk.contains($0) && $0.properties.generalCategory != .format }))
+    }
+    /// Only a rough check: any run of 20–200 ordinary characters. Whether Google accepts it is checked with Google (verify).
+    static func plausible(_ value: String) -> Bool {
+        (20...200).contains(value.count) && value.unicodeScalars.allSatisfy { $0.isASCII && $0.value > 32 && $0.value < 127 }
+    }
+    /// Asks Google whether a key works, without spending generate quota. Returns a problem, or nil if it works
+    /// (or Google can't be reached right now; the key is then checked on first use).
+    static func verify(_ raw: String) async -> String? {
+        let value = clean(raw)
+        guard plausible(value) else { return "That doesn't look like a Gemini API key. Copy it again from Google AI Studio." }
+        var req = URLRequest(url: URL(string: "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1")!, timeoutInterval: 12)
+        req.setValue(value, forHTTPHeaderField: "x-goog-api-key")
+        guard let reply = try? await URLSession.shared.data(for: req), let code = (reply.1 as? HTTPURLResponse)?.statusCode else { return nil }
+        if code == 200 || code == 429 { return nil }
+        let msg = (JSON.parse(reply.0) ?? .null)["error"]["message"].string ?? "error \(code)"
+        return "Google didn't accept this key: " + scrub(msg).replacingOccurrences(of: value, with: "[key]")
+    }
+
     /// Adds a key; returns a problem to show instead, if any.
     @discardableResult static func add(_ raw: String, label: String = "") -> String? {
-        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard value.range(of: #"^[A-Za-z0-9_\-]{20,120}$"#, options: .regularExpression) != nil else { return "That doesn't look like a Gemini API key." }
+        let value = clean(raw)
+        guard plausible(value) else { return "That doesn't look like a Gemini API key. Copy it again from Google AI Studio." }
         var keys = all()
         guard !keys.contains(where: { $0.value == value }) else { return "That key is already added." }
         let name = label.trimmingCharacters(in: .whitespaces)

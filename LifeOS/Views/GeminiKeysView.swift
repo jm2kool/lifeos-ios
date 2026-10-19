@@ -14,6 +14,7 @@ struct GeminiKeysView: View {
     @State private var serverLabel = ""
     @State private var busy = false
     @State private var tick = Date()
+    @State private var checking = false
 
     private var model: String { store.doc["settings"]["ai"]["model"].string.flatMap { $0.isEmpty ? nil : $0 } ?? "gemini-3.5-flash" }
 
@@ -37,11 +38,8 @@ struct GeminiKeysView: View {
             Section {
                 SecureField("Gemini API key", text: $newKey).textInputAutocapitalization(.never).autocorrectionDisabled()
                 TextField("Label (optional)", text: $newLabel)
-                Button("Add key") {
-                    problem = GeminiKeys.add(newKey, label: newLabel)
-                    if problem == nil { newKey = ""; newLabel = ""; store.show("Key added"); reload() }
-                }
-                .disabled(newKey.trimmingCharacters(in: .whitespaces).isEmpty)
+                Button { Task { await addHere() } } label: { HStack { Text("Add key"); Spacer(); if checking { ProgressView() } } }
+                    .disabled(checking || newKey.trimmingCharacters(in: .whitespaces).isEmpty)
                 if let problem { Text(problem).font(.footnote).foregroundStyle(.red) }
                 Link("Get a free key in Google AI Studio", destination: URL(string: "https://aistudio.google.com/apikey")!)
             } header: { Text("Add a key") }
@@ -82,6 +80,14 @@ struct GeminiKeysView: View {
 
     private func reload() { keys = GeminiKeys.all(); tick = Date() }
 
+    /// Checks the key with Google first, so a typo shows up now rather than as a failed Gemini call later.
+    private func addHere() async {
+        checking = true; defer { checking = false }
+        if let p = await GeminiKeys.verify(newKey) { problem = p; return }
+        problem = GeminiKeys.add(newKey, label: newLabel)
+        if problem == nil { newKey = ""; newLabel = ""; store.show("Key added"); reload() }
+    }
+
     private func status(_ c: GeminiKeys.Cooldown?) -> String {
         guard let c else { return "Active" }
         if c.reason == "rejected" { return "Google rejected this key · retrying " + store.time(c.until) }
@@ -110,7 +116,7 @@ struct GeminiKeysView: View {
     private func addToServer() async {
         busy = true; defer { busy = false }
         do {
-            server = try await store.api("POST", "gemini-keys", query: ["model": model], body: ["key": .string(serverKey.trimmingCharacters(in: .whitespacesAndNewlines)), "label": .string(serverLabel)])
+            server = try await store.api("POST", "gemini-keys", query: ["model": model], body: ["key": .string(GeminiKeys.clean(serverKey)), "label": .string(serverLabel)])
             GeminiKeys.serverActive = server["active"].int; GeminiKeys.serverTotal = server["total"].int
             serverKey = ""; serverLabel = ""; serverProblem = nil; store.show("Key added to the server")
         } catch { serverProblem = GeminiKeys.scrub(error.localizedDescription) }

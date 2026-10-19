@@ -25,7 +25,10 @@ function open(sealed) {
   } catch { return null }
 }
 
-const KEY_SHAPE = /^[A-Za-z0-9_\-]{20,120}$/;
+// Only a rough check (any 20–200 ordinary characters); whether Google accepts the key is checked with Google.
+const KEY_SHAPE = /^[\x21-\x7e]{20,200}$/;
+/** Takes out what copying a key from a web page brings along: spaces, line breaks, zero-width and non-breaking spaces, quotes. */
+export const cleanKey = raw => String(raw ?? '').replace(/[\s\u00a0\u200b-\u200d\u2060\ufeff"'`<>\u2018\u2019\u201c\u201d]/g, '');
 const ENV = () => env.GEMINI_API_KEY ? [{ id: 'env', label: 'GEMINI_API_KEY (Vercel)', value: env.GEMINI_API_KEY, builtin: true }] : [];
 
 async function records(store) {
@@ -131,7 +134,7 @@ export async function describe(store, model, now = Date.now()) {
 /** Adds a key. check(value) may test it with Google first and return an error message. */
 export async function addKey(store, { key, label }, by, check) {
   if (!canStore()) throw Object.assign(Error('Set GEMINI_KEYS_SECRET in Vercel (any long random string) to store extra Gemini keys'), { status: 503 });
-  const value = String(key || '').trim();
+  const value = cleanKey(key);
   if (!KEY_SHAPE.test(value)) throw Object.assign(Error('That doesn\'t look like a Gemini API key'), { status: 400 });
   const existing = await pool(store);
   if (existing.some(k => k.value === value)) throw Object.assign(Error('That key is already in the pool'), { status: 409 });
