@@ -33,6 +33,7 @@ struct SettingsView: View {
                         .onSubmit { if TimeZone(identifier: timezone) != nil { store.act(["op": "profile.set", "value": ["timezone": .string(timezone)]]) } else { store.show("That time zone isn't recognised") } }
                 }
                 Section("Appearance") {
+                    NavigationLink { TabBarSettings() } label: { LabeledContent("Tab bar", value: store.barTabs.map(\.title).joined(separator: ", ")) }
                     Picker("Theme", selection: Binding(get: { store.doc["settings"]["theme"].string ?? "auto" }, set: { store.act(["op": "settings.set", "value": ["theme": .string($0)]]) })) {
                         Text("System").tag("auto"); Text("Light").tag("light"); Text("Dark").tag("dark")
                     }

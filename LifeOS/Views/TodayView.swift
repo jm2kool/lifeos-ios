@@ -12,7 +12,7 @@ struct TodayView: View {
                 messages
                 GeminiCard()
                 stats.padding(.top, 12)
-                SectionHeader(title: "Your day", action: "Timetable") { store.tab = .library }
+                SectionHeader(title: "Your day", action: "Timetable") { store.go(.timetable) }
                 DayTimeline(day: store.today)
                 attention
                 tasks
@@ -130,7 +130,7 @@ struct TodayView: View {
 
     @ViewBuilder private var comingUp: some View {
         let list = Array(store.upcoming.prefix(4))
-        SectionHeader(title: "Coming up", action: "Calendar") { store.tab = .library }
+        SectionHeader(title: "Coming up", action: "Calendar") { store.go(.calendar) }
         VStack(spacing: 0) {
             if list.isEmpty { EmptyNote(text: "Nothing on your calendar.") }
             ForEach(list) { e in

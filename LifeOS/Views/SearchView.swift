@@ -42,14 +42,14 @@ struct SearchView: View {
         guard !t.isEmpty else { return [] }
         func m(_ s: String...) -> Bool { s.joined(separator: " ").lowercased().contains(t) }
         var out: [Hit] = []
-        for x in store.tasks where m(x.title, x.note) { out.append(Hit(group: "Tasks", title: x.title, sub: store.isDone(x.id) ? "Done" : store.dueText(x.due), symbol: "checkmark", color: .blue) { store.tab = .today }) }
-        for x in store.cards where m(x.title, x.note) { out.append(Hit(group: "Board", title: x.title, sub: Reducer.columns[min(2, x.column)], symbol: "rectangle.split.3x1", color: .green) { store.tab = .library }) }
+        for x in store.tasks where m(x.title, x.note) { out.append(Hit(group: "Tasks", title: x.title, sub: store.isDone(x.id) ? "Done" : store.dueText(x.due), symbol: "checkmark", color: .blue) { store.go(.today) }) }
+        for x in store.cards where m(x.title, x.note) { out.append(Hit(group: "Board", title: x.title, sub: Reducer.columns[min(2, x.column)], symbol: "rectangle.split.3x1", color: .green) { store.go(.board) }) }
         for x in store.mail where m(x.title, x.gist, x.sender) { out.append(Hit(group: "Inbox", title: x.title, sub: x.senderName, symbol: "tray", color: .blue) { store.sheet = .inbox(x.id) }) }
         for x in store.events where m(x.title, x.note) { out.append(Hit(group: "Calendar", title: x.title, sub: store.relDay(store.day(x)), symbol: "calendar", color: .red) { store.sheet = .event(x.id) }) }
         for x in store.feed where m(x.title, x.desc) { out.append(Hit(group: "Feed", title: x.title, sub: x.category, symbol: "dot.radiowaves.up.forward", color: .orange) { store.sheet = .feed(x.id) }) }
         for x in store.saved where m(x.title, x.note) { out.append(Hit(group: "Saved", title: x.title, sub: x.source, symbol: "bookmark", color: .yellow) { if let u = x.link { UIApplication.shared.open(u) } }) }
-        for x in store.drafts where m(x.title) { out.append(Hit(group: "Drafts", title: x.title, sub: x.isEmail ? "Email" : "Plan", symbol: "doc.text", color: .pink) { store.tab = .library }) }
-        for s in store.coverage where m(s.name) { out.append(Hit(group: "Coverage", title: s.name, sub: "\(s.group) · \(store.doneCount(s))/\(s.items.count)", symbol: "target", color: .green) { store.tab = .study }) }
+        for x in store.drafts where m(x.title) { out.append(Hit(group: "Drafts", title: x.title, sub: x.isEmail ? "Email" : "Plan", symbol: "doc.text", color: .pink) { store.go(.drafts) }) }
+        for s in store.coverage where m(s.name) { out.append(Hit(group: "Coverage", title: s.name, sub: "\(s.group) · \(store.doneCount(s))/\(s.items.count)", symbol: "target", color: .green) { store.go(.study) }) }
         return out
     }
 }

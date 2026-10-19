@@ -8,20 +8,14 @@ struct RootView: View {
     var body: some View {
         @Bindable var store = store
         TabView(selection: $store.tab) {
-            Tab("Today", systemImage: "sun.max", value: AppTab.today) {
-                NavigationStack { TodayView().voiceCaptureButton() }.environment(\.ambientPalette, .today)
+            ForEach(store.barTabs, id: \.self) { t in
+                Tab(t.title, systemImage: t.symbol, value: t) { screen(t) }
+                    .badge(barBadge(t))
             }
-            Tab("Inbox", systemImage: "tray", value: AppTab.inbox) {
-                NavigationStack { InboxView().voiceCaptureButton() }.environment(\.ambientPalette, .inbox)
-            }
-            .badge(store.inboxTodo.count)
-            Tab("Study", systemImage: "book.closed", value: AppTab.study) {
-                NavigationStack { StudyView().voiceCaptureButton() }.environment(\.ambientPalette, .study)
-            }
-            Tab("Library", systemImage: "square.grid.2x2", value: AppTab.library) {
+            Tab(AppTab.library.title, systemImage: AppTab.library.symbol, value: AppTab.library) {
                 NavigationStack(path: $store.libraryPath) { LibraryView().voiceCaptureButton() }.environment(\.ambientPalette, .library)
             }
-            .badge(store.pendingDrafts.count)
+            .badge(store.moreTabs.contains(.drafts) ? store.pendingDrafts.count : 0)
             Tab(value: AppTab.search, role: .search) {
                 NavigationStack { SearchView().voiceCaptureButton() }.environment(\.ambientPalette, .search)
             }
@@ -62,14 +56,34 @@ struct RootView: View {
 }
 
 extension RootView {
+    /// One tab's screen. Today, Inbox and Study keep their own navigation; a page from More gets a stack of its own.
+    @ViewBuilder func screen(_ t: AppTab) -> some View {
+        switch t {
+        case .today: NavigationStack { TodayView().voiceCaptureButton() }.environment(\.ambientPalette, .today)
+        case .inbox: NavigationStack { InboxView().voiceCaptureButton() }.environment(\.ambientPalette, .inbox)
+        case .study: NavigationStack { StudyView().voiceCaptureButton() }.environment(\.ambientPalette, .study)
+        default:
+            NavigationStack(path: store.pathBinding(t)) {
+                if let p = t.page { p.view.voiceCaptureButton().navigationDestination(for: LibraryPage.self) { $0.view } }
+            }
+            .environment(\.ambientPalette, t.palette)
+        }
+    }
+    func barBadge(_ t: AppTab) -> Int {
+        switch t {
+        case .inbox: return store.inboxTodo.count
+        case .drafts: return store.pendingDrafts.count
+        default: return 0
+        }
+    }
+
     /// Only used by the cloud preview build (set through simulator launch environment): open a given tab, or walk through every tab.
     func previewMode() async {
         let env = ProcessInfo.processInfo.environment
-        let tabs: [String: AppTab] = ["today": .today, "inbox": .inbox, "study": .study, "library": .library, "search": .search]
-        if let name = env["LIFEOS_TAB"], let t = tabs[name] { store.tab = t }
+        if let name = env["LIFEOS_TAB"], let t = AppTab(rawValue: name) { store.go(t) }
         if env["LIFEOS_LOCK"] != nil { try? await Task.sleep(for: .seconds(1)); store.lockShown = true }
         guard env["LIFEOS_TOUR"] != nil else { return }
-        let order: [AppTab] = [.today, .inbox, .study, .library, .search, .today]
+        let order: [AppTab] = store.barTabs + [.library, .search, store.barTabs.first ?? .library]
         try? await Task.sleep(for: .seconds(3))
         for t in order {
             withAnimation(.smooth(duration: 0.45)) { store.tab = t }
@@ -135,7 +149,7 @@ struct NowAccessory: View {
     private func primary() {
         if focus.running { store.sheet = .focus; return }
         let (cur, next) = store.now
-        if cur != nil { store.tab = .study; return }
+        if cur != nil { store.go(.study); return }
         if let s = store.pulse["focus"].string, !s.isEmpty {
             if let t = store.target(for: s, hint: store.pulse["focusTarget"]) { store.open(t) } else { store.sheet = .ask(s) }
             return
@@ -143,7 +157,7 @@ struct NowAccessory: View {
         if let next {
             switch next.kind {
             case .calendar: store.open(["page": "calendar", "id": .string(String(next.id.dropFirst(3)))])
-            case .study: store.tab = .study
+            case .study: store.go(.study)
             default: store.open(["page": "timetable"])
             }
             return

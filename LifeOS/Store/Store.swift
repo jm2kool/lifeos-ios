@@ -39,7 +39,8 @@ enum SheetRoute: Identifiable, Equatable {
     }
 }
 
-enum AppTab: Hashable { case today, inbox, study, library, search }
+/// Every screen that can sit in the tab bar. `library` is the More tab (always there), `search` the search tab.
+enum AppTab: String, Hashable, CaseIterable { case today, inbox, study, board, drafts, calendar, timetable, feed, saved, finances, workflows, library, search }
 
 @MainActor
 @Observable
@@ -51,7 +52,8 @@ final class Store {
     var undoStack: [UndoEntry] = []
     var sheet: SheetRoute?
     var tab: AppTab = .today
-    var libraryPath: [LibraryPage] = []   // lets a suggestion open a page (and item) inside Library
+    var libraryPath: [LibraryPage] = []   // lets a suggestion open a page (and item) inside More
+    var tabPaths: [AppTab: [LibraryPage]] = [:]   // the same, for pages you've put in the tab bar
     var lockShown = false       // study lock screen
     static let shared = Store()
     var syncStatus: String = "Sync is off. Everything stays on this iPhone."
@@ -246,22 +248,21 @@ final class Store {
         sheet = nil
         switch page {
         case "draft", "drafts":
-            tab = .library
-            libraryPath = drafts.contains { $0.id == id } ? [.drafts, .draft(id)] : [.drafts]
+            go(.drafts, then: drafts.contains { $0.id == id } ? [.draft(id)] : [])
         case "inbox", "email":
-            tab = .inbox
+            go(.inbox)
             if mail.contains(where: { $0.id == id }) { present(.inbox(id)) }
         case "calendar", "event":
-            tab = .library; libraryPath = [.calendar]
+            go(.calendar)
             if allEvents.contains(where: { $0.id == id }) { present(.event(id)) }
-        case "board", "card": tab = .library; libraryPath = [.board]
-        case "timetable": tab = .library; libraryPath = [.timetable]
-        case "saved": tab = .library; libraryPath = [.saved]
+        case "board", "card": go(.board)
+        case "timetable": go(.timetable)
+        case "saved": go(.saved)
         case "feed":
-            tab = .library; libraryPath = [.feed]
+            go(.feed)
             if feed.contains(where: { $0.id == id }) { present(.feed(id)) }
-        case "study": tab = .study
-        default: tab = .today
+        case "study": go(.study)
+        default: go(.today)
         }
     }
     /// Sheets can't open while another is closing, so wait a moment.

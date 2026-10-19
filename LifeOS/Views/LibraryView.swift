@@ -3,9 +3,13 @@ import UIKit
 import MessageUI
 
 enum LibraryPage: Hashable {
-    case board, drafts, draft(String), calendar, timetable, feed, saved, finances, workflows
+    case board, drafts, draft(String), calendar, timetable, feed, saved, finances, workflows, today, inbox, study, captures
     @MainActor @ViewBuilder var view: some View {
         switch self {
+        case .today: TodayView()
+        case .inbox: InboxView()
+        case .study: StudyView()
+        case .captures: CapturesView()
         case .board: BoardView()
         case .drafts: DraftsView()
         case .draft(let id): DraftDetail(id: id)
@@ -24,14 +28,12 @@ struct LibraryView: View {
     var body: some View {
         List {
             Section {
-                link(.board, "Board", "rectangle.split.3x1.fill", .green, badge: store.cards.filter { $0.column < 2 }.count)
-                link(.drafts, "Drafts", "doc.text.fill", .pink, badge: store.pendingDrafts.count)
-                link(.calendar, "Calendar", "calendar", .red)
-                link(.timetable, "Timetable", "clock.fill", .blue)
-                link(.feed, "Feed", "dot.radiowaves.up.forward", .orange)
-                link(.saved, "Saved", "bookmark.fill", .yellow)
-                link(.finances, "Finances", "creditcard.fill", .teal)
-                link(.workflows, "Workflows", "bolt.fill", .indigo)
+                ForEach(store.moreTabs, id: \.self) { t in
+                    if let p = t.page { link(p, t.title, t.tile.0, t.tile.1, badge: store.badge(for: t)) }
+                }
+                if !store.content["captures"].array.isEmpty {
+                    link(.captures, "Captured", "mic.fill", .purple, badge: store.capturesToReview.count)
+                }
             }
             Section("Assistant") {
                 Button { store.sheet = .ask("") } label: { row("Ask Gemini", "sparkles", .purple, sub: "Move things around, plan, draft emails") }
@@ -42,11 +44,12 @@ struct LibraryView: View {
             .buttonStyle(.plain)
             Section {
                 Button { store.sheet = .activity } label: { row("Activity", "clock.arrow.circlepath", .gray, sub: "Every change and who made it") }
+                NavigationLink { TabBarSettings() } label: { row("Tab bar", "dock.rectangle", .gray, sub: "Choose what sits in the bar") }
                 Button { store.sheet = .settings } label: { row("Settings", "gearshape.fill", .gray, sub: store.syncStatus) }
             }
             .buttonStyle(.plain)
         }
-        .navigationTitle("Library")
+        .navigationTitle("More")
         .pageBackground()
         .navigationDestination(for: LibraryPage.self) { $0.view }
     }

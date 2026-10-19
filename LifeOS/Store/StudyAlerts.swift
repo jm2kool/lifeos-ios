@@ -88,7 +88,7 @@ final class NotificationRouter: NSObject, UNUserNotificationCenterDelegate {
         let end = request.content.userInfo["end"] as? Double ?? 0
         let startFocus = response.actionIdentifier == StudyAlerts.focusAction
         await MainActor.run {
-            Store.shared.tab = .study
+            Store.shared.go(.study)
             if startFocus {
                 let left = Int((end - Date().timeIntervalSince1970) / 60)
                 FocusTimer.shared.start(minutes: max(5, min(240, left)), label: title)
