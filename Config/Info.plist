@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.jm2kool.matinee.auth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>matinee</string>
+			</array>
+		</dict>
+	</array>
+	<!-- Optional: bake your account server in so the app is ready on first launch.
+	     Leave empty to paste them in Settings → Account server instead. -->
+	<key>MatineeSupabaseURL</key>
+	<string></string>
+	<key>MatineeSupabaseAnonKey</key>
+	<string></string>
+	<key>MatineeTMDBToken</key>
+	<string></string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>UIUserInterfaceStyle</key>
+	<string>Dark</string>
+</dict>
+</plist>

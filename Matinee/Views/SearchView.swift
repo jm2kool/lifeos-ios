@@ -1,0 +1,234 @@
+import SwiftUI
+
+struct SearchView: View {
+    @Environment(Library.self) private var library
+    @State private var query = ""
+    @State private var results: [FilmRef] = []
+    @State private var loading = false
+    @State private var error: String?
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                    if !library.doc.recentSearches.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            SectionHeader(title: "Recent") { Button("Clear") { library.clearSearches() } }
+                            VStack(spacing: 0) {
+                                ForEach(library.doc.recentSearches, id: \.self) { q in
+                                    Button { query = q } label: {
+                                        HStack {
+                                            Image(systemName: "clock.arrow.circlepath").foregroundStyle(Theme.dim)
+                                            Text(q)
+                                            Spacer()
+                                            Image(systemName: "arrow.up.left").foregroundStyle(Theme.dim).font(.caption)
+                                        }
+                                        .padding(.vertical, 12).padding(.horizontal, 20)
+                                        .contentShape(.rect)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: 12) {
+                        SectionHeader("Genres")
+                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                            ForEach(Catalog.genres, id: \.self) { g in
+                                NavigationLink(value: GenreRoute(name: g)) { GenreTile(name: g) }.buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
+                } else if loading && results.isEmpty {
+                    ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
+                } else if let error, results.isEmpty {
+                    EmptyState(symbol: "wifi.exclamationmark", title: "Search failed", message: error).padding(.top, 40)
+                } else if results.isEmpty {
+                    EmptyState(symbol: "magnifyingglass", title: "No films found", message: "Try a different spelling or the original title.").padding(.top, 40)
+                } else {
+                    LazyVStack(spacing: 0) {
+                        ForEach(results) { f in SearchRow(film: f) }
+                    }
+                }
+            }
+            .padding(.vertical, 8)
+        }
+        .oledBackground()
+        .navigationTitle("Search")
+        .searchable(text: $query, prompt: "Films, e.g. Past Lives")
+        .onSubmit(of: .search) { library.rememberSearch(query) }
+        .task(id: query) {
+            let q = query
+            guard !q.trimmingCharacters(in: .whitespaces).isEmpty else { results = []; return }
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled else { return }
+            loading = true; defer { loading = false }
+            do {
+                let r = try await Catalog.search(q)
+                guard !Task.isCancelled else { return }
+                withAnimation(.smooth) { results = r; error = nil }
+            } catch { self.error = error.localizedDescription }
+        }
+    }
+}
+
+struct SearchRow: View {
+    let film: FilmRef
+    @Environment(Library.self) private var library
+
+    var body: some View {
+        NavigationLink(value: film) {
+            HStack(spacing: 14) {
+                PosterView(film: film, width: 54, corner: 6)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(film.title).font(.body.weight(.semibold)).lineLimit(2).multilineTextAlignment(.leading)
+                    HStack(spacing: 8) {
+                        Text(film.yearText).foregroundStyle(Theme.dim)
+                        if library.isWatched(film.id) { Image(systemName: "eye.fill").foregroundStyle(Theme.watch) }
+                        SmallStars(rating: library.rating(film.id))
+                    }
+                    .font(.subheadline)
+                }
+                Spacer()
+                Button { library.toggleWatchlist(film) } label: {
+                    Image(systemName: library.inWatchlist(film.id) ? "clock.fill" : "clock.badge.plus")
+                        .foregroundStyle(library.inWatchlist(film.id) ? Theme.list : .white.opacity(0.7))
+                        .frame(width: 30, height: 30)
+                }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+                .accessibilityLabel(library.inWatchlist(film.id) ? "Remove from watchlist" : "Add to watchlist")
+            }
+            .padding(.horizontal, 20).padding(.vertical, 8)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .filmContextMenu(film)
+    }
+}
+
+struct GenreTile: View {
+    let name: String
+    private var stableHue: Double {
+        Double(name.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) % 997 }) / 997
+    }
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            LinearGradient(colors: [Color(hue: stableHue, saturation: 0.75, brightness: 0.55), Color(hue: stableHue, saturation: 0.9, brightness: 0.18)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            Text(name).font(.headline).padding(14)
+        }
+        .frame(height: 84)
+        .clipShape(.rect(cornerRadius: 18))
+    }
+}
+
+/// Search-and-log in one place, opened from the Diary's + button.
+struct QuickLogSheet: View {
+    @Environment(Library.self) private var library
+    @Environment(Router.self) private var router
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+    @State private var results: [FilmRef] = []
+
+    var body: some View {
+        NavigationStack {
+            List {
+                let pool = query.isEmpty ? Array((library.doc.watchlist + library.watchedFilms).prefix(20)) : results
+                if query.isEmpty && !pool.isEmpty {
+                    Text("From your watchlist and recent films").font(.caption.weight(.semibold)).foregroundStyle(Theme.dim)
+                        .listRowBackground(Color.clear)
+                }
+                ForEach(pool) { f in
+                    Button { router.sheet = .log(f, nil) } label: {
+                        HStack(spacing: 12) {
+                            PosterView(film: f, width: 40, corner: 4)
+                            VStack(alignment: .leading) {
+                                Text(f.title).font(.body.weight(.semibold))
+                                Text(f.yearText).font(.subheadline).foregroundStyle(Theme.dim)
+                            }
+                            Spacer()
+                            Image(systemName: "plus.circle.fill").font(.title2).foregroundStyle(Theme.accent)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(Color.clear)
+                }
+            }
+            .listStyle(.plain)
+            .oledBackground()
+            .navigationTitle("What did you watch?")
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search films")
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close", systemImage: "xmark") { dismiss() } } }
+            .task(id: query) {
+                guard !query.isEmpty else { results = []; return }
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled else { return }
+                if let r = try? await Catalog.search(query), !Task.isCancelled { results = r }
+            }
+        }
+    }
+}
+
+struct GenreView: View {
+    let genre: String
+    @State private var films: [FilmRef] = []
+    @State private var failed = false
+    var body: some View {
+        ScrollView {
+            if films.isEmpty {
+                if failed { EmptyState(symbol: "film", title: "Nothing here yet", message: "Couldn't load \(genre) films.") }
+                else { ProgressView().padding(.top, 80) }
+            } else {
+                PosterGrid(films: films, columns: 3).padding(16)
+            }
+        }
+        .oledBackground()
+        .navigationTitle(genre)
+        .task {
+            if let f = try? await Catalog.genre(genre) { films = f } else { failed = true }
+            if films.isEmpty { failed = true }
+        }
+    }
+}
+
+struct CollectionView: View {
+    let route: CollectionRoute
+    @Environment(Library.self) private var library
+    @State private var remote: [FilmRef] = []
+
+    private var title: String {
+        switch route {
+        case .shelf(let s): return s.title
+        case .watched: return "Films"
+        case .liked: return "Likes"
+        case .watchlist: return "Watchlist"
+        case .tag(let t): return "#\(t)"
+        case .rated(let r): return Stars.text(r)
+        }
+    }
+
+    private var films: [FilmRef] {
+        switch route {
+        case .shelf: return remote
+        case .watched: return library.watchedFilms
+        case .liked: return library.doc.liked.reversed()
+        case .watchlist: return library.doc.watchlist
+        case .tag(let t): return library.entries.filter { $0.tags.contains(t) }.map(\.film)
+        case .rated(let r): return library.watchedFilms.filter { library.rating($0.id) == r }
+        }
+    }
+
+    var body: some View {
+        ScrollView {
+            if films.isEmpty, case .shelf = route { ProgressView().padding(.top, 80) }
+            else if films.isEmpty { EmptyState(symbol: "film.stack", title: "Nothing here yet", message: "Films you add will show up here.").padding(.top, 60) }
+            else { PosterGrid(films: films, columns: 4).padding(16) }
+        }
+        .oledBackground()
+        .navigationTitle(title)
+        .task { if case .shelf(let s) = route { remote = (try? await Catalog.shelf(s)) ?? [] } }
+    }
+}

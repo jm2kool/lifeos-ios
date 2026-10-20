@@ -1,0 +1,69 @@
+# Matinee
+
+An independent film diary for iPhone, inspired by Letterboxd. It's built for iOS 26: Liquid Glass controls, a pure-black OLED theme, and sign-in with Google, Apple, GitHub, Discord, X, Facebook, Microsoft, Spotify or email.
+
+Matinee is not affiliated with Letterboxd.
+
+## What it does
+
+| Letterboxd | Matinee | How Matinee changes it |
+|---|---|---|
+| Rate / log / review sheet | **Inline action panel** on every film | Watch, like, watchlist and the star rating sit on the film page itself. Slide across the stars to rate in half steps. |
+| Long-press poster | **Long-press anywhere** | Log, watched, like, watchlist and add to list work from every poster in the app. |
+| Diary | **Diary + year heatmap** | A "this year so far" card and a 6-month heatmap of film nights. Swipe right to log again, left to edit or delete, with undo. |
+| Log date picker | **Today / Yesterday / Pick date** chips | One tap for the common case. |
+| Watchlist | **Watchlist + "Pick something for me"** | Picks a random film from your watchlist. |
+| Lists | **Lists with progress** | Shows "you've seen 3 of 7". Lists can be ranked and reordered by dragging. |
+| Profile favourites | **Four favourites + ratings spread** | Tap any bar in your ratings chart to see those films. |
+| Tags | **Tag suggestions** | Your past tags come up as chips while you log. |
+| Import | **Letterboxd CSV import** | Bring your whole history across from Settings. |
+
+## Install
+
+Every push to `main` builds an unsigned `.ipa` on GitHub's Macs and attaches it to the **latest** release. Install it with [Sideloadly](https://sideloadly.io) using your Apple ID, the same way you install LifeOS. The **preview** release has simulator screenshots and a short screen recording.
+
+## Film data
+
+The app works straight away using the free, keyless [imdbapi.dev](https://imdbapi.dev) catalog.
+
+For wide backdrops and better "more like this" suggestions, add a free TMDB token in **Settings → Film data**. To get one, go to themoviedb.org → Settings → API → *API Read Access Token*.
+
+## Sign-in setup (Google, Apple and the rest)
+
+Sign-in goes through a free [Supabase](https://supabase.com) project. Supabase handles every provider in one place, so no client secrets are stored in the app.
+
+1. Create a project at supabase.com. Copy the **Project URL** and the **anon / publishable key** from *Project Settings → API*.
+2. Go to *Authentication → URL Configuration* and add the redirect URL `matinee://auth-callback`.
+3. Go to *Authentication → Sign In / Providers* and turn on the ones you want:
+   - **Email**: on by default. It works with no extra setup.
+   - **Google**: in Google Cloud Console, create an OAuth client of type *Web application*. Set its authorised redirect URI to `https://<your-project>.supabase.co/auth/v1/callback`, then paste the client ID and secret into Supabase.
+   - **GitHub, Discord, X, Facebook, Microsoft (Azure), Spotify**: same pattern. Make an OAuth app on that site with the Supabase callback URL above, then paste its ID and secret into Supabase.
+   - **Apple**: needs a paid Apple Developer account, for a Services ID and key.
+4. In the app, go to **Settings → Account server** (also on the sign-in screen) and paste the URL and key. To have them built in instead, fill `MatineeSupabaseURL` and `MatineeSupabaseAnonKey` in `Config/Info.plist`.
+
+Providers you haven't switched on in Supabase show an error page in the sign-in sheet.
+
+### Optional: sync your library to your account
+
+Run this in Supabase's SQL editor. Once it's in place, your diary, ratings and lists follow your account to any phone.
+
+```sql
+create table if not exists public.libraries (
+  user_id uuid primary key references auth.users on delete cascade,
+  doc jsonb not null,
+  updated_at timestamptz not null default now()
+);
+alter table public.libraries enable row level security;
+create policy "own library" on public.libraries
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+```
+
+## Project layout
+
+```
+Matinee/App        App entry, tabs, routes
+Matinee/Model      FilmRef, LogEntry, FilmList, and the Library store (JSON on disk + cloud sync)
+Matinee/Services   Catalog (imdbapi.dev / TMDB), Auth (Supabase + PKCE), Letterboxd importer
+Matinee/Views      Home, Film, Log sheet, Diary, Library, Lists, Profile, Search, Sign-in, Settings
+project.yml        XcodeGen spec. CI runs `xcodegen generate` and then builds.
+```

@@ -1,0 +1,8 @@
+build/
+simbuild/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+DerivedData/
+.DS_Store
+Payload/
+*.ipa
