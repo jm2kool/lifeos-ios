@@ -45,7 +45,7 @@ jobs:
           xcodebuild -project Matinee.xcodeproj -target Matinee -configuration Release -sdk iphoneos \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             SYMROOT="$PWD/build" build > build.log 2>&1 || {
-              echo "::group::Errors"; grep -E "error:|fatal error" build.log | sort -u | head -120; echo "::endgroup::"; exit 1; }
+              grep -E "error:|fatal error" build.log | sort -u | head -60 | while IFS= read -r l; do echo "::error::${l#$PWD/}"; done; exit 1; }
           grep -c "warning:" build.log || true
           test -d build/Release-iphoneos/Matinee.app
 

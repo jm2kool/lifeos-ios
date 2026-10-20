@@ -33,7 +33,7 @@ jobs:
           brew install xcodegen >/dev/null 2>&1 || brew install xcodegen
           xcodegen generate
           xcodebuild -project Matinee.xcodeproj -target Matinee -configuration Debug -sdk iphonesimulator \
-            CODE_SIGNING_ALLOWED=NO SYMROOT="$PWD/simbuild" build > sim.log 2>&1 || { grep -E "error:" sim.log | sort -u | head -60; exit 1; }
+            CODE_SIGNING_ALLOWED=NO SYMROOT="$PWD/simbuild" build > sim.log 2>&1 || { grep -E "error:" sim.log | sort -u | head -60 | while IFS= read -r l; do echo "::error::${l#$PWD/}"; done; exit 1; }
           test -d simbuild/Debug-iphonesimulator/Matinee.app
 
       - name: Boot an iPhone
