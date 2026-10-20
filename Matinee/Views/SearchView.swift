@@ -57,7 +57,7 @@ struct SearchView: View {
             }
             .padding(.vertical, 8)
         }
-        .oledBackground()
+        .ambientBackground(Array(results.prefix(3)))
         .navigationTitle("Search")
         .searchable(text: $query, prompt: "Films, e.g. Past Lives")
         .onSubmit(of: .search) { library.rememberSearch(query) }
@@ -195,7 +195,7 @@ struct GenreView: View {
                 PosterGrid(films: films, columns: 3).padding(16)
             }
         }
-        .oledBackground()
+        .ambientBackground(Array(films.prefix(3)))
         .navigationTitle(genre)
         .task {
             if let f = try? await Catalog.genre(genre) { films = f } else { failed = true }
@@ -255,7 +255,7 @@ struct CollectionView: View {
                 }
             }
         }
-        .oledBackground()
+        .ambientBackground(Array(films.prefix(3)))
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(deckMode && !films.isEmpty ? .hidden : .visible, for: .tabBar)

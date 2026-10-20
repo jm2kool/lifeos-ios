@@ -12,6 +12,8 @@ struct PosterPalette: Equatable {
     var background: Color { Color(uiColor: accentUI.adjusted(maxBrightness: 0.36, minSaturation: 0.35)) }
     /// A slightly lighter tone for cards sitting on the background.
     var surface: Color { Color(uiColor: accentUI.adjusted(maxBrightness: 0.5, minSaturation: 0.3)).opacity(0.55) }
+    /// A vivid version of the accent for glows behind posters and pages.
+    var glow: Color { Color(uiColor: accentUI.adjusted(maxBrightness: 0.95, minSaturation: 0.5, minBrightness: 0.55)) }
     /// A bright tint for highlights (stars, links) on the background.
     var highlight: Color { Color(uiColor: accentUI.adjusted(maxBrightness: 1, minSaturation: 0.45, minBrightness: 0.85)) }
 }

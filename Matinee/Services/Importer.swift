@@ -13,7 +13,7 @@ final class Importer {
     struct Row { var name: String; var year: Int?; var date: Date?; var rating: Double?; var rewatch = false; var review = ""; var tags: [String] = []; var kind: Kind }
     enum Kind { case diary, watched, watchlist, ratings, likes, reviews }
 
-    func run(_ urls: [URL], into library: Library) async {
+    func run(_ urls: [URL], into library: Library, forceKind: Kind? = nil) async {
         running = true; done = 0; unmatched = []; summary = nil
         defer { running = false }
         var rows: [Row] = []
@@ -22,8 +22,8 @@ final class Importer {
             defer { if access { url.stopAccessingSecurityScopedResource() } }
             guard let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
             let name = url.deletingPathExtension().lastPathComponent.lowercased()
-            let kind: Kind = name.contains("diary") ? .diary : name.contains("watchlist") ? .watchlist : name.contains("rating") ? .ratings
-                : name.contains("like") ? .likes : name.contains("review") ? .reviews : .watched
+            let kind: Kind = forceKind ?? (name.contains("diary") ? .diary : name.contains("watchlist") ? .watchlist : name.contains("rating") ? .ratings
+                : name.contains("like") ? .likes : name.contains("review") ? .reviews : .watched)
             rows += parse(text, kind: kind)
         }
         total = rows.count

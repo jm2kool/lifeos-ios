@@ -11,6 +11,7 @@ struct SwipeDeck<Empty: View>: View {
     var onSwipe: (FilmRef, Bool) -> Void
     var onMiddle: ((FilmRef) -> Void)? = nil
     var onTap: ((FilmRef) -> Void)? = nil
+    var onTop: ((FilmRef?) -> Void)? = nil
     @ViewBuilder var empty: Empty
 
     @State private var index = 0
@@ -56,6 +57,7 @@ struct SwipeDeck<Empty: View>: View {
             }
         }
         .animation(.smooth(duration: 0.3), value: index)
+        .onChange(of: index, initial: true) { _, i in onTop?(films.indices.contains(i) ? films[i] : nil) }
     }
 
     private func dragGesture(_ f: FilmRef) -> some Gesture {
@@ -164,11 +166,13 @@ struct TasteQuizView: View {
     @State private var cards: [(film: FilmRef, genres: [String])] = []
     @State private var failed = false
     @State private var result: Persona?
+    @State private var top: FilmRef?
     private let goal = 20
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
+            AmbientGlow(urls: result == nil ? (top?.poster.map { [$0] } ?? []) : [], intensity: 0.55)
             if let result {
                 PersonaReveal(persona: result) { dismiss() }
                     .transition(.opacity.combined(with: .scale(scale: 0.9)))
@@ -187,7 +191,8 @@ struct TasteQuizView: View {
                                       taste.record(f, genres: genres(for: f), liked: liked)
                                       if taste.profile.seen >= goal { reveal() }
                                   },
-                                  onMiddle: { _ in }) {
+                                  onMiddle: { _ in },
+                                  onTop: { top = $0 }) {
                             VStack(spacing: 14) {
                                 Text("That's the deck!").font(.title2.bold())
                                 Button("Show my character") { reveal() }.buttonStyle(.glassProminent).controlSize(.large)
@@ -333,6 +338,7 @@ struct FilmDeckScreen: View {
     @Environment(Watching.self) private var watching
     @State private var rightCount = 0
     @State private var round = 0
+    @State private var top: FilmRef?
 
     var body: some View {
         SwipeDeck(films: films, likeLabel: labels.like, nopeLabel: labels.nope, likeSymbol: labels.symbol, likeColor: labels.color,
@@ -347,7 +353,8 @@ struct FilmDeckScreen: View {
                           router.open(f)
                       }
                   },
-                  onTap: { router.open($0) }) {
+                  onTap: { router.open($0) },
+                  onTop: { top = $0 }) {
             VStack(spacing: 16) {
                 Text("🍿").font(.system(size: 64))
                 Text("That's all \(films.count)").font(.title2.weight(.bold))
@@ -363,6 +370,7 @@ struct FilmDeckScreen: View {
         .padding(.horizontal, 16)
         .padding(.top, 4)
         .padding(.bottom, 12)
+        .background(AmbientGlow(urls: top?.poster.map { [$0] } ?? [], intensity: 0.55))
     }
 
     private var labels: (like: String, nope: String, symbol: String, color: Color) {

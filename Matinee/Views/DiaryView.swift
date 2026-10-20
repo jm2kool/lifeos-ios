@@ -64,7 +64,7 @@ struct DiaryView: View {
             }
         }
         .listStyle(.plain)
-        .oledBackground()
+        .ambientBackground(library.entries.prefix(3).map(\.film))
         .navigationTitle("Diary")
         .searchable(text: $filter, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Filter by title or #tag")
         .toolbar {

@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct LibraryView: View {
     enum Pane: String, CaseIterable { case watchlist = "Watchlist", films = "Films", likes = "Likes", lists = "Lists" }
@@ -6,6 +7,8 @@ struct LibraryView: View {
     @Environment(Router.self) private var router
     @AppStorage("librarySection") private var section: Pane = .watchlist
     @AppStorage("watchlistSort") private var sortByTitle = false
+    @State private var importer = Importer()
+    @State private var importingWatchlist = false
 
     var body: some View {
         ScrollView {
@@ -26,21 +29,30 @@ struct LibraryView: View {
             .padding(.vertical, 8)
             .animation(.smooth, value: section)
         }
-        .oledBackground()
+        .ambientBackground(glowFilms)
+        .fileImporter(isPresented: $importingWatchlist, allowedContentTypes: [.commaSeparatedText, .plainText], allowsMultipleSelection: false) { result in
+            if case .success(let urls) = result {
+                section = .watchlist
+                Task { await importer.run(urls, into: library, forceKind: .watchlist) }
+            }
+        }
         .navigationTitle("Library")
         .toolbar {
             if section == .lists {
                 ToolbarItem(placement: .topBarTrailing) { Button("New list", systemImage: "plus") { router.sheet = .newList(nil) } }
             }
-            if section == .watchlist && !library.doc.watchlist.isEmpty {
+            if section == .watchlist {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        Picker("Sort", selection: $sortByTitle) {
-                            Text("Recently added").tag(false)
-                            Text("Title").tag(true)
-                        }
-                        Button("Pick something for me", systemImage: "dice") {
-                            if let f = library.doc.watchlist.randomElement() { router.open(f) }
+                        Button("Import Letterboxd watchlist…", systemImage: "square.and.arrow.down") { importingWatchlist = true }
+                        if !library.doc.watchlist.isEmpty {
+                            Picker("Sort", selection: $sortByTitle) {
+                                Text("Recently added").tag(false)
+                                Text("Title").tag(true)
+                            }
+                            Button("Pick something for me", systemImage: "dice") {
+                                if let f = library.doc.watchlist.randomElement() { router.open(f) }
+                            }
                         }
                     } label: { Image(systemName: "line.3.horizontal.decrease") }
                 }
@@ -48,14 +60,61 @@ struct LibraryView: View {
         }
     }
 
+    private var glowFilms: [FilmRef] {
+        switch section {
+        case .watchlist: return Array(library.doc.watchlist.prefix(3))
+        case .films: return Array(library.watchedFilms.prefix(3))
+        case .likes: return Array(library.doc.liked.reversed().prefix(3))
+        case .lists: return library.doc.lists.compactMap(\.films.first)
+        }
+    }
+
     @ViewBuilder private var watchlist: some View {
         let list = sortByTitle ? library.doc.watchlist.sorted { $0.title < $1.title } : library.doc.watchlist
+        if importer.running || importer.summary != nil { importStatus }
         if list.isEmpty {
             EmptyState(symbol: "clock", title: "Nothing saved yet", message: "Tap the clock on any film to save it for later.").padding(.top, 40)
+            Button { importingWatchlist = true } label: {
+                Label("Import my Letterboxd watchlist", systemImage: "square.and.arrow.down").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.glass).controlSize(.large).padding(.horizontal, 40)
+            Text("On letterboxd.com open your Watchlist and choose Export Watchlist (or Settings → Data → Export and unzip it in Files), then pick watchlist.csv.")
+                .font(.caption).foregroundStyle(Theme.dim).multilineTextAlignment(.center).padding(.horizontal, 40)
         } else {
             Text("\(list.count) film\(list.count == 1 ? "" : "s") to watch").font(.subheadline).foregroundStyle(Theme.dim).padding(.horizontal, 20)
             PosterGrid(films: list).padding(.horizontal, 16)
         }
+    }
+
+    /// Progress and result of a Letterboxd watchlist import.
+    private var importStatus: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Image(systemName: importer.running ? "arrow.down.circle" : "checkmark.circle.fill")
+                    .foregroundStyle(importer.running ? Theme.accent : Theme.watch)
+                    .symbolEffect(.pulse, isActive: importer.running)
+                Text(importer.running ? "Importing from Letterboxd… \(importer.done)/\(importer.total)" : (importer.summary ?? ""))
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                if !importer.running { Button("Done") { importer.summary = nil }.font(.subheadline.weight(.semibold)) }
+            }
+            if importer.running {
+                ProgressView(value: Double(importer.done), total: Double(max(importer.total, 1))).tint(Theme.accent)
+            }
+            if !importer.running && !importer.unmatched.isEmpty {
+                DisclosureGroup("\(importer.unmatched.count) couldn't be matched") {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(importer.unmatched, id: \.self) { Text($0).font(.caption).foregroundStyle(Theme.dim) }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .font(.footnote)
+                .tint(.white)
+            }
+        }
+        .padding(14)
+        .glassEffect(.regular, in: .rect(cornerRadius: 18))
+        .padding(.horizontal, 16)
     }
 
     @ViewBuilder private var films: some View {
@@ -214,7 +273,7 @@ struct ListDetailView: View {
                 EmptyState(symbol: "list.bullet", title: "List not found", message: "It may have been deleted.")
             }
         }
-        .oledBackground()
+        .ambientBackground(Array((list?.films ?? []).prefix(3)))
     }
 }
 

@@ -68,7 +68,9 @@ struct PosterView: View {
     var width: CGFloat? = nil
     var corner: CGFloat = 8
     var showTitleFallback = true
+    var glows = true
     @State private var fetched: URL?
+    @State private var glow: Color?
     @Environment(Library.self) private var library
 
     var body: some View {
@@ -84,6 +86,13 @@ struct PosterView: View {
         .frame(width: width)
         .clipShape(.rect(cornerRadius: corner))
         .overlay(RoundedRectangle(cornerRadius: corner).strokeBorder(Theme.line, lineWidth: 0.5))
+        // Each poster casts a soft halo in its own colour.
+        .shadow(color: (glow ?? .clear).opacity(0.55), radius: max(6, (width ?? 90) * 0.14), y: max(2, (width ?? 90) * 0.05))
+        .task(id: film.poster ?? fetched) {
+            guard glows, let url = film.poster ?? fetched else { return }
+            if let hit = Palette.cached(url) { glow = hit.glow; return }
+            if let p = await Palette.of(url) { withAnimation(.easeOut(duration: 0.5)) { glow = p.glow } }
+        }
         .task(id: film.id) {
             guard film.poster == nil else { return }
             if let d = try? await Catalog.detail(film.id) {
@@ -344,5 +353,54 @@ struct GlassChip<Label: View>: View {
                              in: circle ? AnyShape(Circle()) : AnyShape(Capsule()))
         }
         .buttonStyle(.plain)
+    }
+}
+
+
+// MARK: - Ambient glow
+
+/// Soft, slow-moving washes of colour pulled from the posters on screen, over OLED black.
+struct AmbientGlow: View {
+    let urls: [URL]
+    var intensity: Double = 0.38
+    @State private var colors: [Color] = []
+
+    var body: some View {
+        GeometryReader { g in
+            let w = g.size.width
+            let spots: [CGPoint] = [CGPoint(x: w * 0.15, y: g.size.height * 0.12), CGPoint(x: w * 0.95, y: g.size.height * 0.38),
+                                    CGPoint(x: w * 0.2, y: g.size.height * 0.78)]
+            ZStack {
+                Color.black
+                ForEach(Array(colors.prefix(3).enumerated()), id: \.offset) { i, c in
+                    Circle()
+                        .fill(c)
+                        .frame(width: w * 1.05, height: w * 1.05)
+                        .position(spots[i])
+                        .blur(radius: 110)
+                        .opacity(intensity)
+                }
+            }
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .task(id: urls) {
+            var out: [Color] = []
+            for u in urls.prefix(3) {
+                var p = Palette.cached(u)
+                if p == nil { p = await Palette.of(u) }
+                if let p { out.append(p.glow) }
+            }
+            withAnimation(.easeInOut(duration: 1.2)) { colors = out }
+        }
+    }
+}
+
+extension View {
+    /// OLED black with a glow taken from these posters.
+    func ambientBackground(_ films: [FilmRef], intensity: Double = 0.38) -> some View {
+        background(AmbientGlow(urls: films.compactMap(\.poster).prefix(3).map { $0 }, intensity: intensity))
+            .scrollContentBackground(.hidden)
     }
 }

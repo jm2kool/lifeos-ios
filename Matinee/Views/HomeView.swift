@@ -12,6 +12,16 @@ struct HomeView: View {
 
     private var connected: Bool { !token.isEmpty || Catalog.hasToken }
 
+    /// The page glow follows the hero film on screen, mixed with what's next for you.
+    private var glowFilms: [FilmRef] {
+        var out: [FilmRef] = []
+        if hero.indices.contains(heroPage) { out.append(hero[heroPage]) }
+        out += taste.picks.prefix(1)
+        out += library.doc.watchlist.prefix(1)
+        out += (shelves[.topRated] ?? []).prefix(1)
+        return out
+    }
+
     private var hero: [FilmRef] { Array((shelves[.trending] ?? []).filter { $0.backdrop != nil }.prefix(8)) }
 
     var body: some View {
@@ -66,7 +76,7 @@ struct HomeView: View {
             }
             .padding(.bottom, 32)
         }
-        .oledBackground()
+        .ambientBackground(glowFilms, intensity: 0.42)
         .ignoresSafeArea(edges: .top)
         .toolbar(.hidden, for: .navigationBar)
         .refreshable { await load(force: true) }
