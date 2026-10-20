@@ -13,18 +13,14 @@ jobs:
       - name: Call the catalog
         run: |
           mkdir out; cd out
-          B=https://api.imdbapi.dev
-          p() { echo "=== $1" >> probe.txt; curl -sS -m 25 -A "Matinee/1.0 (iPhone; iOS 26)" -w "\nHTTP %{http_code}\n" "$1" | head -c 2500 >> probe.txt; echo >> probe.txt; }
-          p "$B/titles?types=MOVIE&sortBy=SORT_BY_POPULARITY&sortOrder=ASC&minVoteCount=20000&startYear=2023"
-          p "$B/titles?types=MOVIE&sortBy=SORT_BY_USER_RATING&sortOrder=DESC&minVoteCount=300000"
-          p "$B/titles?types=MOVIE"
-          p "$B/titles?types=MOVIE&genres=Drama&sortBy=SORT_BY_POPULARITY&sortOrder=ASC&minVoteCount=50000"
-          p "$B/search/titles?query=dune&limit=5"
-          p "$B/titles/tt15239678"
-          p "$B/titles/tt15239678/credits?pageSize=3"
-          p "$B/chart/starmeter"
-          p "https://imdbapi.dev/imdbapi.swagger.yaml"
-          curl -sS -m 25 https://imdbapi.dev/imdbapi.swagger.yaml -o swagger.yaml || true
+          p() { echo "=== $1" >> probe.txt; curl -sS -m 25 -A "Matinee/1.0" -w "\nHTTP %{http_code}\n" "$1" 2>&1 | head -c 3500 >> probe.txt; echo >> probe.txt; }
+          p "https://itunes.apple.com/search?term=dune&media=movie&entity=movie&limit=2&country=us"
+          p "https://itunes.apple.com/us/rss/topmovies/limit=2/json"
+          p "https://itunes.apple.com/us/rss/topmovies/limit=2/genre=4401/json"
+          p "https://itunes.apple.com/lookup?id=1720568373&country=us"
+          p "https://rss.applemarketingtools.com/api/v2/us/movies/top-movies/2/movies.json"
+          p "https://api.imdbapi.dev/titles/tt15239678"
+          curl -v -m 20 https://api.imdbapi.dev/titles/tt15239678 > /dev/null 2>> probe.txt || true
           ls -l
       - name: Publish
         env:

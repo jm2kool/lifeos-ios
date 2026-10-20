@@ -3,7 +3,7 @@ name: Preview
 on:
   push:
     branches: [main, matinee]
-    paths-ignore: ['**.md']
+    paths-ignore: ['**.md', '.github/workflows/probe.yml']
   workflow_dispatch:
 
 permissions:

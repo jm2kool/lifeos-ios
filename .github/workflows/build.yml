@@ -3,7 +3,7 @@ name: Build IPA
 on:
   push:
     branches: [main, matinee]
-    paths-ignore: ['**.md']
+    paths-ignore: ['**.md', '.github/workflows/probe.yml']
   pull_request:
   workflow_dispatch:
 
