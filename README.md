@@ -12,6 +12,8 @@ Matinee is not affiliated with Letterboxd.
 | Long-press poster | **Long-press anywhere** | Log, watched, like, watchlist and add to list work from every poster in the app. |
 | Diary | **Diary + year heatmap** | A "this year so far" card and a 6-month heatmap of film nights. Swipe right to log again, left to edit or delete, with undo. |
 | Log date picker | **Today / Yesterday / Pick date** chips | One tap for the common case. |
+| Film page | **Full-screen poster, page tinted by the poster's colour** | Scroll up from the poster and the page underneath is painted in the poster's main colour. |
+| Profile | **Apple Card-style background** | A slowly moving colour blend drawn from your four favourite posters. |
 | Watchlist | **Watchlist + "Pick something for me"** | Picks a random film from your watchlist. |
 | Lists | **Lists with progress** | Shows "you've seen 3 of 7". Lists can be ranked and reordered by dragging. |
 | Profile favourites | **Four favourites + ratings spread** | Tap any bar in your ratings chart to see those films. |
@@ -24,9 +26,10 @@ Every push to `main` builds an unsigned `.ipa` on GitHub's Macs and attaches it 
 
 ## Film data
 
-The app works straight away using the free, keyless [imdbapi.dev](https://imdbapi.dev) catalog.
+Films, posters, cast and recommendations come from [TMDB](https://www.themoviedb.org), the same database Letterboxd uses. You need a free **API Read Access Token**: sign up, then go to Settings → API.
 
-For wide backdrops and better "more like this" suggestions, add a free TMDB token in **Settings → Film data**. To get one, go to themoviedb.org → Settings → API → *API Read Access Token*.
+- **In the app:** paste the token into the card on the Films tab, or under Settings → Film data.
+- **Built in:** add it as a repository secret named `TMDB_TOKEN`. CI writes it into `Config/Info.plist` at build time, so it never sits in the source code.
 
 ## Sign-in setup (Google, Apple and the rest)
 
@@ -63,7 +66,7 @@ create policy "own library" on public.libraries
 ```
 Matinee/App        App entry, tabs, routes
 Matinee/Model      FilmRef, LogEntry, FilmList, and the Library store (JSON on disk + cloud sync)
-Matinee/Services   Catalog (imdbapi.dev / TMDB), Auth (Supabase + PKCE), Letterboxd importer
+Matinee/Services   Catalog (TMDB), Auth (Supabase + PKCE), Letterboxd importer
 Matinee/Views      Home, Film, Log sheet, Diary, Library, Lists, Profile, Search, Sign-in, Settings
 project.yml        XcodeGen spec. CI runs `xcodegen generate` and then builds.
 ```

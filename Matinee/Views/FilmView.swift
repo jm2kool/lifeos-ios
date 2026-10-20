@@ -226,7 +226,7 @@ struct FilmView: View {
                         Text((r / 2).formatted(.number.precision(.fractionLength(1)))).font(.system(size: 40, weight: .bold, design: .rounded))
                         Image(systemName: "star.fill").foregroundStyle(Theme.star)
                     }
-                    if let v = d.voteCount { Text("\(v.formatted(.number.notation(.compactName))) ratings · \(Catalog.usingTMDB ? "TMDB" : "IMDb")").font(.caption).foregroundStyle(.white.opacity(0.65)) }
+                    if let v = d.voteCount { Text("\(v.formatted(.number.notation(.compactName))) ratings on TMDB").font(.caption).foregroundStyle(.white.opacity(0.65)) }
                 }
                 Spacer()
                 StarRating(rating: ((r / 2) * 2).rounded() / 2, size: 18, spacing: 3)

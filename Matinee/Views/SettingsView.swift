@@ -50,15 +50,15 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    LabeledContent("Catalog", value: Catalog.usingTMDB ? "TMDB" : "IMDb (free, no key)")
+                    LabeledContent("TMDB", value: Catalog.hasToken ? "Connected" : "Not connected")
                     SecureField("TMDB API read access token", text: $tmdb)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                     Button("Save token") {
-                        UserDefaults.standard.set(tmdb.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "tmdbToken")
-                        library.toast = Toast(text: tmdb.isEmpty ? "Using the free catalog" : "TMDB connected", symbol: "film")
+                        Catalog.setToken(tmdb)
+                        library.toast = Toast(text: Catalog.hasToken ? "TMDB connected" : "TMDB token removed", symbol: "film")
                     }
                 } header: { Text("Film data") } footer: {
-                    Text("Optional. A free TMDB token (themoviedb.org → Settings → API) adds wide backdrops and better recommendations. Films you've already logged keep working either way.")
+                    Text("Films, posters and cast come from TMDB. Get a free API Read Access Token at themoviedb.org → Settings → API and paste it here.")
                 }
 
                 Section {

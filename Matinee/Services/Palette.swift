@@ -95,8 +95,7 @@ extension FilmRef {
     /// A big version of the poster for full-screen use.
     var largePoster: URL? {
         guard let p = poster?.absoluteString else { return nil }
-        if p.contains("image.tmdb.org") { return URL(string: p.replacingOccurrences(of: "/w500/", with: "/w780/")) }
-        if p.contains("_UX500_") { return URL(string: p.replacingOccurrences(of: "_UX500_", with: "_UX1200_")) }
+        if p.contains("image.tmdb.org") { return URL(string: p.replacingOccurrences(of: "/w500/", with: "/original/")) }
         return poster
     }
 }

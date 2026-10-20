@@ -33,12 +33,11 @@ jobs:
           brew install xcodegen >/dev/null 2>&1 || brew install xcodegen
           xcodegen generate
 
-      - name: Check the film catalog responds
-        continue-on-error: true
+      - name: Bake in the TMDB token (if the repo has a TMDB_TOKEN secret)
+        env:
+          TMDB_TOKEN: ${{ secrets.TMDB_TOKEN }}
         run: |
-          curl -sS -m 20 "https://api.imdbapi.dev/search/titles?query=dune&limit=2" | head -c 1500; echo
-          curl -sS -m 20 "https://api.imdbapi.dev/titles?types=MOVIE&sortBy=SORT_BY_POPULARITY&sortOrder=ASC&minVoteCount=20000&startYear=2023" | head -c 1200; echo
-          curl -sS -m 20 "https://api.imdbapi.dev/titles/tt15239678/credits?pageSize=2" | head -c 1200; echo
+          if [ -n "$TMDB_TOKEN" ]; then plutil -replace MatineeTMDBToken -string "$TMDB_TOKEN" Config/Info.plist; echo "token baked in"; else echo "no token secret; paste it in the app"; fi
 
       - name: Build (unsigned)
         run: |

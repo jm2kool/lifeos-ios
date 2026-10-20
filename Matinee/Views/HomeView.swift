@@ -6,6 +6,10 @@ struct HomeView: View {
     @State private var shelves: [HomeShelf: [FilmRef]] = [:]
     @State private var failed = false
     @State private var heroIndex: Int? = 0
+    @State private var errorText: String?
+    @AppStorage("tmdbToken") private var token = ""
+
+    private var connected: Bool { !token.isEmpty || Catalog.hasToken }
 
     private var hero: [FilmRef] { Array((shelves[.trending] ?? []).filter { $0.backdrop != nil }.prefix(8)) }
 
@@ -13,7 +17,7 @@ struct HomeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 30) {
                 greeting
-                heroCarousel
+                if connected { heroCarousel } else { TMDBConnectCard() }
                 if !library.doc.watchlist.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
                         SectionHeader(title: "Up next", subtitle: "From your watchlist") {
@@ -30,8 +34,8 @@ struct HomeView: View {
                         }
                     }
                 }
-                if failed && shelves.isEmpty {
-                    EmptyState(symbol: "wifi.exclamationmark", title: "Couldn't load films", message: "Check your connection and pull to refresh.")
+                if connected && failed && shelves.isEmpty {
+                    EmptyState(symbol: "wifi.exclamationmark", title: "Couldn't load films", message: errorText ?? "Check your connection and pull to refresh.")
                         .padding(.top, 40)
                 }
                 genres
@@ -49,7 +53,7 @@ struct HomeView: View {
         .oledBackground()
         .toolbar(.hidden, for: .navigationBar)
         .refreshable { await load(force: true) }
-        .task { if shelves.isEmpty { await load() } }
+        .task(id: token) { if connected { await load(force: true) } }
     }
 
     private var greeting: some View {
@@ -126,10 +130,16 @@ struct HomeView: View {
 
     private func load(force: Bool = false) async {
         failed = false
-        await withTaskGroup(of: (HomeShelf, [FilmRef]?).self) { g in
-            for s in HomeShelf.allCases { g.addTask { let r = try? await Catalog.shelf(s); return (s, r) } }
-            for await (s, films) in g {
+        errorText = nil
+        await withTaskGroup(of: (HomeShelf, [FilmRef]?, String?).self) { g in
+            for s in HomeShelf.allCases {
+                g.addTask {
+                    do { let r = try await Catalog.shelf(s); return (s, r, nil) } catch { return (s, nil, error.localizedDescription) }
+                }
+            }
+            for await (s, films, err) in g {
                 if let films { withAnimation(.smooth) { shelves[s] = films } }
+                if let err { errorText = err }
             }
         }
         if shelves.values.allSatisfy(\.isEmpty) { failed = true }
@@ -206,5 +216,39 @@ struct Avatar: View {
     private var initials: String {
         let parts = profile.name.split(separator: " ").prefix(2).compactMap(\.first)
         return parts.isEmpty ? "🎬" : String(parts)
+    }
+}
+
+/// Shown until a TMDB token is added — the one bit of setup Matinee needs.
+struct TMDBConnectCard: View {
+    @State private var draft = ""
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                MatineeMark().frame(width: 44, height: 44).scaleEffect(0.7)
+                Text("Connect TMDB").font(.title2.weight(.bold))
+            }
+            Text("Matinee gets films, posters and cast from TMDB — the same database Letterboxd uses. It's free: make an account, open Settings → API, and copy the **API Read Access Token**.")
+                .font(.subheadline).foregroundStyle(.white.opacity(0.8))
+            Link(destination: URL(string: "https://www.themoviedb.org/settings/api")!) {
+                Label("Get a free token", systemImage: "arrow.up.right").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.glass).controlSize(.large)
+            TextField("Paste your token", text: $draft, axis: .vertical)
+                .lineLimit(1...3)
+                .font(.footnote.monospaced())
+                .textInputAutocapitalization(.never).autocorrectionDisabled()
+                .padding(14)
+                .background(Theme.card, in: .rect(cornerRadius: 16))
+            Button {
+                Catalog.setToken(draft)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            } label: { Text("Connect").font(.body.weight(.semibold)).frame(maxWidth: .infinity) }
+            .buttonStyle(.glassProminent).controlSize(.large)
+            .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).count < 20)
+        }
+        .padding(20)
+        .glassEffect(.regular, in: .rect(cornerRadius: 28))
+        .padding(.horizontal, 16)
     }
 }

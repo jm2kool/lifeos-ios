@@ -1,8 +1,7 @@
 import Foundation
 
 /// A lightweight reference to a film — enough to draw a poster and open its page.
-/// IDs are "tt…" for the free IMDb-backed catalog and "tmdb-…" for TMDB, so entries
-/// keep working even if you switch catalogs later.
+/// IDs are "tmdb-<id>". Older "tt…" (IMDb) ids still resolve through TMDB's find endpoint.
 struct FilmRef: Codable, Hashable, Identifiable {
     var id: String
     var title: String

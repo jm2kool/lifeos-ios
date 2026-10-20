@@ -6,11 +6,14 @@ struct SearchView: View {
     @State private var results: [FilmRef] = []
     @State private var loading = false
     @State private var error: String?
+    @AppStorage("tmdbToken") private var token = ""
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                if token.isEmpty && !Catalog.hasToken {
+                    TMDBConnectCard()
+                } else if query.trimmingCharacters(in: .whitespaces).isEmpty {
                     if !library.doc.recentSearches.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
                             SectionHeader(title: "Recent") { Button("Clear") { library.clearSearches() } }

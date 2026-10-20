@@ -239,11 +239,11 @@ final class Library {
         let cal = Calendar.current
         func day(_ n: Int) -> Date { cal.date(byAdding: .day, value: -n, to: .now)! }
         let films: [(String, String, Int)] = [
-            ("tt15239678", "Dune: Part Two", 2024), ("tt15398776", "Oppenheimer", 2023), ("tt6751668", "Parasite", 2019),
-            ("tt1375666", "Inception", 2010), ("tt0816692", "Interstellar", 2014), ("tt0110912", "Pulp Fiction", 1994),
-            ("tt0068646", "The Godfather", 1972), ("tt9362722", "Spider-Man: Across the Spider-Verse", 2023),
-            ("tt1160419", "Dune", 2021), ("tt0245429", "Spirited Away", 2001), ("tt7286456", "Joker", 2019),
-            ("tt0137523", "Fight Club", 1999)]
+            ("tmdb-693134", "Dune: Part Two", 2024), ("tmdb-872585", "Oppenheimer", 2023), ("tmdb-496243", "Parasite", 2019),
+            ("tmdb-27205", "Inception", 2010), ("tmdb-157336", "Interstellar", 2014), ("tmdb-680", "Pulp Fiction", 1994),
+            ("tmdb-238", "The Godfather", 1972), ("tmdb-569094", "Spider-Man: Across the Spider-Verse", 2023),
+            ("tmdb-438631", "Dune", 2021), ("tmdb-129", "Spirited Away", 2001), ("tmdb-475557", "Joker", 2019),
+            ("tmdb-550", "Fight Club", 1999)]
         let refs = films.map { FilmRef(id: $0.0, title: $0.1, year: $0.2) }
         var d = LibraryDoc()
         let ratings: [Double] = [5, 4.5, 5, 4, 4.5, 4, 5, 4.5, 3.5, 5]

@@ -13,11 +13,13 @@ struct J {
 }
 
 enum CatalogError: LocalizedError {
-    case http(Int), offline
+    case http(Int), offline, noToken
     var errorDescription: String? {
         switch self {
-        case .http(let c): return "The film database answered with error \(c)."
-        case .offline: return "Couldn't reach the film database."
+        case .http(401): return "TMDB didn't accept your token. Check it in Settings → Film data."
+        case .http(let c): return "TMDB answered with error \(c)."
+        case .offline: return "Couldn't reach TMDB. Check your connection."
+        case .noToken: return "Connect TMDB to load films."
         }
     }
 }
@@ -34,8 +36,8 @@ enum HomeShelf: String, CaseIterable, Identifiable {
     }
 }
 
-/// Film data. With a TMDB token it uses TMDB (richer: backdrops, trending, recommendations);
-/// otherwise it uses the free, keyless imdbapi.dev catalog so the app works out of the box.
+/// Film data from TMDB (themoviedb.org) — the same database Letterboxd uses.
+/// Needs a free API Read Access Token, pasted in the app or baked in at build time.
 @MainActor
 enum Catalog {
     static var tmdbToken: String {
@@ -43,7 +45,12 @@ enum Catalog {
         if !saved.isEmpty { return saved }
         return (Bundle.main.object(forInfoDictionaryKey: "MatineeTMDBToken") as? String) ?? ""
     }
-    static var usingTMDB: Bool { !tmdbToken.trimmingCharacters(in: .whitespaces).isEmpty }
+    static var hasToken: Bool { !tmdbToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    static func setToken(_ t: String) {
+        UserDefaults.standard.set(t.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "tmdbToken")
+        shelfCache = [:]
+    }
 
     private static var detailCache: [String: FilmDetail] = [:]
     private static var shelfCache: [String: [FilmRef]] = [:]
@@ -59,9 +66,9 @@ enum Catalog {
     // MARK: Public API
 
     static func shelf(_ s: HomeShelf) async throws -> [FilmRef] {
-        let key = "\(usingTMDB)-\(s.rawValue)"
+        let key = s.rawValue
         if let hit = shelfCache[key] { return hit }
-        let films = usingTMDB ? try await TMDB.shelf(s) : try await IMDb.shelf(s)
+        let films = try await TMDB.shelf(s)
         if !films.isEmpty { shelfCache[key] = films }
         return films
     }
@@ -69,20 +76,20 @@ enum Catalog {
     static func search(_ q: String) async throws -> [FilmRef] {
         let q = q.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return [] }
-        return usingTMDB ? try await TMDB.search(q) : try await IMDb.search(q)
+        return try await TMDB.search(q)
     }
 
     static func genre(_ g: String) async throws -> [FilmRef] {
-        let key = "\(usingTMDB)-genre-\(g)"
+        let key = "genre-\(g)"
         if let hit = shelfCache[key] { return hit }
-        let films = usingTMDB ? try await TMDB.genre(g) : try await IMDb.genre(g)
+        let films = try await TMDB.genre(g)
         if !films.isEmpty { shelfCache[key] = films }
         return films
     }
 
     static func detail(_ id: String) async throws -> FilmDetail {
         if let hit = detailCache[id] { return hit }
-        let d = id.hasPrefix("tmdb-") ? try await TMDB.detail(id) : try await IMDb.detail(id)
+        let d = try await TMDB.detail(id)
         detailCache[id] = d
         return d
     }
@@ -113,106 +120,6 @@ enum Catalog {
     }
 }
 
-// MARK: - imdbapi.dev (free, no key)
-
-@MainActor
-enum IMDb {
-    static let base = "https://api.imdbapi.dev"
-
-    /// Amazon image URLs can be resized by editing the `._V1_` marker.
-    static func image(_ s: String?, width: Int) -> URL? {
-        guard let s, !s.isEmpty else { return nil }
-        if let r = s.range(of: "._V1_") {
-            let head = s[..<r.lowerBound]
-            return URL(string: "\(head)._V1_QL80_UX\(width)_.jpg")
-        }
-        return URL(string: s)
-    }
-
-    static func isFilm(_ t: J) -> Bool {
-        guard let type = t["type"].str?.lowercased() else { return true }
-        return type.contains("movie") && !type.contains("tv")
-    }
-
-    static func ref(_ t: J) -> FilmRef? {
-        guard let id = t["id"].str, let title = t["primaryTitle"].str ?? t["originalTitle"].str else { return nil }
-        let img = t["primaryImage"]["url"].str
-        return FilmRef(id: id, title: title, year: t["startYear"].int,
-                       poster: image(img, width: 500), backdrop: image(img, width: 1200))
-    }
-
-    static func titles(_ q: [String: String]) async throws -> [FilmRef] {
-        var q = q
-        q["types"] = "MOVIE"
-        let j = try await Catalog.get(Catalog.url(base, "/titles", q))
-        return j["titles"].array.filter(isFilm).compactMap(ref).filter { $0.poster != nil }
-    }
-
-    static func shelf(_ s: HomeShelf) async throws -> [FilmRef] {
-        let y = Date.now.year
-        switch s {
-        case .trending:
-            return try await titles(["sortBy": "SORT_BY_POPULARITY", "sortOrder": "ASC", "minVoteCount": "20000", "startYear": String(y - 3)])
-        case .topRated:
-            return try await titles(["sortBy": "SORT_BY_USER_RATING", "sortOrder": "DESC", "minVoteCount": "300000"])
-        case .newReleases:
-            return try await titles(["sortBy": "SORT_BY_POPULARITY", "sortOrder": "ASC", "minVoteCount": "2000", "startYear": String(y)])
-        }
-    }
-
-    static func genre(_ g: String) async throws -> [FilmRef] {
-        try await titles(["genres": g, "sortBy": "SORT_BY_POPULARITY", "sortOrder": "ASC", "minVoteCount": "50000"])
-    }
-
-    static func search(_ q: String) async throws -> [FilmRef] {
-        let j = try await Catalog.get(Catalog.url(base, "/search/titles", ["query": q, "limit": "40"]))
-        return j["titles"].array.filter(isFilm).compactMap(ref)
-    }
-
-    static func detail(_ id: String) async throws -> FilmDetail {
-        let t = try await Catalog.get(Catalog.url(base, "/titles/\(id)"))
-        guard let r = ref(t) else { throw CatalogError.http(404) }
-        var d = FilmDetail(ref: r)
-        d.overview = t["plot"].str
-        d.runtimeMinutes = t["runtimeSeconds"].int.map { $0 / 60 }
-        d.genres = t["genres"].array.compactMap(\.str)
-        d.directors = t["directors"].array.compactMap { $0["displayName"].str }
-        d.communityRating = t["rating"]["aggregateRating"].double
-        d.voteCount = t["rating"]["voteCount"].int
-        d.countries = t["originCountries"].array.compactMap { $0["name"].str }
-        d.cast = t["stars"].array.compactMap(person)
-
-        // Fuller cast list and some similar films — both optional.
-        let firstGenre = d.genres.first
-        async let creditsJ = try? Catalog.get(Catalog.url(base, "/titles/\(id)/credits", ["pageSize": "30"]))
-        async let similarF = similar(to: firstGenre)
-        if let c = await creditsJ {
-            let actors = c["credits"].array.filter {
-                let cat = ($0["category"].str ?? "").lowercased()
-                return cat.contains("actor") || cat.contains("actress") || cat.contains("self")
-            }.compactMap { cr -> Person? in
-                guard var p = person(cr["name"]) else { return nil }
-                p.role = cr["characters"].array.compactMap(\.str).first ?? ""
-                return p
-            }
-            if !actors.isEmpty { d.cast = actors }
-        }
-        let sim = await similarF
-        d.similar = Array(sim.filter { $0.id != id }.prefix(15))
-        return d
-    }
-
-    static func similar(to genre: String?) async -> [FilmRef] {
-        guard let genre else { return [] }
-        return (try? await self.genre(genre)) ?? []
-    }
-
-    static func person(_ n: J) -> Person? {
-        guard let id = n["id"].str, let name = n["displayName"].str else { return nil }
-        return Person(id: id, name: name, role: "", photo: image(n["primaryImage"]["url"].str, width: 200))
-    }
-}
-
 // MARK: - TMDB (optional, needs a free token)
 
 @MainActor
@@ -231,6 +138,7 @@ enum TMDB {
     /// Accepts either a v4 "API Read Access Token" (long JWT) or a v3 API key.
     static func call(_ path: String, _ q: [String: String] = [:]) async throws -> J {
         let token = Catalog.tmdbToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else { throw CatalogError.noToken }
         var q = q
         q["language"] = "en-US"
         if token.count > 40 {
@@ -268,7 +176,13 @@ enum TMDB {
     }
 
     static func detail(_ id: String) async throws -> FilmDetail {
-        let num = id.replacingOccurrences(of: "tmdb-", with: "")
+        var num = id.replacingOccurrences(of: "tmdb-", with: "")
+        if id.hasPrefix("tt") {
+            // Older entries saved with an IMDb id: look the film up on TMDB.
+            let found = try await call("/find/\(id)", ["external_source": "imdb_id"])
+            guard let m = found["movie_results"].array.first?["id"].int else { throw CatalogError.http(404) }
+            num = String(m)
+        }
         let m = try await call("/movie/\(num)", ["append_to_response": "credits,recommendations"])
         guard let r = ref(m) else { throw CatalogError.http(404) }
         var d = FilmDetail(ref: r)

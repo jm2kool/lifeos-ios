@@ -29,9 +29,12 @@ jobs:
           sudo xcode-select -s "$XC"
 
       - name: Build for the simulator
+        env:
+          TMDB_TOKEN: ${{ secrets.TMDB_TOKEN }}
         run: |
           brew install xcodegen >/dev/null 2>&1 || brew install xcodegen
           xcodegen generate
+          if [ -n "$TMDB_TOKEN" ]; then plutil -replace MatineeTMDBToken -string "$TMDB_TOKEN" Config/Info.plist; fi
           xcodebuild -project Matinee.xcodeproj -target Matinee -configuration Debug -sdk iphonesimulator \
             CODE_SIGNING_ALLOWED=NO SYMROOT="$PWD/simbuild" build > sim.log 2>&1 || { grep -E "error:" sim.log | sort -u | head -60 | while IFS= read -r l; do echo "::error::${l#$PWD/}"; done; exit 1; }
           test -d simbuild/Debug-iphonesimulator/Matinee.app
@@ -63,8 +66,8 @@ jobs:
           sleep 4
           SIMCTL_CHILD_MATINEE_TAB=profile xcrun simctl launch --terminate-running-process "$UDID" $APP; shot 9 5b-profile-mesh
           kill -INT $REC; wait $REC || true
-          SIMCTL_CHILD_MATINEE_FILM=tt15239678 xcrun simctl launch --terminate-running-process "$UDID" $APP; shot 9 6-film
-          SIMCTL_CHILD_MATINEE_FILM=tt6751668 SIMCTL_CHILD_MATINEE_SCROLL=1 xcrun simctl launch --terminate-running-process "$UDID" $APP; shot 10 6b-film-scrolled
+          SIMCTL_CHILD_MATINEE_FILM=tmdb-693134 xcrun simctl launch --terminate-running-process "$UDID" $APP; shot 9 6-film
+          SIMCTL_CHILD_MATINEE_FILM=tmdb-496243 SIMCTL_CHILD_MATINEE_SCROLL=1 xcrun simctl launch --terminate-running-process "$UDID" $APP; shot 10 6b-film-scrolled
           SIMCTL_CHILD_MATINEE_TAB=diary SIMCTL_CHILD_MATINEE_LOG=1 xcrun simctl launch --terminate-running-process "$UDID" $APP; shot 7 7-log
           SIMCTL_CHILD_MATINEE_TAB=search xcrun simctl launch --terminate-running-process "$UDID" $APP; shot 5 8-search
           ls -lh out
