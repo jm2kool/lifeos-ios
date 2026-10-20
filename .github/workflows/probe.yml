@@ -14,13 +14,14 @@ jobs:
         run: |
           mkdir out; cd out
           p() { echo "=== $1" >> probe.txt; curl -sS -m 25 -A "Matinee/1.0" -w "\nHTTP %{http_code}\n" "$1" 2>&1 | head -c 3500 >> probe.txt; echo >> probe.txt; }
-          p "https://itunes.apple.com/search?term=dune&media=movie&entity=movie&limit=2&country=us"
-          p "https://itunes.apple.com/us/rss/topmovies/limit=2/json"
-          p "https://itunes.apple.com/us/rss/topmovies/limit=2/genre=4401/json"
-          p "https://itunes.apple.com/lookup?id=1720568373&country=us"
-          p "https://rss.applemarketingtools.com/api/v2/us/movies/top-movies/2/movies.json"
-          p "https://api.imdbapi.dev/titles/tt15239678"
-          curl -v -m 20 https://api.imdbapi.dev/titles/tt15239678 > /dev/null 2>> probe.txt || true
+          p "https://itunes.apple.com/search?term=dune&media=movie&limit=2"
+          p "https://itunes.apple.com/search?term=inception&media=movie&entity=movie&limit=2&country=us"
+          p "https://itunes.apple.com/search?term=past+lives&country=US&media=movie&limit=2"
+          p "https://itunes.apple.com/search?term=oppenheimer&entity=movie&limit=2"
+          p "https://itunes.apple.com/search?term=parasite&country=in&media=movie&limit=2"
+          p "https://itunes.apple.com/lookup?id=6793590242&country=us"
+          p "https://itunes.apple.com/us/rss/topmovies/limit=200/json" 
+          curl -sS "https://itunes.apple.com/us/rss/topmovies/limit=200/json" | python3 -c "import json,sys;d=json.load(sys.stdin);print('count',len(d['feed']['entry']))" >> probe.txt 2>&1 || true
           ls -l
       - name: Publish
         env:
