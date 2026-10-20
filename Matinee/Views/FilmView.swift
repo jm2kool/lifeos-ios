@@ -119,17 +119,19 @@ struct FilmView: View {
                 .allowsHitTesting(false)
             VStack(spacing: 10) {
                 TitleArt(title: ref.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 280, maxHeight: 110, fontSize: 40)
-                    .padding(.horizontal, 24)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 300)
                     .opacity(artLoaded || failed ? 1 : 0)
                     .visualEffect { content, geo in
                         // Shrink toward the nav bar as you scroll, then stay pinned there.
                         let f = geo.frame(in: .scrollView)
                         let pinTop = safeTop + 8
-                        let targetHeight: CGFloat = 30
+                        // Fit between the back button and the share/menu buttons: at most 30pt tall and 150pt wide.
+                        let fit = min(1, 30 / max(f.height, 1), 150 / max(f.width, 1))
                         let travel: CGFloat = 220
                         let distance = f.minY - pinTop
                         let p = min(1, max(0, 1 - distance / travel))
-                        let scale = 1 - p * (1 - min(1, targetHeight / max(f.height, 1)))
+                        let scale = 1 - p * (1 - fit)
                         return content.scaleEffect(scale, anchor: .top).offset(y: max(0, -distance))
                     }
                 VStack(spacing: 8) {

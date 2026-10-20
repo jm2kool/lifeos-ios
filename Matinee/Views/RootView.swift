@@ -48,7 +48,8 @@ struct RootView: View {
         }
         .overlay(alignment: .bottom) {
             // Intermission mode: a "now watching" bar floats above the tab bar while a film is in progress.
-            if let s = watching.current {
+            // Only while a film is actually playing — paused films live in the Intermission shelf and on their page.
+            if let s = watching.current, s.running {
                 NowWatchingBar(session: s)
                     .padding(.bottom, 64)
                     .transition(.move(edge: .bottom).combined(with: .opacity))

@@ -297,14 +297,17 @@ struct PersonaCard: View {
                     }
                 }
             }
-            HStack(spacing: 8) {
-                ForEach([persona.era] + persona.traits, id: \.self) { t in
-                    Text(t).font(.caption.weight(.semibold))
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(Theme.accent.opacity(0.16), in: .capsule)
-                        .foregroundStyle(Theme.accent)
+            ScrollView(.horizontal) {
+                HStack(spacing: 8) {
+                    ForEach([persona.era] + persona.traits, id: \.self) { t in
+                        Text(t).font(.caption.weight(.semibold)).fixedSize()
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(Theme.accent.opacity(0.16), in: .capsule)
+                            .foregroundStyle(Theme.accent)
+                    }
                 }
             }
+            .scrollIndicators(.hidden)
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
