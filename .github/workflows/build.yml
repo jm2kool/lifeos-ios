@@ -17,7 +17,9 @@ concurrency:
 jobs:
   build:
     runs-on: macos-26
-    timeout-minutes: 40
+    timeout-minutes: 60
+    env:
+      SIMCTL_CHILD_MATINEE_PREVIEW: '1'
     steps:
       - uses: actions/checkout@v4
 
@@ -90,3 +92,55 @@ jobs:
           git push origin ":refs/tags/$TAG" 2>/dev/null || true
           if [ "$PUBLIC_REPO" = "true" ]; then FLAGS="--draft"; else FLAGS="--latest"; fi
           gh release create $TAG Matinee.ipa --title "$NAME" --target $GITHUB_SHA --notes "$NOTES" $FLAGS
+
+      # Simulator screenshots on the same Mac, so each push needs only one macOS runner.
+      - continue-on-error: true
+        name: Build for the simulator
+        run: |
+          xcodebuild -project Matinee.xcodeproj -target Matinee -configuration Debug -sdk iphonesimulator \
+            CODE_SIGNING_ALLOWED=NO SYMROOT="$PWD/simbuild" build > sim.log 2>&1 || { grep -E "error:" sim.log | sort -u | head -60 | while IFS= read -r l; do echo "::error::${l#$PWD/}"; done; exit 1; }
+          test -d simbuild/Debug-iphonesimulator/Matinee.app
+
+      - continue-on-error: true
+        name: Boot an iPhone
+        run: |
+          UDID=$(xcrun simctl list devices available | grep -E "iPhone 1[67] Pro \(" | head -1 | grep -oE '[0-9A-F-]{36}')
+          [ -z "$UDID" ] && UDID=$(xcrun simctl list devices available | grep "iPhone" | head -1 | grep -oE '[0-9A-F-]{36}')
+          echo "UDID=$UDID" >> $GITHUB_ENV
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl ui "$UDID" appearance dark || true
+          xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 --cellularBars 4 || true
+          xcrun simctl install "$UDID" simbuild/Debug-iphonesimulator/Matinee.app
+
+      - continue-on-error: true
+        name: Screenshots and a short tour
+        run: |
+          APP=com.jm2kool.matinee
+          mkdir -p out
+          shot() { sleep "$1"; xcrun simctl io "$UDID" screenshot "out/$2.png"; }
+          SIMCTL_CHILD_MATINEE_SIGNIN=1 xcrun simctl launch "$UDID" $APP; shot 9 1-sign-in
+          xcrun simctl io "$UDID" recordVideo --codec h264 --force out/tour.mp4 & REC=$!
+          sleep 1
+          SIMCTL_CHILD_MATINEE_TOUR=1 xcrun simctl launch --terminate-running-process "$UDID" $APP
+          shot 7 2-home
+          shot 3.5 3-diary
+          shot 3.5 4-library
+          shot 3.5 5-profile
+          sleep 4
+          SIMCTL_CHILD_MATINEE_TAB=profile xcrun simctl launch --terminate-running-process "$UDID" $APP; shot 9 5b-profile-mesh
+          kill -INT $REC; wait $REC || true
+          SIMCTL_CHILD_MATINEE_FILM=tmdb-693134 xcrun simctl launch --terminate-running-process "$UDID" $APP; shot 9 6-film
+          SIMCTL_CHILD_MATINEE_FILM=tmdb-496243 SIMCTL_CHILD_MATINEE_SCROLL=1 xcrun simctl launch --terminate-running-process "$UDID" $APP; shot 10 6b-film-scrolled
+          SIMCTL_CHILD_MATINEE_TAB=diary SIMCTL_CHILD_MATINEE_LOG=1 xcrun simctl launch --terminate-running-process "$UDID" $APP; shot 7 7-log
+          SIMCTL_CHILD_MATINEE_TAB=search xcrun simctl launch --terminate-running-process "$UDID" $APP; shot 5 8-search
+          ls -lh out
+
+      - continue-on-error: true
+        name: Publish the preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event.repository.name }}" = "matinee" ]; then TAG=preview; else TAG=matinee-preview; fi
+          gh release delete $TAG --yes --cleanup-tag 2>/dev/null || true
+          gh release create $TAG out/* --target $GITHUB_SHA --title "Matinee preview (simulator)" --notes "Screenshots and a screen recording from an iPhone simulator, using sample data." --prerelease

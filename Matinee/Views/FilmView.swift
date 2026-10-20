@@ -9,6 +9,7 @@ struct FilmView: View {
     @State private var expanded = false
     @State private var palette: PosterPalette?
     @State private var scroll = ScrollPosition(edge: .top)
+    @State private var pastHeader = false
 
     /// The page takes its colour from the poster: deep enough for white text, never washed out.
     private var bg: Color { palette?.background ?? .black }
@@ -41,6 +42,10 @@ struct FilmView: View {
             }
         }
         .scrollPosition($scroll)
+        .onScrollGeometryChange(for: Bool.self) { g in g.contentOffset.y + g.contentInsets.top > g.containerSize.height - 160 } action: { _, v in
+            withAnimation(.easeOut(duration: 0.2)) { pastHeader = v }
+        }
+        .navigationTitle(pastHeader ? ref.title : "")
         .background(bg.ignoresSafeArea())
         .scrollContentBackground(.hidden)
         .ignoresSafeArea(edges: .top)
@@ -134,6 +139,11 @@ struct FilmView: View {
             }
             .padding(.horizontal, 22)
             .padding(.bottom, 18)
+            .visualEffect { content, geo in
+                // Fade the big title out before it slides under the navigation buttons.
+                let y = geo.frame(in: .scrollView).minY
+                return content.opacity(min(1, max(0, (y - 70) / 140)))
+            }
         }
         .containerRelativeFrame(.vertical)
         .frame(maxWidth: .infinity)
