@@ -5,12 +5,14 @@ struct MatineeApp: App {
     @State private var library = Library.shared
     @State private var auth = Auth.shared
     @State private var router = Router()
+    @State private var watching = Watching.shared
     @Environment(\.scenePhase) private var phase
 
     init() {
         let env = ProcessInfo.processInfo.environment
         if env["MATINEE_PREVIEW"] != nil {
             Library.shared.seedDemo()
+            Watching.shared.seedDemo(FilmRef(id: "tmdb-496243", title: "Parasite", year: 2019))
             if env["MATINEE_SIGNIN"] == nil { Auth.shared.continueAsGuest() }
         }
     }
@@ -21,6 +23,7 @@ struct MatineeApp: App {
                 .environment(library)
                 .environment(auth)
                 .environment(router)
+                .environment(watching)
                 .tint(Theme.accent)
                 .preferredColorScheme(.dark)
                 .background(Color.black)
@@ -45,6 +48,7 @@ enum SheetRoute: Identifiable, Equatable {
     case settings
     case signIn
     case quickLog
+    case intermission(UUID)
 
     var id: String {
         switch self {
@@ -57,6 +61,7 @@ enum SheetRoute: Identifiable, Equatable {
         case .settings: return "settings"
         case .signIn: return "signin"
         case .quickLog: return "quicklog"
+        case .intermission(let id): return "intermission-\(id)"
         }
     }
 }

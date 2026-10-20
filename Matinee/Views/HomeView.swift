@@ -20,6 +20,7 @@ struct HomeView: View {
                     greeting.padding(.top, Screen.safeTop + 8)
                     TMDBConnectCard()
                 }
+                IntermissionShelf()
                 if !library.doc.watchlist.isEmpty {
                     VStack(alignment: .leading, spacing: 14) {
                         SectionHeader(title: "Up next", subtitle: "From your watchlist") {

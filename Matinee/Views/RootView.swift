@@ -4,6 +4,7 @@ struct RootView: View {
     @Environment(Library.self) private var library
     @Environment(Auth.self) private var auth
     @Environment(Router.self) private var router
+    @Environment(Watching.self) private var watching
     @State private var showSignIn = false
 
     var body: some View {
@@ -28,13 +29,22 @@ struct RootView: View {
         .tabBarMinimizeBehavior(.onScrollDown)
         .sheet(item: $router.sheet) { route in
             SheetHost(route: route)
-                .environment(library).environment(auth).environment(router)
+                .environment(library).environment(auth).environment(router).environment(watching)
                 .tint(Theme.accent)
                 .preferredColorScheme(.dark)
         }
         .fullScreenCover(isPresented: $showSignIn) {
-            SignInView().environment(library).environment(auth).environment(router).preferredColorScheme(.dark)
+            SignInView().environment(library).environment(auth).environment(router).environment(watching).preferredColorScheme(.dark)
         }
+        .overlay(alignment: .bottom) {
+            // Intermission mode: a "now watching" bar floats above the tab bar while a film is in progress.
+            if let s = watching.current {
+                NowWatchingBar(session: s)
+                    .padding(.bottom, 64)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.smooth, value: watching.current?.id)
         .overlay(alignment: .top) {
             if let t = library.toast {
                 ToastView(toast: t) { library.undo() }
@@ -107,6 +117,7 @@ struct SheetHost: View {
         case .settings: SettingsView()
         case .signIn: SignInView(asSheet: true)
         case .quickLog: QuickLogSheet()
+        case .intermission(let id): IntermissionSheet(sessionID: id)
         }
     }
 }

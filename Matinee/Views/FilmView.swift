@@ -4,6 +4,7 @@ struct FilmView: View {
     let film: FilmRef
     @Environment(Library.self) private var library
     @Environment(Router.self) private var router
+    @Environment(Watching.self) private var watching
     @State private var detail: FilmDetail?
     @State private var failed = false
     @State private var expanded = false
@@ -177,6 +178,7 @@ struct FilmView: View {
                 toggle(liked ? "Liked" : "Like", liked ? "heart.fill" : "heart", liked, Theme.heart) { library.toggleLike(ref) }
                 toggle(saved ? "In watchlist" : "Watchlist", saved ? "clock.fill" : "clock", saved, Theme.list) { library.toggleWatchlist(ref) }
             }
+            watchControl
             Divider().overlay(Theme.line)
             VStack(spacing: 8) {
                 Text(library.rating(ref.id) == nil ? "Tap or slide to rate" : "Your rating")
@@ -201,6 +203,46 @@ struct FilmView: View {
         }
         .padding(18)
         .glassEffect(.regular, in: .rect(cornerRadius: 28))
+    }
+
+    /// Intermission mode: start watching, pause with a note, pick up later.
+    @ViewBuilder private var watchControl: some View {
+        if let s = watching.session(for: ref.id) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    if s.running {
+                        TimelineView(.periodic(from: .now, by: 30)) { tl in
+                            Label("Watching · \(filmClock(s.elapsed(at: tl.date)))\(s.runtime.map { " of \(filmClock($0))" } ?? "")", systemImage: "play.circle.fill")
+                                .font(.subheadline.weight(.semibold))
+                        }
+                        Spacer()
+                        GlassChip(prominent: true, action: { router.sheet = .intermission(s.id) }) {
+                            Label("Intermission", systemImage: "pause.fill")
+                        }
+                    } else {
+                        Label("Paused at \(filmClock(s.banked))", systemImage: "pause.circle.fill")
+                            .font(.subheadline.weight(.semibold))
+                        Spacer()
+                        GlassChip(prominent: true, action: { watching.resume(s.id) }) {
+                            Label("Resume", systemImage: "play.fill")
+                        }
+                    }
+                }
+                if let stop = s.lastStop, !s.running { IntermissionRow(stop: stop) }
+            }
+        } else {
+            Button {
+                watching.start(ref, runtime: detail?.runtimeMinutes)
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            } label: {
+                Label("Start watching", systemImage: "play.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity).frame(height: 44)
+                    .foregroundStyle(.white)
+                    .glassEffect(.regular.interactive(), in: .capsule)
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     private func toggle(_ title: String, _ symbol: String, _ on: Bool, _ color: Color, _ action: @escaping () -> Void) -> some View {
