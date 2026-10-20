@@ -6,6 +6,7 @@ struct MatineeApp: App {
     @State private var auth = Auth.shared
     @State private var router = Router()
     @State private var watching = Watching.shared
+    @State private var taste = Taste.shared
     @Environment(\.scenePhase) private var phase
 
     init() {
@@ -13,6 +14,7 @@ struct MatineeApp: App {
         if env["MATINEE_PREVIEW"] != nil {
             Library.shared.seedDemo()
             Watching.shared.seedDemo(FilmRef(id: "tmdb-496243", title: "Parasite", year: 2019))
+            if env["MATINEE_TASTE"] == nil { Taste.shared.seedDemo() }
             if env["MATINEE_SIGNIN"] == nil { Auth.shared.continueAsGuest() }
         }
     }
@@ -24,6 +26,7 @@ struct MatineeApp: App {
                 .environment(auth)
                 .environment(router)
                 .environment(watching)
+                .environment(taste)
                 .tint(Theme.accent)
                 .preferredColorScheme(.dark)
                 .background(Color.black)

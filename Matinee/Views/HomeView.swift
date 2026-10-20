@@ -3,6 +3,7 @@ import SwiftUI
 struct HomeView: View {
     @Environment(Library.self) private var library
     @Environment(Router.self) private var router
+    @Environment(Taste.self) private var taste
     @State private var shelves: [HomeShelf: [FilmRef]] = [:]
     @State private var failed = false
     @State private var heroPage = 0
@@ -21,6 +22,7 @@ struct HomeView: View {
                     TMDBConnectCard()
                 }
                 IntermissionShelf()
+                if connected { forYou }
                 if !library.doc.watchlist.isEmpty {
                     VStack(alignment: .leading, spacing: 14) {
                         SectionHeader(title: "Up next", subtitle: "From your watchlist") {
@@ -69,6 +71,40 @@ struct HomeView: View {
         .toolbar(.hidden, for: .navigationBar)
         .refreshable { await load(force: true) }
         .task(id: token) { if connected { await load(force: true) } }
+    }
+
+    /// "Films you'd like", built from your swipe quiz and your highest ratings.
+    @ViewBuilder private var forYou: some View {
+        if let p = taste.profile.persona {
+            VStack(alignment: .leading, spacing: 14) {
+                SectionHeader(title: "Films you'd like", subtitle: "For \(p.name) \(p.emoji)") {
+                    if !taste.picks.isEmpty { NavigationLink("Swipe", value: CollectionRoute.forYou) }
+                }
+                if taste.picks.isEmpty {
+                    HStack { Spacer(); ProgressView(); Spacer() }.frame(height: 160)
+                } else {
+                    PosterRow(films: taste.picks, width: 124)
+                }
+            }
+            .task(id: library.doc.ratings.count) { await taste.refreshPicks(library: library) }
+        } else {
+            Button { taste.showQuiz = true } label: {
+                HStack(spacing: 14) {
+                    Text("🎭").font(.system(size: 40))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Find your film character").font(.headline)
+                        Text("Swipe through 20 films and get recommendations made for you.")
+                            .font(.subheadline).foregroundStyle(Theme.dim).multilineTextAlignment(.leading)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right").foregroundStyle(Theme.dim)
+                }
+                .padding(18)
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 24))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 16)
+        }
     }
 
     private var greeting: some View {

@@ -207,7 +207,17 @@ struct GenreView: View {
 struct CollectionView: View {
     let route: CollectionRoute
     @Environment(Library.self) private var library
+    @Environment(Taste.self) private var taste
+    @AppStorage("deckMode") private var deckMode = true
     @State private var remote: [FilmRef] = []
+
+    private var action: DeckAction {
+        switch route {
+        case .watchlist: return .tonight
+        case .watched, .liked, .rated, .tag: return .like
+        default: return .watchlist
+        }
+    }
 
     private var title: String {
         switch route {
@@ -217,6 +227,7 @@ struct CollectionView: View {
         case .watchlist: return "Watchlist"
         case .tag(let t): return "#\(t)"
         case .rated(let r): return Stars.text(r)
+        case .forYou: return "Films you'd like"
         }
     }
 
@@ -228,17 +239,27 @@ struct CollectionView: View {
         case .watchlist: return library.doc.watchlist
         case .tag(let t): return library.entries.filter { $0.tags.contains(t) }.map(\.film)
         case .rated(let r): return library.watchedFilms.filter { library.rating($0.id) == r }
+        case .forYou: return taste.picks
         }
     }
 
     var body: some View {
-        ScrollView {
-            if films.isEmpty, case .shelf = route { ProgressView().padding(.top, 80) }
-            else if films.isEmpty { EmptyState(symbol: "film.stack", title: "Nothing here yet", message: "Films you add will show up here.").padding(.top, 60) }
-            else { PosterGrid(films: films, columns: 4).padding(16) }
+        Group {
+            if deckMode && !films.isEmpty {
+                FilmDeckScreen(films: films, action: action, deckMode: $deckMode)
+            } else {
+                ScrollView {
+                    if films.isEmpty, case .shelf = route { ProgressView().padding(.top, 80) }
+                    else if films.isEmpty { EmptyState(symbol: "film.stack", title: "Nothing here yet", message: "Films you add will show up here.").padding(.top, 60) }
+                    else { PosterGrid(films: films, columns: 4).padding(16) }
+                }
+            }
         }
         .oledBackground()
         .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(deckMode && !films.isEmpty ? .hidden : .visible, for: .tabBar)
+        .toolbar { DeckToggle(deckMode: $deckMode) }
         .task { if case .shelf(let s) = route { remote = (try? await Catalog.shelf(s)) ?? [] } }
     }
 }

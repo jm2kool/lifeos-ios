@@ -190,6 +190,50 @@ enum TMDB {
         try await call(path, q)["results"].array.compactMap(ref).filter { $0.poster != nil }
     }
 
+    static let genreNames: [Int: String] = Dictionary(uniqueKeysWithValues: genreIDs.map { ($0.value, $0.key) })
+
+    /// Cards for the taste quiz: well-known films across genres, each with its genre names.
+    static func deck() async throws -> [(film: FilmRef, genres: [String])] {
+        async let a = call("/movie/top_rated", ["page": "1"])
+        async let b = call("/movie/popular", ["page": "1"])
+        async let c = call("/discover/movie", ["sort_by": "vote_count.desc", "page": "1"])
+        async let d = call("/discover/movie", ["sort_by": "vote_count.desc", "page": "2"])
+        async let e = call("/movie/top_rated", ["page": "2"])
+        let pages = try await [a, b, c, d, e]
+        var seen = Set<String>(), out: [(film: FilmRef, genres: [String])] = []
+        for j in pages {
+            for m in j["results"].array {
+                guard let f = ref(m), f.poster != nil, seen.insert(f.id).inserted else { continue }
+                let g = m["genre_ids"].array.compactMap { $0.int.flatMap { genreNames[$0] } }
+                if !g.isEmpty { out.append((f, g)) }
+            }
+        }
+        // Spread genres out so the first cards aren't all one kind of film.
+        var byGenre: [String: [(film: FilmRef, genres: [String])]] = [:]
+        for item in out.shuffled() { byGenre[item.genres[0], default: []].append(item) }
+        var mixed: [(film: FilmRef, genres: [String])] = []
+        while mixed.count < out.count {
+            var progressed = false
+            for k in byGenre.keys.sorted() where !(byGenre[k]?.isEmpty ?? true) {
+                mixed.append(byGenre[k]!.removeFirst()); progressed = true
+            }
+            if !progressed { break }
+        }
+        return Array(mixed.prefix(30))
+    }
+
+    static func recommendations(_ id: String) async -> [FilmRef] {
+        guard id.hasPrefix("tmdb-") else { return [] }
+        let num = id.replacingOccurrences(of: "tmdb-", with: "")
+        return (try? await list("/movie/\(num)/recommendations")) ?? []
+    }
+
+    static func discover(genres: [String]) async -> [FilmRef] {
+        let ids = genres.compactMap { genreIDs[$0] }.map(String.init).joined(separator: ",")
+        guard !ids.isEmpty else { return [] }
+        return (try? await list("/discover/movie", ["with_genres": ids, "sort_by": "vote_average.desc", "vote_count.gte": "1500"])) ?? []
+    }
+
     static func shelf(_ s: HomeShelf) async throws -> [FilmRef] {
         switch s {
         case .trending: return try await list("/trending/movie/week")

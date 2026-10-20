@@ -5,6 +5,7 @@ struct RootView: View {
     @Environment(Auth.self) private var auth
     @Environment(Router.self) private var router
     @Environment(Watching.self) private var watching
+    @Environment(Taste.self) private var taste
     @State private var showSignIn = false
 
     var body: some View {
@@ -29,12 +30,21 @@ struct RootView: View {
         .tabBarMinimizeBehavior(.onScrollDown)
         .sheet(item: $router.sheet) { route in
             SheetHost(route: route)
-                .environment(library).environment(auth).environment(router).environment(watching)
+                .environment(library).environment(auth).environment(router).environment(watching).environment(taste)
                 .tint(Theme.accent)
                 .preferredColorScheme(.dark)
         }
         .fullScreenCover(isPresented: $showSignIn) {
-            SignInView().environment(library).environment(auth).environment(router).environment(watching).preferredColorScheme(.dark)
+            SignInView().environment(library).environment(auth).environment(router).environment(watching).environment(taste).preferredColorScheme(.dark)
+        }
+        .fullScreenCover(isPresented: Bindable(taste).showQuiz) {
+            TasteQuizView().environment(library).environment(taste).environment(router)
+        }
+        .onChange(of: showSignIn) { _, open in
+            // Right after sign-in (or choosing no account), offer the swipe quiz once.
+            if !open && taste.shouldOffer {
+                Task { try? await Task.sleep(for: .seconds(0.6)); taste.showQuiz = true }
+            }
         }
         .overlay(alignment: .bottom) {
             // Intermission mode: a "now watching" bar floats above the tab bar while a film is in progress.
@@ -56,7 +66,10 @@ struct RootView: View {
             }
         }
         .animation(.smooth(duration: 0.35), value: library.toast)
-        .onAppear { showSignIn = auth.needsOnboarding }
+        .onAppear {
+            showSignIn = auth.needsOnboarding
+            if !showSignIn && taste.shouldOffer { taste.showQuiz = true }
+        }
         .onChange(of: auth.needsOnboarding) { _, v in showSignIn = v }
         .onChange(of: auth.session?.userID) { _, id in
             guard id != nil else { return }
@@ -78,6 +91,11 @@ struct RootView: View {
         if env["MATINEE_LOG"] != nil, let f = library.watchedFilms.first {
             try? await Task.sleep(for: .seconds(1.5))
             router.sheet = .log(f, nil)
+        }
+        if env["MATINEE_LIST"] != nil, let l = library.doc.lists.first {
+            router.tab = .library
+            try? await Task.sleep(for: .seconds(1))
+            router.libraryPath.append(l)
         }
         if env["MATINEE_TOUR"] != nil {
             for tab in [AppTab.films, .diary, .library, .profile, .search] {
@@ -101,7 +119,7 @@ extension View {
 struct GenreRoute: Hashable { let name: String }
 
 enum CollectionRoute: Hashable {
-    case shelf(HomeShelf), watched, liked, watchlist, tag(String), rated(Double)
+    case shelf(HomeShelf), watched, liked, watchlist, tag(String), rated(Double), forYou
 }
 
 struct SheetHost: View {

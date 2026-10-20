@@ -5,6 +5,7 @@ struct ProfileView: View {
     @Environment(Library.self) private var library
     @Environment(Auth.self) private var auth
     @Environment(Router.self) private var router
+    @Environment(Taste.self) private var taste
     @State private var meshColors: [Color] = FavoritesMesh.fallback
 
     var body: some View {
@@ -45,6 +46,21 @@ struct ProfileView: View {
                 .padding(.vertical, 16)
                 .glassEffect(.regular, in: .rect(cornerRadius: 24))
                 .padding(.horizontal, 16)
+
+                if let persona = taste.profile.persona {
+                    VStack(alignment: .leading, spacing: 10) {
+                        PersonaCard(persona: persona)
+                        Button("Retake the swipe quiz") { taste.showQuiz = true }
+                            .font(.footnote.weight(.semibold)).foregroundStyle(Theme.accent)
+                            .padding(.leading, 6)
+                    }
+                    .padding(.horizontal, 16)
+                } else {
+                    Button { taste.showQuiz = true } label: {
+                        Label("Find your film character", systemImage: "sparkles").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.glass).controlSize(.large).padding(.horizontal, 16)
+                }
 
                 favorites
 

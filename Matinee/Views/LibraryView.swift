@@ -151,12 +151,19 @@ struct ListDetailView: View {
     @Environment(Router.self) private var router
     @Environment(\.dismiss) private var dismiss
     @State private var editing = false
+    @AppStorage("deckMode") private var deckMode = true
 
     private var list: FilmList? { library.doc.lists.first { $0.id == listID } }
 
     var body: some View {
         Group {
-            if let list {
+            if let list, deckMode && !list.films.isEmpty && !editing {
+                FilmDeckScreen(films: list.films, action: .watchlist, deckMode: $deckMode)
+                    .navigationTitle(list.name)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar(.hidden, for: .tabBar)
+                    .toolbar { DeckToggle(deckMode: $deckMode) }
+            } else if let list {
                 List {
                     VStack(alignment: .leading, spacing: 6) {
                         if !list.note.isEmpty { Text(list.note).foregroundStyle(.white.opacity(0.8)) }
@@ -191,6 +198,7 @@ struct ListDetailView: View {
                 .environment(\.editMode, .constant(editing ? .active : .inactive))
                 .navigationTitle(list.name)
                 .toolbar {
+                    if !list.films.isEmpty { DeckToggle(deckMode: $deckMode) }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button(editing ? "Done" : "Reorder") { withAnimation { editing.toggle() } }
                     }
