@@ -176,8 +176,10 @@ struct HeroCard: View {
         ZStack(alignment: .bottomLeading) {
             NavigationLink(value: film) {
                 ZStack {
-                    RemoteImage(url: film.backdrop ?? film.poster)
+                    // Color.clear sets the size; the image fills it without widening the card.
+                    Color.clear
                         .frame(height: 440)
+                        .overlay { RemoteImage(url: film.backdrop ?? film.poster) }
                         .clipped()
                     LinearGradient(colors: [.clear, .black.opacity(0.2), .black.opacity(0.92)], startPoint: .top, endPoint: .bottom)
                 }
