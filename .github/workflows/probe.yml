@@ -1,0 +1,34 @@
+name: Probe catalog
+on:
+  push:
+    branches: [main, matinee]
+    paths: ['.github/workflows/probe.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call the catalog
+        run: |
+          mkdir out; cd out
+          B=https://api.imdbapi.dev
+          p() { echo "=== $1" >> probe.txt; curl -sS -m 25 -A "Matinee/1.0 (iPhone; iOS 26)" -w "\nHTTP %{http_code}\n" "$1" | head -c 2500 >> probe.txt; echo >> probe.txt; }
+          p "$B/titles?types=MOVIE&sortBy=SORT_BY_POPULARITY&sortOrder=ASC&minVoteCount=20000&startYear=2023"
+          p "$B/titles?types=MOVIE&sortBy=SORT_BY_USER_RATING&sortOrder=DESC&minVoteCount=300000"
+          p "$B/titles?types=MOVIE"
+          p "$B/titles?types=MOVIE&genres=Drama&sortBy=SORT_BY_POPULARITY&sortOrder=ASC&minVoteCount=50000"
+          p "$B/search/titles?query=dune&limit=5"
+          p "$B/titles/tt15239678"
+          p "$B/titles/tt15239678/credits?pageSize=3"
+          p "$B/chart/starmeter"
+          p "https://imdbapi.dev/imdbapi.swagger.yaml"
+          curl -sS -m 25 https://imdbapi.dev/imdbapi.swagger.yaml -o swagger.yaml || true
+          ls -l
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete matinee-probe -R $GITHUB_REPOSITORY --yes --cleanup-tag 2>/dev/null || true
+          gh release create matinee-probe -R $GITHUB_REPOSITORY out/* --target $GITHUB_SHA --title "probe" --notes "catalog probe" --prerelease
