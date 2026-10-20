@@ -9,11 +9,18 @@ struct FilmView: View {
     @State private var expanded = false
     @State private var palette: PosterPalette?
     @State private var scroll = ScrollPosition(edge: .top)
-    @State private var pastHeader = false
+    @State private var art: FilmArt?
+    @State private var artLoaded = false
 
     /// The page takes its colour from the poster: deep enough for white text, never washed out.
     private var bg: Color { palette?.background ?? .black }
     private var surface: Color { palette?.surface ?? Theme.card }
+
+    /// A textless poster when TMDB has one (the title is drawn separately as the logo).
+    private var heroURL: URL? {
+        if let p = art?.poster { return p }
+        return artLoaded || failed ? (ref.largePoster ?? ref.poster) : nil
+    }
 
     private var ref: FilmRef {
         var r = detail?.ref ?? film
@@ -42,10 +49,7 @@ struct FilmView: View {
             }
         }
         .scrollPosition($scroll)
-        .onScrollGeometryChange(for: Bool.self) { g in g.contentOffset.y + g.contentInsets.top > g.containerSize.height - 160 } action: { _, v in
-            withAnimation(.easeOut(duration: 0.2)) { pastHeader = v }
-        }
-        .navigationTitle(pastHeader ? ref.title : "")
+        .scrollEdgeEffectHidden(true, for: .top)
         .background(bg.ignoresSafeArea())
         .scrollContentBackground(.hidden)
         .ignoresSafeArea(edges: .top)
@@ -75,15 +79,18 @@ struct FilmView: View {
                 let d = try await Catalog.detail(film.id)
                 withAnimation(.smooth) { detail = d }
                 library.hydrate(film, with: d)
-            } catch { failed = true }
+                let a = await Catalog.art(d.ref.id)
+                withAnimation(.easeOut(duration: 0.4)) { art = a; artLoaded = true }
+            } catch { failed = true; artLoaded = true }
         }
-        .task(id: ref.largePoster ?? ref.poster) {
+        .task(id: heroURL) {
             if ProcessInfo.processInfo.environment["MATINEE_SCROLL"] != nil {
                 try? await Task.sleep(for: .seconds(5))
                 withAnimation(.smooth(duration: 0.8)) { scroll.scrollTo(y: 640) }
             }
-            if let hit = Palette.cached(ref.largePoster ?? ref.poster) { palette = hit; return }
-            if let p = await Palette.of(ref.largePoster ?? ref.poster) {
+            guard let url = heroURL else { return }
+            if let hit = Palette.cached(url) { palette = hit; return }
+            if let p = await Palette.of(url) {
                 withAnimation(.easeInOut(duration: 0.7)) { palette = p }
             }
         }
@@ -91,62 +98,73 @@ struct FilmView: View {
 
     // MARK: Header
 
-    /// The poster fills the whole screen; scroll up and the page beneath is painted in its colour.
+    /// Apple Music–style: a textless poster fills the screen, the film's logo is the title, and as you
+    /// scroll the logo shrinks into the navigation bar and stays there.
     private var header: some View {
-        ZStack(alignment: .bottomLeading) {
+        let safeTop = Screen.safeTop
+        return ZStack(alignment: .bottom) {
             Color.clear
-                .overlay { RemoteImage(url: ref.largePoster ?? ref.poster) }
+                .overlay { RemoteImage(url: heroURL) }
                 .clipped()
                 .visualEffect { content, geo in
                     // Stretch the poster when you pull down past the top.
                     let y = geo.frame(in: .scrollView).minY
                     return content.scaleEffect(y > 0 ? 1 + y / max(geo.size.height, 1) : 1, anchor: .bottom)
                 }
-            LinearGradient(stops: [.init(color: .black.opacity(0.5), location: 0), .init(color: .clear, location: 0.16),
-                                   .init(color: .clear, location: 0.52), .init(color: bg.opacity(0.75), location: 0.78),
+            LinearGradient(stops: [.init(color: .black.opacity(0.45), location: 0), .init(color: .clear, location: 0.16),
+                                   .init(color: .clear, location: 0.5), .init(color: bg.opacity(0.8), location: 0.78),
                                    .init(color: bg, location: 1)],
                            startPoint: .top, endPoint: .bottom)
                 .allowsHitTesting(false)
-            VStack(alignment: .leading, spacing: 8) {
-                if let g = detail?.genres.first {
-                    Text(g.uppercased()).font(.caption.weight(.heavy)).tracking(1.4)
-                        .foregroundStyle(palette?.highlight ?? Theme.accent)
-                }
-                Text(ref.title.isEmpty ? " " : ref.title)
-                    .font(.system(size: 40, weight: .bold, design: .serif))
-                    .lineLimit(3).minimumScaleFactor(0.6)
-                    .shadow(color: .black.opacity(0.35), radius: 10, y: 2)
-                HStack(spacing: 6) {
-                    if let y = ref.year { Text(String(y)) }
-                    if let m = detail?.runtimeMinutes, m > 0 { Text("·"); Text("\(m / 60)h \(m % 60)m") }
-                    if let r = detail?.communityRating, r > 0 {
-                        Text("·")
-                        Image(systemName: "star.fill").foregroundStyle(Theme.star)
-                        Text((r / 2).formatted(.number.precision(.fractionLength(1))))
+            VStack(spacing: 10) {
+                TitleArt(title: ref.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 280, maxHeight: 110, fontSize: 40)
+                    .padding(.horizontal, 24)
+                    .opacity(artLoaded || failed ? 1 : 0)
+                    .visualEffect { content, geo in
+                        // Shrink toward the nav bar as you scroll, then stay pinned there.
+                        let f = geo.frame(in: .scrollView)
+                        let pinTop = safeTop + 8
+                        let targetHeight: CGFloat = 30
+                        let travel: CGFloat = 220
+                        let distance = f.minY - pinTop
+                        let p = min(1, max(0, 1 - distance / travel))
+                        let scale = 1 - p * (1 - min(1, targetHeight / max(f.height, 1)))
+                        return content.scaleEffect(scale, anchor: .top).offset(y: max(0, -distance))
                     }
+                VStack(spacing: 8) {
+                    HStack(spacing: 6) {
+                        if let g = detail?.genres.first { Text(g.uppercased()).foregroundStyle(palette?.highlight ?? Theme.accent); Text("·") }
+                        if let y = ref.year { Text(String(y)) }
+                        if let m = detail?.runtimeMinutes, m > 0 { Text("·"); Text("\(m / 60)h \(m % 60)m") }
+                        if let r = detail?.communityRating, r > 0 {
+                            Text("·")
+                            Image(systemName: "star.fill").foregroundStyle(Theme.star)
+                            Text((r / 2).formatted(.number.precision(.fractionLength(1))))
+                        }
+                    }
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(.white.opacity(0.85))
+                    if let dirs = detail?.directors, !dirs.isEmpty {
+                        Text("Directed by **\(dirs.prefix(2).joined(separator: ", "))**")
+                            .font(.subheadline).foregroundStyle(.white.opacity(0.85))
+                    }
+                    Image(systemName: "chevron.compact.up")
+                        .font(.title2.weight(.semibold)).foregroundStyle(.white.opacity(0.5))
+                        .padding(.top, 4)
+                        .symbolEffect(.pulse, options: .repeating)
+                        .accessibilityHidden(true)
                 }
-                .font(.subheadline.weight(.semibold)).foregroundStyle(.white.opacity(0.8))
-                if let dirs = detail?.directors, !dirs.isEmpty {
-                    Text("Directed by **\(dirs.prefix(2).joined(separator: ", "))**")
-                        .font(.subheadline).foregroundStyle(.white.opacity(0.85))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 22)
+                .visualEffect { content, geo in
+                    let y = geo.frame(in: .scrollView).minY
+                    return content.opacity(min(1, max(0, (y - 90) / 160)))
                 }
-                Image(systemName: "chevron.compact.up")
-                    .font(.title2.weight(.semibold)).foregroundStyle(.white.opacity(0.5))
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 6)
-                    .symbolEffect(.pulse, options: .repeating)
-                    .accessibilityHidden(true)
             }
-            .padding(.horizontal, 22)
             .padding(.bottom, 18)
-            .visualEffect { content, geo in
-                // Fade the big title out before it slides under the navigation buttons.
-                let y = geo.frame(in: .scrollView).minY
-                return content.opacity(min(1, max(0, (y - 70) / 140)))
-            }
         }
         .containerRelativeFrame(.vertical)
         .frame(maxWidth: .infinity)
+        .zIndex(1)   // keeps the pinned logo above the page as it scrolls
     }
 
     // MARK: Actions — the one place to watch, like, save, rate and log

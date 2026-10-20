@@ -83,6 +83,40 @@ enum Palette {
     }
 }
 
+extension Palette {
+    /// True when a logo is mostly dark ink (made for light backgrounds), so we can draw it white instead.
+    nonisolated static func isDark(_ image: UIImage) -> Bool {
+        guard let cg = image.cgImage else { return false }
+        let w = 32, h = 32
+        var px = [UInt8](repeating: 0, count: w * h * 4)
+        let ok: Bool = px.withUnsafeMutableBytes { buf in
+            guard let ctx = CGContext(data: buf.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+            return true
+        }
+        guard ok else { return false }
+        var lum = 0.0, weight = 0.0
+        for i in stride(from: 0, to: px.count, by: 4) {
+            let a = Double(px[i + 3]) / 255
+            guard a > 0.3 else { continue }
+            let r = Double(px[i]) / 255 / a, g = Double(px[i + 1]) / 255 / a, b = Double(px[i + 2]) / 255 / a
+            lum += (0.299 * r + 0.587 * g + 0.114 * b) * a
+            weight += a
+        }
+        return weight > 0 && lum / weight < 0.38
+    }
+}
+
+@MainActor
+enum Screen {
+    /// The top safe-area inset (status bar / Dynamic Island) of the key window.
+    static var safeTop: CGFloat {
+        UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows).first { $0.isKeyWindow }?.safeAreaInsets.top ?? 59
+    }
+}
+
 extension UIColor {
     func adjusted(maxBrightness: CGFloat, minSaturation: CGFloat, minBrightness: CGFloat = 0.12) -> UIColor {
         var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0

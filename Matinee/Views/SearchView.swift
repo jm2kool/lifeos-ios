@@ -81,33 +81,40 @@ struct SearchRow: View {
     @Environment(Library.self) private var library
 
     var body: some View {
-        NavigationLink(value: film) {
-            HStack(spacing: 14) {
-                PosterView(film: film, width: 54, corner: 6)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(film.title).font(.body.weight(.semibold)).lineLimit(2).multilineTextAlignment(.leading)
-                    HStack(spacing: 8) {
-                        Text(film.yearText).foregroundStyle(Theme.dim)
-                        if library.isWatched(film.id) { Image(systemName: "eye.fill").foregroundStyle(Theme.watch) }
-                        SmallStars(rating: library.rating(film.id))
+        let saved = library.inWatchlist(film.id)
+        HStack(spacing: 12) {
+            NavigationLink(value: film) {
+                HStack(spacing: 14) {
+                    PosterView(film: film, width: 54, corner: 6)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(film.title).font(.body.weight(.semibold)).lineLimit(2).multilineTextAlignment(.leading)
+                        HStack(spacing: 8) {
+                            Text(film.yearText).foregroundStyle(Theme.dim)
+                            if library.isWatched(film.id) { Image(systemName: "eye.fill").foregroundStyle(Theme.watch) }
+                            SmallStars(rating: library.rating(film.id))
+                        }
+                        .font(.subheadline)
                     }
-                    .font(.subheadline)
+                    Spacer(minLength: 0)
                 }
-                Spacer()
-                Button { library.toggleWatchlist(film) } label: {
-                    Image(systemName: library.inWatchlist(film.id) ? "clock.fill" : "clock.badge.plus")
-                        .foregroundStyle(library.inWatchlist(film.id) ? Theme.list : .white.opacity(0.7))
-                        .frame(width: 30, height: 30)
-                }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.circle)
-                .accessibilityLabel(library.inWatchlist(film.id) ? "Remove from watchlist" : "Add to watchlist")
+                .contentShape(.rect)
             }
-            .padding(.horizontal, 20).padding(.vertical, 8)
-            .contentShape(.rect)
+            .buttonStyle(.plain)
+            .filmContextMenu(film)
+
+            // A sibling of the row link (not inside it), so it draws and taps on its own.
+            Button { library.toggleWatchlist(film) } label: {
+                Image(systemName: saved ? "clock.fill" : "clock.badge.plus")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(saved ? Theme.list : Color.white)
+                    .contentTransition(.symbolEffect(.replace))
+                    .frame(width: 44, height: 44)
+                    .glassEffect(.regular.interactive(), in: .circle)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(saved ? "Remove from watchlist" : "Add to watchlist")
         }
-        .buttonStyle(.plain)
-        .filmContextMenu(film)
+        .padding(.horizontal, 20).padding(.vertical, 8)
     }
 }
 

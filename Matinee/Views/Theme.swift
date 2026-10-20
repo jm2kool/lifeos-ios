@@ -279,3 +279,70 @@ struct ToastView: View {
         .transition(.move(edge: .top).combined(with: .opacity))
     }
 }
+
+/// A film's title drawn as its official logo (white if the logo is dark ink), or as text when there's no logo.
+struct TitleArt: View {
+    let title: String
+    let logo: URL?
+    var aspect: Double = 3
+    var maxWidth: CGFloat = 270
+    var maxHeight: CGFloat = 110
+    var fontSize: CGFloat = 38
+    @State private var image: UIImage?
+    @State private var dark = false
+    @State private var failed = false
+
+    var body: some View {
+        Group {
+            if let image {
+                let w = min(maxWidth, maxHeight * aspect)
+                Image(uiImage: image)
+                    .renderingMode(dark ? .template : .original)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .foregroundStyle(.white)
+                    .frame(width: w, height: w / max(aspect, 0.1))
+                    .transition(.opacity)
+            } else if logo == nil || failed {
+                Text(title.isEmpty ? " " : title)
+                    .font(.system(size: fontSize, weight: .bold, design: .serif))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3).minimumScaleFactor(0.6)
+                    .foregroundStyle(.white)
+            } else {
+                Color.clear.frame(width: 1, height: maxHeight * 0.7)
+            }
+        }
+        .shadow(color: .black.opacity(0.4), radius: 14, y: 3)
+        .accessibilityLabel(title)
+        .task(id: logo) {
+            image = nil; failed = false
+            guard let logo else { return }
+            if let img = await ImageStore.shared.load(logo) {
+                dark = Palette.isDark(img)
+                withAnimation(.easeOut(duration: 0.3)) { image = img }
+            } else { failed = true }
+        }
+    }
+}
+
+/// A capsule or circle of Liquid Glass, used for buttons where the stock glass style misbehaves.
+struct GlassChip<Label: View>: View {
+    var prominent = false
+    var circle = false
+    let action: () -> Void
+    @ViewBuilder var label: Label
+    var body: some View {
+        Button(action: action) {
+            label
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, circle ? 0 : 20)
+                .frame(minWidth: 46, minHeight: 46)
+                .contentShape(circle ? AnyShape(Circle()) : AnyShape(Capsule()))
+                .glassEffect(prominent ? .regular.tint(Theme.accent).interactive() : .regular.interactive(),
+                             in: circle ? AnyShape(Circle()) : AnyShape(Capsule()))
+        }
+        .buttonStyle(.plain)
+    }
+}

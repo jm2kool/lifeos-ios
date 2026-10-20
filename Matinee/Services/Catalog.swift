@@ -24,6 +24,13 @@ enum CatalogError: LocalizedError {
     }
 }
 
+struct FilmArt: Hashable {
+    var logo: URL?
+    var logoAspect: Double = 3
+    var poster: URL?      // textless poster
+    var backdrop: URL?    // textless backdrop
+}
+
 enum HomeShelf: String, CaseIterable, Identifiable {
     case trending, topRated, newReleases
     var id: String { rawValue }
@@ -95,6 +102,30 @@ enum Catalog {
     }
 
     static func cached(_ id: String) -> FilmDetail? { detailCache[id] }
+
+    private static var artCache: [String: FilmArt] = [:]
+
+    /// Textless poster/backdrop and the film's title logo, for Apple Music–style pages.
+    static func art(_ id: String) async -> FilmArt? {
+        guard id.hasPrefix("tmdb-") else { return nil }
+        if let hit = artCache[id] { return hit }
+        let num = id.replacingOccurrences(of: "tmdb-", with: "")
+        guard let j = try? await TMDB.call("/movie/\(num)/images", ["include_image_language": "en,null"]) else { return nil }
+        func best(_ list: [J], lang: String?) -> J? {
+            list.filter { $0["iso_639_1"].str == lang }
+                .sorted { ($0["vote_average"].double ?? 0, $0["vote_count"].double ?? 0) > ($1["vote_average"].double ?? 0, $1["vote_count"].double ?? 0) }
+                .first
+        }
+        let logos = j["logos"].array.filter { ($0["file_path"].str ?? "").hasSuffix(".png") }
+        let logo = best(logos, lang: "en")
+        var art = FilmArt()
+        art.logo = TMDB.img(logo?["file_path"].str, "w500")
+        art.logoAspect = logo?["aspect_ratio"].double ?? 3
+        art.poster = TMDB.img(best(j["posters"].array, lang: nil)?["file_path"].str, "original")
+        art.backdrop = TMDB.img(best(j["backdrops"].array, lang: nil)?["file_path"].str, "w1280")
+        artCache[id] = art
+        return art
+    }
 
     static let genres = ["Action", "Adventure", "Animation", "Comedy", "Crime", "Documentary", "Drama",
                          "Family", "Fantasy", "History", "Horror", "Music", "Mystery", "Romance",

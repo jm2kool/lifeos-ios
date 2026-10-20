@@ -5,7 +5,7 @@ struct HomeView: View {
     @Environment(Router.self) private var router
     @State private var shelves: [HomeShelf: [FilmRef]] = [:]
     @State private var failed = false
-    @State private var heroIndex: Int? = 0
+    @State private var heroPage = 0
     @State private var errorText: String?
     @AppStorage("tmdbToken") private var token = ""
 
@@ -16,8 +16,10 @@ struct HomeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 34) {
-                greeting
-                if connected { heroCarousel } else { TMDBConnectCard() }
+                if connected { heroSection } else {
+                    greeting.padding(.top, Screen.safeTop + 8)
+                    TMDBConnectCard()
+                }
                 if !library.doc.watchlist.isEmpty {
                     VStack(alignment: .leading, spacing: 14) {
                         SectionHeader(title: "Up next", subtitle: "From your watchlist") {
@@ -59,10 +61,10 @@ struct HomeView: View {
                     }
                 }
             }
-            .padding(.top, 4)
             .padding(.bottom, 32)
         }
         .oledBackground()
+        .ignoresSafeArea(edges: .top)
         .toolbar(.hidden, for: .navigationBar)
         .refreshable { await load(force: true) }
         .task(id: token) { if connected { await load(force: true) } }
@@ -72,8 +74,8 @@ struct HomeView: View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide)).uppercased())
-                    .font(.caption.weight(.semibold)).tracking(1.2).foregroundStyle(Theme.dim)
-                Text(greetingText).font(.largeTitle.weight(.heavy))
+                    .font(.caption.weight(.semibold)).tracking(1.2).foregroundStyle(.white.opacity(0.7))
+                Text(greetingText).font(.title.weight(.heavy))
             }
             Spacer()
             Button { router.sheet = .settings } label: { Avatar(profile: library.doc.profile, size: 40) }
@@ -90,35 +92,43 @@ struct HomeView: View {
         return first.map { "\(part), \($0)" } ?? "Good \(part.lowercased())"
     }
 
-    @ViewBuilder private var heroCarousel: some View {
-        if hero.isEmpty {
-            if !failed {
-                RoundedRectangle(cornerRadius: 28).fill(Theme.card)
-                    .frame(height: 440).padding(.horizontal, 20)
-                    .overlay { ProgressView() }
-            }
-        } else {
-            VStack(spacing: 14) {
-                ScrollView(.horizontal) {
-                    LazyHStack(spacing: 12) {
-                        ForEach(Array(hero.enumerated()), id: \.element.id) { i, f in
-                            HeroCard(film: f).containerRelativeFrame(.horizontal) { w, _ in w - 40 }.id(i)
-                        }
+    /// Full-bleed, edge-to-edge hero: textless backdrop, the film's logo, and two small glass buttons.
+    private var heroSection: some View {
+        ZStack(alignment: .top) {
+            if hero.isEmpty {
+                Rectangle().fill(Theme.card)
+                    .overlay { if !failed { ProgressView() } }
+            } else {
+                TabView(selection: $heroPage) {
+                    ForEach(Array(hero.enumerated()), id: \.element.id) { i, f in
+                        HeroPage(film: f).tag(i)
                     }
-                    .scrollTargetLayout()
                 }
-                .contentMargins(.horizontal, 20, for: .scrollContent)
-                .scrollTargetBehavior(.viewAligned)
-                .scrollPosition(id: $heroIndex)
-                .scrollIndicators(.hidden)
+                .tabViewStyle(.page(indexDisplayMode: .never))
+            }
+            greeting
+                .shadow(color: .black.opacity(0.5), radius: 12)
+                .padding(.top, Screen.safeTop + 6)
+        }
+        .overlay(alignment: .bottom) {
+            if hero.count > 1 {
                 HStack(spacing: 6) {
                     ForEach(hero.indices, id: \.self) { i in
-                        Capsule().fill(i == (heroIndex ?? 0) ? Color.white : Color.white.opacity(0.25))
-                            .frame(width: i == (heroIndex ?? 0) ? 18 : 6, height: 6)
+                        Capsule().fill(i == heroPage ? Color.white : Color.white.opacity(0.3))
+                            .frame(width: i == heroPage ? 16 : 6, height: 6)
                     }
                 }
-                .animation(.snappy, value: heroIndex)
-                .frame(maxWidth: .infinity)
+                .animation(.snappy, value: heroPage)
+                .padding(.bottom, 8)
+            }
+        }
+        .containerRelativeFrame(.vertical) { h, _ in h * 0.72 }
+        .task(id: hero.count) {
+            // Gently auto-advance, like a cinema lobby screen.
+            while !Task.isCancelled && hero.count > 1 {
+                try? await Task.sleep(for: .seconds(7))
+                if Task.isCancelled { break }
+                withAnimation(.smooth(duration: 0.7)) { heroPage = (heroPage + 1) % hero.count }
             }
         }
     }
@@ -167,60 +177,51 @@ struct HomeView: View {
     }
 }
 
-struct HeroCard: View {
+struct HeroPage: View {
     let film: FilmRef
     @Environment(Library.self) private var library
     @Environment(Router.self) private var router
+    @State private var art: FilmArt?
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
+        let saved = library.inWatchlist(film.id)
+        ZStack(alignment: .bottom) {
             NavigationLink(value: film) {
-                ZStack {
-                    // Color.clear sets the size; the image fills it without widening the card.
-                    Color.clear
-                        .frame(height: 440)
-                        .overlay { RemoteImage(url: film.backdrop ?? film.poster) }
-                        .clipped()
-                    LinearGradient(colors: [.clear, .black.opacity(0.2), .black.opacity(0.92)], startPoint: .top, endPoint: .bottom)
-                }
-                .frame(height: 440)
-                .contentShape(.rect)
+                Color.clear
+                    .overlay { RemoteImage(url: art?.backdrop ?? film.backdrop ?? film.poster) }
+                    .clipped()
+                    .overlay {
+                        LinearGradient(stops: [.init(color: .black.opacity(0.55), location: 0), .init(color: .clear, location: 0.28),
+                                               .init(color: .clear, location: 0.42), .init(color: .black.opacity(0.85), location: 0.8),
+                                               .init(color: .black, location: 1)],
+                                       startPoint: .top, endPoint: .bottom)
+                    }
+                    .contentShape(.rect)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(film.title)
 
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .bottom, spacing: 14) {
-                    PosterView(film: film, width: 84, corner: 8)
-                        .shadow(color: .black.opacity(0.6), radius: 12, y: 6)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("TRENDING").font(.caption2.weight(.heavy)).tracking(1.4).foregroundStyle(Theme.accent)
-                        Text(film.title).font(.title2.weight(.bold)).lineLimit(2).multilineTextAlignment(.leading)
-                        Text(film.yearText).font(.subheadline).foregroundStyle(Theme.dim)
+            VStack(spacing: 12) {
+                TitleArt(title: film.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 260, maxHeight: 96, fontSize: 34)
+                    .allowsHitTesting(false)
+                Text(["Trending now", film.yearText].filter { !$0.isEmpty }.joined(separator: " · ").uppercased())
+                    .font(.caption.weight(.bold)).tracking(1.2)
+                    .foregroundStyle(.white.opacity(0.75))
+                    .allowsHitTesting(false)
+                HStack(spacing: 10) {
+                    GlassChip(prominent: true, action: { router.sheet = .log(film, nil) }) {
+                        Label("Log", systemImage: "plus")
                     }
-                }
-                .allowsHitTesting(false)
-                GlassEffectContainer(spacing: 8) {
-                    HStack(spacing: 8) {
-                        Button { router.sheet = .log(film, nil) } label: {
-                            Label("Log", systemImage: "plus").frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.glassProminent)
-                        Button { library.toggleWatchlist(film) } label: {
-                            Label(library.inWatchlist(film.id) ? "Saved" : "Watchlist",
-                                  systemImage: library.inWatchlist(film.id) ? "checkmark" : "clock")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.glass)
+                    GlassChip(action: { library.toggleWatchlist(film) }) {
+                        Label(saved ? "Saved" : "Watchlist", systemImage: saved ? "checkmark" : "clock")
+                            .contentTransition(.symbolEffect(.replace))
                     }
-                    .controlSize(.large)
                 }
             }
-            .padding(18)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 30)
         }
-        .frame(height: 440)
-        .clipShape(.rect(cornerRadius: 28))
-        .overlay(RoundedRectangle(cornerRadius: 28).strokeBorder(Theme.line, lineWidth: 0.5).allowsHitTesting(false))
+        .task(id: film.id) { art = await Catalog.art(film.id) }
     }
 }
 
