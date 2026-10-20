@@ -158,16 +158,138 @@ struct DeckCard: View {
 
 // MARK: - Taste quiz
 
-/// Swipe through films to build your film character.
+/// Drives the endless quiz: explores every genre first, then narrows in on your favourites
+/// until your character is clear.
+@Observable @MainActor
+final class QuizEngine {
+    var cards: [(film: FilmRef, genres: [String])] = []
+    private(set) var exposure: [String: Double] = [:]
+    private(set) var decisive = 0
+    private(set) var likes = 0
+    private(set) var failed = false
+    private var topHistory: [[String]] = []
+    private var seen = Set<String>()
+    private var pages: [String: Int] = [:]
+    private var loading = false
+    private var rotation = 0
+
+    static let main: Set<String> = ["Action", "Comedy", "Drama", "Horror", "Romance", "Sci-Fi", "Thriller",
+                                    "Animation", "Crime", "Fantasy", "Adventure", "Mystery"]
+    static func required(_ g: String) -> Double { main.contains(g) ? 2 : 1 }
+
+    private func need(_ g: String) -> Double { max(0, Self.required(g) - exposure[g, default: 0]) }
+    private var uncovered: [String] { Catalog.genres.filter { need($0) > 0 } }
+
+    func start() async {
+        cards = []; exposure = [:]; decisive = 0; likes = 0; topHistory = []; seen = []; pages = [:]; failed = false
+        if let first = try? await TMDB.deck() {
+            for c in first.prefix(14) where seen.insert(c.film.id).inserted { cards.append(c) }
+        }
+        if cards.isEmpty { await topUp() }
+        if cards.isEmpty { failed = true }
+    }
+
+    /// Record a swipe. `liked == nil` means "haven't seen".
+    func record(_ film: FilmRef, liked: Bool?, scores: [String: Double]) {
+        guard let idx = cards.firstIndex(where: { $0.film.id == film.id }) else { return }
+        for g in cards[idx].genres { exposure[g, default: 0] += liked == nil ? 0.5 : 1 }
+        if let liked {
+            decisive += 1
+            if liked { likes += 1 }
+            topHistory.append(Self.top(scores, 2))
+        }
+        reprioritize(after: idx)
+        if cards.count - idx - 1 < 8 { Task { await topUp() } }
+    }
+
+    // MARK: Confidence
+
+    static func top(_ scores: [String: Double], _ n: Int) -> [String] {
+        scores.filter { $0.value > 0 }.sorted { $0.value > $1.value }.prefix(n).map(\.key)
+    }
+
+    private func separation(_ scores: [String: Double]) -> Double {
+        let v = scores.values.sorted(by: >)
+        let first = v.first ?? 0, third = v.count > 2 ? v[2] : 0
+        return min(1, max(0, (first - third) / 3))
+    }
+
+    private var stable: Bool {
+        guard topHistory.count >= 6 else { return false }
+        let last = topHistory.suffix(6).map { Set($0) }
+        return last.allSatisfy { $0 == last.last && $0.count == 2 }
+    }
+
+    func confidence(_ scores: [String: Double]) -> Double {
+        let total = Catalog.genres.reduce(0) { $0 + Self.required($1) }
+        let covered = Catalog.genres.reduce(0) { $0 + min(Self.required($1), exposure[$1, default: 0]) }
+        let coverage = covered / total
+        let stability = stable ? 1 : Double(min(topHistory.count, 6)) / 6 * 0.6
+        let raw = 0.45 * coverage + 0.35 * separation(scores) + 0.2 * stability
+        return isSure(scores) ? 1 : min(0.97, raw)
+    }
+
+    func isSure(_ scores: [String: Double]) -> Bool {
+        uncovered.isEmpty && separation(scores) >= 0.66 && stable && likes >= 5 && decisive >= 15
+    }
+
+    var phase: String {
+        if !uncovered.isEmpty { return "Exploring genres · \(Catalog.genres.count - uncovered.count) of \(Catalog.genres.count)" }
+        return "Narrowing in on your taste"
+    }
+
+    // MARK: Supply
+
+    /// Cards beyond the visible stack get re-ordered so the most useful ones come next.
+    private func reprioritize(after idx: Int) {
+        let keep = idx + 4   // leave the cards already stacked on screen alone
+        guard cards.count > keep + 1 else { return }
+        let tail = Array(cards[keep...])
+        let exploring = !uncovered.isEmpty
+        let leaders = Set(topHistory.last ?? [])
+        let sorted = tail.map { c -> (c: (film: FilmRef, genres: [String]), score: Double) in
+            let s = exploring ? c.genres.reduce(0) { $0 + need($1) } : c.genres.reduce(0) { $0 + (leaders.contains($1) ? 1 : 0.1) }
+            return (c, s + Double.random(in: 0..<0.3))
+        }.sorted { $0.score > $1.score }.map { $0.c }
+        cards.replaceSubrange(keep..., with: sorted)
+    }
+
+    func topUp() async {
+        guard !loading else { return }
+        loading = true
+        defer { loading = false }
+        for _ in 0..<3 {
+            let target = nextTarget()
+            let key = target.joined(separator: "+")
+            let page = pages[key, default: 0] + 1
+            pages[key] = page
+            let fresh = await TMDB.deckPage(genres: target, page: page).filter { seen.insert($0.film.id).inserted }
+            if !fresh.isEmpty { cards.append(contentsOf: fresh.shuffled().prefix(10)); return }
+        }
+    }
+
+    private func nextTarget() -> [String] {
+        // Still exploring: go to the genre we know least about.
+        if let g = uncovered.shuffled().max(by: { need($0) < need($1) }) { return [g] }
+        let leaders = topHistory.last ?? []
+        rotation += 1
+        switch rotation % 5 {
+        case 0 where leaders.count == 2: return leaders                       // films mixing your top two
+        case 1, 3: return leaders.first.map { [$0] } ?? [Catalog.genres.randomElement()!]
+        case 2: return leaders.dropFirst().first.map { [$0] } ?? [Catalog.genres.randomElement()!]
+        default: return [Catalog.genres.randomElement()!]                  // keep re-testing the rest
+        }
+    }
+}
+
+/// Swipe through films — as many as it takes — to build your film character.
 struct TasteQuizView: View {
     @Environment(Taste.self) private var taste
     @Environment(Library.self) private var library
     @Environment(\.dismiss) private var dismiss
-    @State private var cards: [(film: FilmRef, genres: [String])] = []
-    @State private var failed = false
+    @State private var engine = QuizEngine()
     @State private var result: Persona?
     @State private var top: FilmRef?
-    private let goal = 20
 
     var body: some View {
         ZStack {
@@ -179,24 +301,26 @@ struct TasteQuizView: View {
             } else {
                 VStack(spacing: 14) {
                     header
-                    if cards.isEmpty {
+                    if engine.cards.isEmpty {
                         Spacer()
-                        if failed {
+                        if engine.failed {
                             EmptyState(symbol: "wifi.exclamationmark", title: "Couldn't load films", message: "Check your connection and try again.")
                         } else { ProgressView().tint(.white) }
                         Spacer()
                     } else {
-                        SwipeDeck(films: cards.map(\.film), middle: ("eye.slash", "Haven't seen"),
+                        SwipeDeck(films: engine.cards.map(\.film), middle: ("eye.slash", "Haven't seen"),
                                   onSwipe: { f, liked in
                                       taste.record(f, genres: genres(for: f), liked: liked)
-                                      if taste.profile.seen >= goal { reveal() }
+                                      engine.record(f, liked: liked, scores: taste.profile.scores)
+                                      if engine.isSure(taste.profile.scores) { reveal() }
                                   },
-                                  onMiddle: { _ in },
+                                  onMiddle: { f in engine.record(f, liked: nil, scores: taste.profile.scores) },
                                   onTop: { top = $0 }) {
-                            VStack(spacing: 14) {
-                                Text("That's the deck!").font(.title2.bold())
-                                Button("Show my character") { reveal() }.buttonStyle(.glassProminent).controlSize(.large)
+                            VStack(spacing: 12) {
+                                ProgressView().tint(.white)
+                                Text("Finding more films…").font(.subheadline).foregroundStyle(Theme.dim)
                             }
+                            .task { await engine.topUp() }
                         }
                         .padding(.horizontal, 16)
                     }
@@ -208,31 +332,41 @@ struct TasteQuizView: View {
         .animation(.smooth(duration: 0.5), value: result)
         .task {
             taste.beginQuiz()
-            do { cards = try await TMDB.deck() } catch { failed = true }
+            await engine.start()
         }
     }
 
     private var header: some View {
-        VStack(spacing: 10) {
+        let confidence = engine.confidence(taste.profile.scores)
+        return VStack(spacing: 10) {
             HStack {
                 Button("Skip") { taste.skipQuiz(); dismiss() }
                     .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.dim)
                 Spacer()
-                if taste.profile.seen >= 8 {
-                    Button("Done") { reveal() }.font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent)
+                if engine.decisive >= 40 {
+                    Button("Finish now") { reveal() }.font(.subheadline.weight(.bold)).foregroundStyle(Theme.accent)
                 }
             }
             Text("What's your film character?").font(.title2.weight(.heavy))
-            Text("Swipe right on films you love, left on ones that aren't for you.")
+            Text("Swipe right on films you love, left on ones that aren't for you. We'll keep going until we really know you.")
                 .font(.subheadline).foregroundStyle(Theme.dim).multilineTextAlignment(.center)
-            ProgressView(value: Double(min(taste.profile.seen, goal)), total: Double(goal)).tint(Theme.accent)
-                .padding(.horizontal, 40)
+            VStack(spacing: 6) {
+                ProgressView(value: confidence).tint(Theme.accent)
+                    .animation(.smooth, value: confidence)
+                HStack {
+                    Text(engine.phase)
+                    Spacer()
+                    Text("\(Int(confidence * 100))% sure")
+                }
+                .font(.caption.weight(.semibold).monospacedDigit()).foregroundStyle(Theme.dim)
+            }
+            .padding(.horizontal, 24)
         }
         .padding(.horizontal, 20)
         .padding(.top, 8)
     }
 
-    private func genres(for f: FilmRef) -> [String] { cards.first { $0.film.id == f.id }?.genres ?? [] }
+    private func genres(for f: FilmRef) -> [String] { engine.cards.first { $0.film.id == f.id }?.genres ?? [] }
 
     private func reveal() {
         guard result == nil else { return }

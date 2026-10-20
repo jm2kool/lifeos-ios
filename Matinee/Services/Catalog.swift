@@ -222,6 +222,19 @@ enum TMDB {
         return Array(mixed.prefix(30))
     }
 
+    /// Well-known films in the given genres (all of them), for the endless taste quiz.
+    static func deckPage(genres: [String], page: Int) async -> [(film: FilmRef, genres: [String])] {
+        var q = ["sort_by": "vote_count.desc", "vote_count.gte": "400", "page": String(page), "include_adult": "false"]
+        let ids = genres.compactMap { genreIDs[$0] }.map(String.init)
+        if !ids.isEmpty { q["with_genres"] = ids.joined(separator: ",") }
+        guard let j = try? await call("/discover/movie", q) else { return [] }
+        return j["results"].array.compactMap { m in
+            guard let f = ref(m), f.poster != nil else { return nil }
+            let g = m["genre_ids"].array.compactMap { $0.int.flatMap { genreNames[$0] } }
+            return g.isEmpty ? nil : (f, g)
+        }
+    }
+
     static func recommendations(_ id: String) async -> [FilmRef] {
         guard id.hasPrefix("tmdb-") else { return [] }
         let num = id.replacingOccurrences(of: "tmdb-", with: "")
