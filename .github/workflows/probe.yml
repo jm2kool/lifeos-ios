@@ -18,10 +18,9 @@ jobs:
           p "https://en.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&generator=search&gsrsearch=parasite%20hastemplate%3AInfobox_film&gsrlimit=3&prop=pageimages%7Cdescription%7Cpageprops&piprop=thumbnail&pithumbsize=600&ppprop=wikibase_item"
           p "https://en.wikipedia.org/w/api.php?action=query&format=json&formatversion=2&prop=extracts%7Cpageimages%7Cdescription%7Cpageprops&exintro=1&explaintext=1&piprop=thumbnail&pithumbsize=1000&ppprop=wikibase_item&titles=Dune%3A%20Part%20Two"
           echo "=== wikidata" >> probe.txt
-          curl -sS -m 25 -A "Matinee/1.0" "https://www.wikidata.org/wiki/Special:EntityData/Q104835752.json" | python3 -c "
-import json,sys;d=json.load(sys.stdin);e=list(d['entities'].values())[0];c=e['claims']
-for k in ['P57','P161','P136','P2047','P577','P345','P495','P4947']:
-  v=c.get(k,[])[:3]; print(k,[x['mainsnak'].get('datavalue',{}).get('value') for x in v])" >> probe.txt 2>&1
+          curl -sS -m 25 -A "Matinee/1.0" "https://www.wikidata.org/wiki/Special:EntityData/Q104835752.json" -o wd.json || true
+          python3 -c "import json; d=json.load(open('wd.json')); e=list(d['entities'].values())[0]; c=e['claims']; [print(k, [x['mainsnak'].get('datavalue',{}).get('value') for x in c.get(k,[])[:3]]) for k in ['P57','P161','P136','P2047','P577','P345','P495','P4947','P1476']]" >> probe.txt 2>&1 || true
+          rm -f wd.json
           p "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q1149%7CQ3282637&props=labels&languages=en&format=json"
           ls -l
       - name: Publish

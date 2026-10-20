@@ -77,7 +77,8 @@ jobs:
           # In its own repo the release is "latest"; on a branch of another repo it gets its own tag.
           OWN_REPO: ${{ github.event.repository.name == 'matinee' }}
         run: |
-          if [ "$OWN_REPO" = "true" ]; then TAG=latest; FLAGS="--latest"; else TAG=matinee-latest; FLAGS="--latest=false --target $GITHUB_SHA"; fi
-          gh release delete $TAG --yes --cleanup-tag 2>/dev/null || true
-          gh release create $TAG Matinee.ipa --title "Matinee (latest build)" $FLAGS \
-            --notes "Unsigned build of ${GITHUB_SHA::7}. Install with Sideloadly using your Apple ID."
+          if [ "$OWN_REPO" = "true" ]; then TAG=latest; FLAGS="--latest"; else TAG=matinee-latest; FLAGS="--latest=false"; fi
+          NOTES="Unsigned build of ${GITHUB_SHA::7}. Install with Sideloadly using your Apple ID."
+          gh release view $TAG >/dev/null 2>&1 || gh release create $TAG --title "Matinee (latest build)" $FLAGS --target $GITHUB_SHA --notes "$NOTES"
+          gh release upload $TAG Matinee.ipa --clobber
+          gh release edit $TAG --notes "$NOTES"
