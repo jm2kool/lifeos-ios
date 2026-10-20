@@ -61,8 +61,10 @@ jobs:
           shot 3.5 4-library
           shot 3.5 5-profile
           sleep 4
+          SIMCTL_CHILD_MATINEE_TAB=profile xcrun simctl launch --terminate-running-process "$UDID" $APP; shot 9 5b-profile-mesh
           kill -INT $REC; wait $REC || true
           SIMCTL_CHILD_MATINEE_FILM=tt15239678 xcrun simctl launch --terminate-running-process "$UDID" $APP; shot 9 6-film
+          SIMCTL_CHILD_MATINEE_FILM=tt6751668 SIMCTL_CHILD_MATINEE_SCROLL=1 xcrun simctl launch --terminate-running-process "$UDID" $APP; shot 10 6b-film-scrolled
           SIMCTL_CHILD_MATINEE_TAB=diary SIMCTL_CHILD_MATINEE_LOG=1 xcrun simctl launch --terminate-running-process "$UDID" $APP; shot 7 7-log
           SIMCTL_CHILD_MATINEE_TAB=search xcrun simctl launch --terminate-running-process "$UDID" $APP; shot 5 8-search
           ls -lh out

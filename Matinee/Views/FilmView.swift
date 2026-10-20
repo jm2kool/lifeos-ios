@@ -7,6 +7,12 @@ struct FilmView: View {
     @State private var detail: FilmDetail?
     @State private var failed = false
     @State private var expanded = false
+    @State private var palette: PosterPalette?
+    @State private var scroll = ScrollPosition(edge: .top)
+
+    /// The page takes its colour from the poster: deep enough for white text, never washed out.
+    private var bg: Color { palette?.background ?? .black }
+    private var surface: Color { palette?.surface ?? Theme.card }
 
     private var ref: FilmRef {
         var r = detail?.ref ?? film
@@ -17,19 +23,26 @@ struct FilmView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 26) {
+            VStack(spacing: 0) {
                 header
-                actionPanel.padding(.horizontal, 16)
-                if let d = detail { info(d) } else if failed {
-                    EmptyState(symbol: "film", title: "Couldn't load details", message: "You can still log, rate and save this film.")
-                } else {
-                    ProgressView().frame(maxWidth: .infinity).padding(.vertical, 30)
+                VStack(alignment: .leading, spacing: 26) {
+                    actionPanel.padding(.horizontal, 16)
+                    if let d = detail { info(d) } else if failed {
+                        EmptyState(symbol: "film", title: "Couldn't load details", message: "You can still log, rate and save this film.")
+                    } else {
+                        ProgressView().frame(maxWidth: .infinity).padding(.vertical, 30)
+                    }
+                    yourActivity
                 }
-                yourActivity
+                .padding(.top, 6)
+                .padding(.bottom, 60)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(bg)
             }
-            .padding(.bottom, 60)
         }
-        .oledBackground()
+        .scrollPosition($scroll)
+        .background(bg.ignoresSafeArea())
+        .scrollContentBackground(.hidden)
         .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -59,44 +72,71 @@ struct FilmView: View {
                 library.hydrate(film, with: d)
             } catch { failed = true }
         }
+        .task(id: ref.largePoster ?? ref.poster) {
+            if ProcessInfo.processInfo.environment["MATINEE_SCROLL"] != nil {
+                try? await Task.sleep(for: .seconds(5))
+                withAnimation(.smooth(duration: 0.8)) { scroll.scrollTo(y: 640) }
+            }
+            if let hit = Palette.cached(ref.largePoster ?? ref.poster) { palette = hit; return }
+            if let p = await Palette.of(ref.largePoster ?? ref.poster) {
+                withAnimation(.easeInOut(duration: 0.7)) { palette = p }
+            }
+        }
     }
 
     // MARK: Header
 
+    /// The poster fills the whole screen; scroll up and the page beneath is painted in its colour.
     private var header: some View {
-        ZStack(alignment: .bottom) {
-            RemoteImage(url: ref.backdrop ?? ref.poster)
-                .frame(height: 380)
-                .frame(maxWidth: .infinity)
+        ZStack(alignment: .bottomLeading) {
+            Color.clear
+                .overlay { RemoteImage(url: ref.largePoster ?? ref.poster) }
                 .clipped()
-                .overlay {
-                    if ref.backdrop == nil { Rectangle().fill(.ultraThinMaterial) }
+                .visualEffect { content, geo in
+                    // Stretch the poster when you pull down past the top.
+                    let y = geo.frame(in: .scrollView).minY
+                    return content.scaleEffect(y > 0 ? 1 + y / max(geo.size.height, 1) : 1, anchor: .bottom)
                 }
-            LinearGradient(stops: [.init(color: .black.opacity(0.35), location: 0), .init(color: .clear, location: 0.3),
-                                   .init(color: .black.opacity(0.7), location: 0.75), .init(color: .black, location: 1)],
+            LinearGradient(stops: [.init(color: .black.opacity(0.5), location: 0), .init(color: .clear, location: 0.16),
+                                   .init(color: .clear, location: 0.52), .init(color: bg.opacity(0.75), location: 0.78),
+                                   .init(color: bg, location: 1)],
                            startPoint: .top, endPoint: .bottom)
-            HStack(alignment: .bottom, spacing: 16) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(ref.title.isEmpty ? " " : ref.title)
-                        .font(.system(.largeTitle, design: .serif).weight(.bold))
-                        .lineLimit(3).minimumScaleFactor(0.7)
-                    HStack(spacing: 6) {
-                        if let y = ref.year { Text(String(y)) }
-                        if let m = detail?.runtimeMinutes, m > 0 { Text("·"); Text("\(m / 60)h \(m % 60)m") }
-                    }
-                    .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.dim)
-                    if let dirs = detail?.directors, !dirs.isEmpty {
-                        (Text("Directed by ").foregroundStyle(Theme.dim) + Text(dirs.prefix(2).joined(separator: ", ")).bold())
-                            .font(.subheadline)
+                .allowsHitTesting(false)
+            VStack(alignment: .leading, spacing: 8) {
+                if let g = detail?.genres.first {
+                    Text(g.uppercased()).font(.caption.weight(.heavy)).tracking(1.4)
+                        .foregroundStyle(palette?.highlight ?? Theme.accent)
+                }
+                Text(ref.title.isEmpty ? " " : ref.title)
+                    .font(.system(size: 40, weight: .bold, design: .serif))
+                    .lineLimit(3).minimumScaleFactor(0.6)
+                    .shadow(color: .black.opacity(0.35), radius: 10, y: 2)
+                HStack(spacing: 6) {
+                    if let y = ref.year { Text(String(y)) }
+                    if let m = detail?.runtimeMinutes, m > 0 { Text("·"); Text("\(m / 60)h \(m % 60)m") }
+                    if let r = detail?.communityRating, r > 0 {
+                        Text("·")
+                        Image(systemName: "star.fill").foregroundStyle(Theme.star)
+                        Text((r / 2).formatted(.number.precision(.fractionLength(1))))
                     }
                 }
-                Spacer(minLength: 0)
-                PosterView(film: ref, width: 104, corner: 10)
-                    .shadow(color: .black.opacity(0.7), radius: 16, y: 8)
+                .font(.subheadline.weight(.semibold)).foregroundStyle(.white.opacity(0.8))
+                if let dirs = detail?.directors, !dirs.isEmpty {
+                    Text("Directed by **\(dirs.prefix(2).joined(separator: ", "))**")
+                        .font(.subheadline).foregroundStyle(.white.opacity(0.85))
+                }
+                Image(systemName: "chevron.compact.up")
+                    .font(.title2.weight(.semibold)).foregroundStyle(.white.opacity(0.5))
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 6)
+                    .symbolEffect(.pulse, options: .repeating)
+                    .accessibilityHidden(true)
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 22)
+            .padding(.bottom, 18)
         }
-        .frame(height: 380)
+        .containerRelativeFrame(.vertical)
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: Actions — the one place to watch, like, save, rate and log
@@ -112,7 +152,7 @@ struct FilmView: View {
             Divider().overlay(Theme.line)
             VStack(spacing: 8) {
                 Text(library.rating(ref.id) == nil ? "Tap or slide to rate" : "Your rating")
-                    .font(.caption.weight(.semibold)).foregroundStyle(Theme.dim)
+                    .font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.65))
                 StarRating(rating: library.rating(ref.id), size: 36, spacing: 8) { library.rate(ref, $0) }
             }
             GlassEffectContainer(spacing: 10) {
@@ -145,7 +185,7 @@ struct FilmView: View {
                     .foregroundStyle(on ? color : .white.opacity(0.8))
                     .symbolEffect(.bounce, value: on)
                     .frame(height: 30)
-                Text(title).font(.caption.weight(.semibold)).foregroundStyle(on ? color : Theme.dim)
+                Text(title).font(.caption.weight(.semibold)).foregroundStyle(on ? color : .white.opacity(0.65))
             }
             .frame(maxWidth: .infinity)
             .contentShape(.rect)
@@ -158,7 +198,7 @@ struct FilmView: View {
     @ViewBuilder private func info(_ d: FilmDetail) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             if let t = d.tagline {
-                Text(t.uppercased()).font(.caption.weight(.semibold)).tracking(1).foregroundStyle(Theme.dim)
+                Text(t.uppercased()).font(.caption.weight(.semibold)).tracking(1).foregroundStyle(.white.opacity(0.65))
             }
             if let o = d.overview {
                 Text(o).font(.body).foregroundStyle(.white.opacity(0.85)).lineLimit(expanded ? nil : 4)
@@ -181,18 +221,18 @@ struct FilmView: View {
         if let r = d.communityRating, r > 0 {
             HStack(spacing: 18) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("COMMUNITY").font(.caption2.weight(.heavy)).tracking(1.2).foregroundStyle(Theme.dim)
+                    Text("COMMUNITY").font(.caption2.weight(.heavy)).tracking(1.2).foregroundStyle(.white.opacity(0.65))
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text((r / 2).formatted(.number.precision(.fractionLength(1)))).font(.system(size: 40, weight: .bold, design: .rounded))
                         Image(systemName: "star.fill").foregroundStyle(Theme.star)
                     }
-                    if let v = d.voteCount { Text("\(v.formatted(.number.notation(.compactName))) ratings · \(Catalog.usingTMDB ? "TMDB" : "IMDb")").font(.caption).foregroundStyle(Theme.dim) }
+                    if let v = d.voteCount { Text("\(v.formatted(.number.notation(.compactName))) ratings · \(Catalog.usingTMDB ? "TMDB" : "IMDb")").font(.caption).foregroundStyle(.white.opacity(0.65)) }
                 }
                 Spacer()
                 StarRating(rating: ((r / 2) * 2).rounded() / 2, size: 18, spacing: 3)
             }
             .padding(18)
-            .background(Theme.card, in: .rect(cornerRadius: 22))
+            .background(surface, in: .rect(cornerRadius: 22))
             .padding(.horizontal, 16)
         }
 
@@ -204,13 +244,13 @@ struct FilmView: View {
                         ForEach(d.cast) { p in
                             VStack(spacing: 6) {
                                 ZStack {
-                                    Circle().fill(Theme.card)
-                                    Text(p.name.prefix(1)).font(.title2.bold()).foregroundStyle(Theme.dim)
+                                    Circle().fill(surface)
+                                    Text(p.name.prefix(1)).font(.title2.bold()).foregroundStyle(.white.opacity(0.65))
                                     if p.photo != nil { RemoteImage(url: p.photo).clipShape(Circle()) }
                                 }
                                 .frame(width: 72, height: 72)
                                 Text(p.name).font(.caption.weight(.semibold)).lineLimit(2).multilineTextAlignment(.center)
-                                if !p.role.isEmpty { Text(p.role).font(.caption2).foregroundStyle(Theme.dim).lineLimit(1) }
+                                if !p.role.isEmpty { Text(p.role).font(.caption2).foregroundStyle(.white.opacity(0.65)).lineLimit(1) }
                             }
                             .frame(width: 84)
                         }
@@ -229,7 +269,7 @@ struct FilmView: View {
                     if !d.countries.isEmpty { detailRow("Country", d.countries.prefix(3).joined(separator: ", ")) }
                     if !d.directors.isEmpty { detailRow(d.directors.count > 1 ? "Directors" : "Director", d.directors.joined(separator: ", ")) }
                 }
-                .background(Theme.card, in: .rect(cornerRadius: 18))
+                .background(surface, in: .rect(cornerRadius: 18))
                 .padding(.horizontal, 16)
             }
         }
@@ -244,7 +284,7 @@ struct FilmView: View {
 
     private func detailRow(_ k: String, _ v: String) -> some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(k).foregroundStyle(Theme.dim)
+            Text(k).foregroundStyle(.white.opacity(0.65))
             Spacer()
             Text(v).multilineTextAlignment(.trailing)
         }
@@ -272,7 +312,7 @@ struct FilmView: View {
                             }
                             .padding(14)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Theme.card, in: .rect(cornerRadius: 16))
+                            .background(surface, in: .rect(cornerRadius: 16))
                         }
                         .buttonStyle(.plain)
                     }

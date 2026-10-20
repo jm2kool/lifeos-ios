@@ -1,9 +1,11 @@
 import SwiftUI
+import UIKit
 
 struct ProfileView: View {
     @Environment(Library.self) private var library
     @Environment(Auth.self) private var auth
     @Environment(Router.self) private var router
+    @State private var meshColors: [Color] = FavoritesMesh.fallback
 
     var body: some View {
         let p = library.doc.profile
@@ -73,12 +75,37 @@ struct ProfileView: View {
             }
             .padding(.bottom, 40)
         }
-        .oledBackground()
+        .scrollContentBackground(.hidden)
+        .background {
+            // Like Apple Card: a slowly shifting blend of colour — here drawn from your four favourite posters.
+            ZStack(alignment: .top) {
+                Color.black
+                FavoritesMesh(colors: meshColors)
+                    .frame(height: 620)
+                    .overlay(Color.black.opacity(0.18))
+                    .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.5),
+                                                 .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
+            }
+            .ignoresSafeArea()
+        }
+        .task(id: library.doc.favorites.map { $0.poster?.absoluteString ?? $0.id }) { await refreshMesh() }
         .navigationTitle("Profile")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { Button("Settings", systemImage: "gearshape") { router.sheet = .settings } }
         }
+    }
+
+    private func refreshMesh() async {
+        var ui: [UIColor] = []
+        var seconds: [UIColor] = []
+        for f in library.doc.favorites {
+            guard let p = await Palette.of(f.poster) else { continue }
+            if let a = p.uiColors.first { ui.append(a) }
+            if p.uiColors.count > 1 { seconds.append(p.uiColors[1]) }
+        }
+        let vivid = (ui + seconds).map { Color(uiColor: $0.adjusted(maxBrightness: 0.95, minSaturation: 0.55, minBrightness: 0.62)) }
+        withAnimation(.easeInOut(duration: 1.2)) { meshColors = vivid.isEmpty ? FavoritesMesh.fallback : vivid }
     }
 
     private func stat(_ n: Int, _ label: String, _ route: CollectionRoute?) -> some View {
@@ -212,5 +239,32 @@ struct FavoritePicker: View {
                 if let r = try? await Catalog.search(query) { results = r }
             }
         }
+    }
+}
+
+/// An animated mesh gradient in the spirit of the Apple Card in Wallet.
+struct FavoritesMesh: View {
+    let colors: [Color]
+    static let fallback: [Color] = [Theme.accent, Theme.heart, Color(red: 0.55, green: 0.35, blue: 1), Theme.star, Theme.list]
+
+    private var nine: [Color] {
+        let c = colors.isEmpty ? Self.fallback : colors
+        // Spread the colours so neighbours differ, the way Apple Card mixes its categories.
+        let order = [0, 1, 2, 3, 4, 5, 6, 7, 8].map { c[($0 * 5 + $0 / 3) % c.count] }
+        return order
+    }
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 30)) { tl in
+            let t = Float(tl.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 10_000))
+            MeshGradient(width: 3, height: 3, points: [
+                SIMD2<Float>(0, 0), SIMD2<Float>(0.5 + 0.18 * sin(t * 0.31), 0), SIMD2<Float>(1, 0),
+                SIMD2<Float>(0, 0.5 + 0.14 * cos(t * 0.27)),
+                SIMD2<Float>(0.5 + 0.2 * sin(t * 0.23), 0.48 + 0.16 * cos(t * 0.29)),
+                SIMD2<Float>(1, 0.5 + 0.14 * sin(t * 0.35)),
+                SIMD2<Float>(0, 1), SIMD2<Float>(0.5 + 0.18 * cos(t * 0.21), 1), SIMD2<Float>(1, 1),
+            ], colors: nine, smoothsColors: true)
+        }
+        .accessibilityHidden(true)
     }
 }
