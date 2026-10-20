@@ -7,8 +7,6 @@ struct SettingsView: View {
     @Environment(Router.self) private var router
     @Environment(\.dismiss) private var dismiss
     @State private var tmdb = ""
-    @State private var serverURL = ""
-    @State private var serverKey = ""
     @State private var importing = false
     @State private var importer = Importer()
     @State private var confirmErase = false
@@ -31,23 +29,9 @@ struct SettingsView: View {
                         Button("Sign out", role: .destructive) { confirmSignOut = true }
                     } else {
                         Text("You're using Matinee without an account. Everything stays on this iPhone.").font(.footnote).foregroundStyle(Theme.dim)
-                        Button { router.sheet = .signIn } label: { Label("Sign in with Google, Apple & more", systemImage: "person.crop.circle.badge.plus") }
+                        Button { router.sheet = .signIn } label: { Label("Sign in with Google", systemImage: "person.crop.circle.badge.plus") }
                     }
                 } header: { Text("Account") }
-
-                Section {
-                    TextField("https://xxxx.supabase.co", text: $serverURL)
-                        .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    TextField("anon / publishable key", text: $serverKey)
-                        .textInputAutocapitalization(.never).autocorrectionDisabled()
-                    Button("Save") {
-                        auth.serverURL = serverURL; auth.anonKey = serverKey
-                        library.toast = Toast(text: "Account server saved", symbol: "server.rack")
-                    }
-                    .disabled(serverURL == auth.serverURL && serverKey == auth.anonKey)
-                } header: { Text("Account server") } footer: {
-                    Text("Sign-in uses your own free Supabase project. Add matinee://auth-callback as a redirect URL there, then switch on the providers you want.")
-                }
 
                 Section {
                     LabeledContent("TMDB", value: Catalog.hasToken ? "Connected" : "Not connected")
@@ -96,7 +80,6 @@ struct SettingsView: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done", systemImage: "checkmark") { dismiss() } } }
             .onAppear {
                 tmdb = UserDefaults.standard.string(forKey: "tmdbToken") ?? ""
-                serverURL = auth.serverURL; serverKey = auth.anonKey
             }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.commaSeparatedText, .plainText], allowsMultipleSelection: true) { result in
                 if case .success(let urls) = result { Task { await importer.run(urls, into: library) } }

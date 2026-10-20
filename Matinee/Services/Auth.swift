@@ -2,9 +2,8 @@ import Foundation
 import CryptoKit
 import Security
 
-/// Sign-in through Supabase Auth — one backend that speaks Google, Apple, GitHub, Discord, X,
-/// Facebook, Microsoft, Spotify and email. OAuth runs in a secure browser sheet with PKCE, so no
-/// provider SDKs (and no client secrets) live in the app.
+/// Google sign-in through Supabase Auth. OAuth runs in a secure browser sheet with PKCE, so no
+/// Google SDK (and no client secret) lives in the app. Without signing in, everything stays on the phone.
 @Observable @MainActor
 final class Auth {
     static let shared = Auth()
@@ -94,7 +93,7 @@ final class Auth {
     struct PendingOAuth { let url: URL; let verifier: String }
 
     func begin(_ p: Provider) -> PendingOAuth? {
-        guard configured else { error = "Add your account server in Settings first."; return nil }
+        guard configured else { error = "Google sign-in isn't set up in this build yet."; return nil }
         let verifier = Self.randomString(64)
         let challenge = Data(SHA256.hash(data: Data(verifier.utf8))).base64URL
         var c = URLComponents(string: base + "/auth/v1/authorize")!

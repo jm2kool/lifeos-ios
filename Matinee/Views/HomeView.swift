@@ -15,11 +15,11 @@ struct HomeView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 30) {
+            VStack(alignment: .leading, spacing: 34) {
                 greeting
                 if connected { heroCarousel } else { TMDBConnectCard() }
                 if !library.doc.watchlist.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 14) {
                         SectionHeader(title: "Up next", subtitle: "From your watchlist") {
                             NavigationLink("See all", value: CollectionRoute.watchlist)
                         }
@@ -28,19 +28,30 @@ struct HomeView: View {
                 }
                 ForEach(HomeShelf.allCases) { s in
                     if let films = shelves[s], !films.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 14) {
                             SectionHeader(title: s.title) { NavigationLink("See all", value: CollectionRoute.shelf(s)) }
                             PosterRow(films: s == .trending ? Array(films.dropFirst(min(3, films.count))) : films)
                         }
                     }
                 }
                 if connected && failed && shelves.isEmpty {
-                    EmptyState(symbol: "wifi.exclamationmark", title: "Couldn't load films", message: errorText ?? "Check your connection and pull to refresh.")
-                        .padding(.top, 40)
+                    HStack(alignment: .top, spacing: 14) {
+                        Image(systemName: "wifi.exclamationmark").font(.title2).foregroundStyle(Theme.accent)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Couldn't load films").font(.headline)
+                            Text(errorText ?? "Check your connection and pull down to retry.").font(.subheadline).foregroundStyle(Theme.dim)
+                            Button("Try again") { Task { await load(force: true) } }
+                                .buttonStyle(.glass).controlSize(.small).padding(.top, 6)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(18)
+                    .background(Theme.card, in: .rect(cornerRadius: 22))
+                    .padding(.horizontal, 16)
                 }
                 genres
                 if !library.entries.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 14) {
                         SectionHeader(title: "Your recent watches") {
                             Button("Diary") { router.tab = .diary }
                         }
@@ -48,7 +59,8 @@ struct HomeView: View {
                     }
                 }
             }
-            .padding(.bottom, 40)
+            .padding(.top, 4)
+            .padding(.bottom, 32)
         }
         .oledBackground()
         .toolbar(.hidden, for: .navigationBar)
@@ -69,7 +81,6 @@ struct HomeView: View {
                 .accessibilityLabel("Settings")
         }
         .padding(.horizontal, 20)
-        .padding(.top, 8)
     }
 
     private var greetingText: String {
@@ -81,11 +92,13 @@ struct HomeView: View {
 
     @ViewBuilder private var heroCarousel: some View {
         if hero.isEmpty {
-            RoundedRectangle(cornerRadius: 28).fill(Theme.card)
-                .frame(height: 440).padding(.horizontal, 20)
-                .overlay { if !failed { ProgressView() } }
+            if !failed {
+                RoundedRectangle(cornerRadius: 28).fill(Theme.card)
+                    .frame(height: 440).padding(.horizontal, 20)
+                    .overlay { ProgressView() }
+            }
         } else {
-            VStack(spacing: 12) {
+            VStack(spacing: 14) {
                 ScrollView(.horizontal) {
                     LazyHStack(spacing: 12) {
                         ForEach(Array(hero.enumerated()), id: \.element.id) { i, f in
@@ -111,20 +124,28 @@ struct HomeView: View {
     }
 
     private var genres: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let half = (Catalog.genres.count + 1) / 2
+        let rows = [Array(Catalog.genres.prefix(half)), Array(Catalog.genres.dropFirst(half))]
+        return VStack(alignment: .leading, spacing: 14) {
             SectionHeader("Browse by genre")
             ScrollView(.horizontal) {
-                LazyHGrid(rows: [GridItem(.fixed(44)), GridItem(.fixed(44))], spacing: 8) {
-                    ForEach(Catalog.genres, id: \.self) { g in
-                        NavigationLink(value: GenreRoute(name: g)) {
-                            Text(g).font(.subheadline.weight(.semibold)).padding(.horizontal, 16).frame(height: 40)
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(rows.indices, id: \.self) { r in
+                        HStack(spacing: 8) {
+                            ForEach(rows[r], id: \.self) { g in
+                                NavigationLink(value: GenreRoute(name: g)) {
+                                    Text(g).font(.subheadline.weight(.semibold)).fixedSize()
+                                }
+                                .buttonStyle(.glass)
+                            }
                         }
-                        .buttonStyle(.glass)
                     }
                 }
                 .padding(.horizontal, 20)
+                .padding(.vertical, 2)
             }
             .scrollIndicators(.hidden)
+            .scrollClipDisabled()
         }
     }
 

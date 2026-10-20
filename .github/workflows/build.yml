@@ -33,11 +33,16 @@ jobs:
           brew install xcodegen >/dev/null 2>&1 || brew install xcodegen
           xcodegen generate
 
-      - name: Bake in the TMDB token (if the repo has a TMDB_TOKEN secret)
+      - name: Bake in keys from repository secrets
         env:
           TMDB_TOKEN: ${{ secrets.TMDB_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          if [ -n "$TMDB_TOKEN" ]; then plutil -replace MatineeTMDBToken -string "$TMDB_TOKEN" Config/Info.plist; echo "token baked in"; else echo "no token secret; paste it in the app"; fi
+          set_key() { if [ -n "$2" ]; then plutil -replace "$1" -string "$2" Config/Info.plist; echo "$1: set"; else echo "$1: not set"; fi; }
+          set_key MatineeTMDBToken "$TMDB_TOKEN"
+          set_key MatineeSupabaseURL "$SUPABASE_URL"
+          set_key MatineeSupabaseAnonKey "$SUPABASE_ANON_KEY"
 
       - name: Build (unsigned)
         run: |
@@ -73,11 +78,15 @@ jobs:
         if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
-          # In its own repo the release is "latest"; on a branch of another repo it gets its own tag.
           OWN_REPO: ${{ github.event.repository.name == 'matinee' }}
+          PUBLIC_REPO: ${{ !github.event.repository.private }}
         run: |
-          if [ "$OWN_REPO" = "true" ]; then TAG=latest; FLAGS="--latest"; else TAG=matinee-latest; FLAGS="--latest=false"; fi
           NOTES="Unsigned build of ${GITHUB_SHA::7}. Install with Sideloadly using your Apple ID."
-          gh release view $TAG >/dev/null 2>&1 || gh release create $TAG --title "Matinee (latest build)" $FLAGS --target $GITHUB_SHA --notes "$NOTES"
-          gh release upload $TAG Matinee.ipa --clobber
-          gh release edit $TAG --notes "$NOTES"
+          if [ "$OWN_REPO" = "true" ]; then TAG=latest; NAME="Matinee (latest build)"; else TAG=matinee-latest; NAME="Matinee (latest build)"; fi
+          # The .ipa carries your keys, so in a public repo it goes into a draft release only you can see.
+          for id in $(gh api repos/$GITHUB_REPOSITORY/releases --jq ".[] | select(.name==\"$NAME\") | .id"); do
+            gh api -X DELETE repos/$GITHUB_REPOSITORY/releases/$id >/dev/null || true
+          done
+          git push origin ":refs/tags/$TAG" 2>/dev/null || true
+          if [ "$PUBLIC_REPO" = "true" ]; then FLAGS="--draft"; else FLAGS="--latest"; fi
+          gh release create $TAG Matinee.ipa --title "$NAME" --target $GITHUB_SHA --notes "$NOTES" $FLAGS
