@@ -14,6 +14,7 @@ struct FilmView: View {
     @State private var artLoaded = false
     @State private var trailerKey: String?
     @State private var showTrailer = false
+    @State private var shareImage: UIImage?
 
     /// The page takes its colour from the poster: deep enough for white text, never washed out.
     private var bg: Color { palette?.background ?? .black }
@@ -63,6 +64,11 @@ struct FilmView: View {
                     ShareLink(item: "\(ref.title)\(ref.year.map { " (\($0))" } ?? "") — on my watch list in Matinee") {
                         Label("Share", systemImage: "square.and.arrow.up")
                     }
+                    if let img = shareImage {
+                        ShareLink(item: Image(uiImage: img), preview: SharePreview(ref.title, image: Image(uiImage: img))) {
+                            Label("Share as a story card", systemImage: "photo.on.rectangle")
+                        }
+                    }
                     Button { router.sheet = .addToList(ref) } label: { Label("Add to list…", systemImage: "text.badge.plus") }
                     Menu {
                         ForEach(0..<4) { i in
@@ -81,6 +87,14 @@ struct FilmView: View {
             if let k = trailerKey { TrailerView(key: k, title: ref.title) }
         }
         .task(id: film.id) { trailerKey = await Catalog.trailer(film.id) }
+        // Keep a story card ready to share, with your current rating on it.
+        .task(id: "\(heroURL?.absoluteString ?? "")|\(art?.logo?.absoluteString ?? "")|\(library.rating(ref.id) ?? 0)|\(library.isLiked(ref.id))") {
+            guard heroURL != nil else { return }
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
+            shareImage = await ShareCard.render(film: ref, poster: heroURL, logo: art?.logo, rating: library.rating(ref.id),
+                                                liked: library.isLiked(ref.id), tint: palette?.accent ?? Theme.accent)
+        }
         .task(id: film.id) {
             do {
                 let d = try await Catalog.detail(film.id)

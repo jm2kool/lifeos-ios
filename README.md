@@ -14,7 +14,11 @@ Matinee is not affiliated with Letterboxd.
 | Log date picker | **Today / Yesterday / Pick date** chips | One tap for the common case. |
 | Film page | **Full-screen poster, page tinted by the poster's colour** | Scroll up from the poster and the page underneath is painted in the poster's main colour. |
 | Profile | **Apple Card-style background** | A slowly moving colour blend drawn from your four favourite posters. |
-| Watchlist | **Watchlist + "Pick something for me"** | Picks a random film from your watchlist. |
+| Watchlist | **Random pick** | Shake the phone, double-tap Library, or tap Random pick: a random watchlist film lands as a card that grows into its page. Filter by how much time you have. |
+| — | **Widgets** | A home-screen and Lock Screen widget with a random watchlist film; tap to open it. |
+| — | **Now watching** | Start watching puts a live timer in the Dynamic Island and on the Lock Screen. Pause with an exact time, a mood and a note. |
+| Film page | **Trailer + where to watch** | Tap the poster for the trailer, full screen. See where it streams, rents or sells in India. |
+| — | **Story card** | Share any film as a story-sized image with your rating. |
 | Lists | **Lists with progress** | Shows "you've seen 3 of 7". Lists can be ranked and reordered by dragging. |
 | Profile favourites | **Four favourites + ratings spread** | Tap any bar in your ratings chart to see those films. |
 | Tags | **Tag suggestions** | Your past tags come up as chips while you log. |

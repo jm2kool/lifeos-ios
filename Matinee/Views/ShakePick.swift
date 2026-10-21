@@ -21,6 +21,7 @@ struct ShakePickView: View {
     let film: FilmRef
     var onClose: () -> Void
     @Environment(Router.self) private var router
+    @Environment(Library.self) private var library
     @State private var art: FilmArt?
     @State private var detail: FilmDetail?
     @State private var appeared = false
@@ -30,7 +31,7 @@ struct ShakePickView: View {
         GeometryReader { geo in
             let cardW = min(300, geo.size.width - 64)
             ZStack {
-                Color.black.opacity(expanded ? 1 : 0.65)
+                Color.black.opacity(expanded ? 1 : 0.82)
                     .onTapGesture { if !expanded { onClose() } }
                 VStack(spacing: 18) {
                     Text("FROM YOUR WATCHLIST")
@@ -39,8 +40,9 @@ struct ShakePickView: View {
                     card(width: expanded ? geo.size.width : cardW, height: expanded ? geo.size.height : cardW * 1.5)
                         .onTapGesture { open() }
                     Text("Tap to open · Shake again for another")
-                        .font(.footnote.weight(.semibold)).foregroundStyle(Theme.dim)
+                        .font(.footnote.weight(.semibold)).foregroundStyle(.white.opacity(0.75))
                         .opacity(expanded ? 0 : 1)
+                    timeFilter.opacity(expanded ? 0 : 1)
                 }
                 .scaleEffect(appeared ? 1 : 0.6)
                 .opacity(appeared ? 1 : 0)
@@ -53,6 +55,29 @@ struct ShakePickView: View {
             let a = await Catalog.art(film.id)
             withAnimation(.easeOut(duration: 0.3)) { art = a }
             detail = try? await Catalog.detail(film.id)
+        }
+    }
+
+    /// How long have you got? Re-picks from films that fit.
+    private var timeFilter: some View {
+        let options: [(String, Int?)] = [("Any length", nil), ("Under 1h45", 105), ("Under 2h15", 135)]
+        return HStack(spacing: 8) {
+            ForEach(options, id: \.0) { label, minutes in
+                let on = router.randomMaxMinutes == minutes
+                Button {
+                    router.randomMaxMinutes = minutes
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    router.pickRandom(from: library)
+                } label: {
+                    Text(label).font(.caption.weight(.semibold))
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .background(on ? Theme.accent.opacity(0.35) : Color.white.opacity(0.08), in: .capsule)
+                        .overlay(Capsule().strokeBorder(on ? Theme.accent : .clear, lineWidth: 1))
+                        .foregroundStyle(.white)
+                }
+                .buttonStyle(.plain)
+            }
+            if router.randomPickSearching { ProgressView().controlSize(.small).tint(.white) }
         }
     }
 

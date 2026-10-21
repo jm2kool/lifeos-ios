@@ -84,7 +84,11 @@ final class Router {
     var randomPickOpening = false
     @ObservationIgnored private var lastLibraryTap = Date.distantPast
 
-    /// A random film from the watchlist, never the one already showing.
+    /// "How long have you got?" — the longest film (in minutes) a random pick may be. nil = any length.
+    var randomMaxMinutes: Int?
+    var randomPickSearching = false
+
+    /// A random film from the watchlist, never the one already showing, that fits the time you have.
     func pickRandom(from library: Library) {
         guard !randomPickOpening else { return }
         let list = library.doc.watchlist
@@ -92,9 +96,31 @@ final class Router {
             library.toast = Toast(text: "Add films to your watchlist first", symbol: "clock")
             return
         }
-        let pick = list.filter { $0.id != randomPick?.id }.randomElement() ?? list[0]
+        let pool = list.filter { $0.id != randomPick?.id }
+        guard let limit = randomMaxMinutes else {
+            show(pool.randomElement() ?? list[0])
+            return
+        }
+        // Check runtimes (from TMDB) a handful at a time until one fits.
+        randomPickSearching = true
+        Task {
+            defer { randomPickSearching = false }
+            let shuffled = pool.shuffled()
+            for chunk in stride(from: 0, to: shuffled.count, by: 6).map({ Array(shuffled[$0..<min($0 + 6, shuffled.count)]) }) {
+                var fits: [FilmRef] = []
+                await withTaskGroup(of: (FilmRef, Int?).self) { g in
+                    for f in chunk { g.addTask { (f, (try? await Catalog.detail(f.id))?.runtimeMinutes) } }
+                    for await (f, m) in g { if let m, m > 0, m <= limit { fits.append(f) } }
+                }
+                if let f = fits.randomElement() { show(f); return }
+            }
+            library.toast = Toast(text: "Nothing on your watchlist under \(limit / 60)h \(limit % 60)m", symbol: "clock")
+        }
+    }
+
+    private func show(_ f: FilmRef) {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
-        withAnimation(.smooth) { randomPick = pick }
+        withAnimation(.smooth) { randomPick = f }
     }
 
     /// Tab selection that notices a quick double tap on Library.
