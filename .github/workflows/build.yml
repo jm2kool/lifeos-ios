@@ -119,8 +119,8 @@ jobs:
           APP=com.jm2kool.matinee
           mkdir -p out
           shot() { sleep "$1"; xcrun simctl io "$UDID" screenshot "out/$2.png"; }
-          SIMCTL_CHILD_MATINEE_SPLASH=1 xcrun simctl launch "$UDID" $APP; shot 0.6 0a-splash-countdown; shot 1.0 0b-splash-titles
-          SIMCTL_CHILD_MATINEE_SIGNIN=1 xcrun simctl launch --terminate-running-process "$UDID" $APP; shot 9 1-sign-in
+          SIMCTL_CHILD_MATINEE_SIGNIN=1 xcrun simctl launch "$UDID" $APP; shot 9 1-sign-in
+          SIMCTL_CHILD_MATINEE_SPLASH=1 xcrun simctl launch --terminate-running-process "$UDID" $APP; shot 0.6 0a-splash-countdown; shot 1.0 0b-splash-titles
           xcrun simctl io "$UDID" recordVideo --codec h264 --force out/tour.mp4 & REC=$!
           sleep 1
           SIMCTL_CHILD_MATINEE_TOUR=1 xcrun simctl launch --terminate-running-process "$UDID" $APP
