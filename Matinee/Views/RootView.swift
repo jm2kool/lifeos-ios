@@ -7,6 +7,7 @@ struct RootView: View {
     @Environment(Watching.self) private var watching
     @Environment(Taste.self) private var taste
     @State private var showSignIn = false
+    @State private var shakePick: FilmRef?
     @State private var showSplash: Bool = {
         let env = ProcessInfo.processInfo.environment
         return env["MATINEE_PREVIEW"] == nil || env["MATINEE_SPLASH"] != nil
@@ -72,6 +73,15 @@ struct RootView: View {
         }
         .animation(.smooth(duration: 0.35), value: library.toast)
         .overlay {
+            // Shake for a random film from your watchlist.
+            if let f = shakePick {
+                ShakePickView(film: f) { withAnimation(.easeOut(duration: 0.3)) { shakePick = nil } }
+                    .id(f.id)
+                    .transition(.opacity)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in pickFromWatchlist() }
+        .overlay {
             if showSplash {
                 SplashView { withAnimation(.easeOut(duration: 0.25)) { showSplash = false } }
                     .transition(.opacity)
@@ -95,6 +105,19 @@ struct RootView: View {
         if !showSignIn && taste.shouldOffer { taste.showQuiz = true }
     }
 
+    /// A random film from the watchlist, never the one already showing.
+    private func pickFromWatchlist() {
+        guard !showSplash, !showSignIn, !taste.showQuiz, router.sheet == nil else { return }
+        let list = library.doc.watchlist
+        guard !list.isEmpty else {
+            library.toast = Toast(text: "Add films to your watchlist, then shake", symbol: "clock")
+            return
+        }
+        let pick = list.filter { $0.id != shakePick?.id }.randomElement() ?? list[0]
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        withAnimation(.smooth) { shakePick = pick }
+    }
+
     /// Hooks used by the CI simulator run to capture screenshots.
     private func previewMode() async {
         let env = ProcessInfo.processInfo.environment
@@ -112,6 +135,10 @@ struct RootView: View {
             router.tab = .library
             try? await Task.sleep(for: .seconds(1))
             router.libraryPath.append(l)
+        }
+        if env["MATINEE_SHAKE"] != nil {
+            try? await Task.sleep(for: .seconds(1.5))
+            pickFromWatchlist()
         }
         if env["MATINEE_TOUR"] != nil {
             for tab in [AppTab.films, .diary, .library, .profile, .search] {

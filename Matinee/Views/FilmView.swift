@@ -233,17 +233,14 @@ struct FilmView: View {
                 if let stop = s.lastStop, !s.running { IntermissionRow(stop: stop) }
             }
         } else {
-            Button {
+            // GlassChip gives the capsule a hit shape before the interactive glass; without it the glass
+            // swallowed the tap and nothing started.
+            GlassChip(action: {
                 watching.start(ref, runtime: detail?.runtimeMinutes)
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            } label: {
-                Label("Start watching", systemImage: "play.fill")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity).frame(height: 44)
-                    .foregroundStyle(.white)
-                    .glassEffect(.regular.interactive(), in: .capsule)
+            }) {
+                Label("Start watching", systemImage: "play.fill").frame(maxWidth: .infinity)
             }
-            .buttonStyle(.plain)
         }
     }
 
