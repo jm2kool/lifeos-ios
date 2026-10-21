@@ -106,7 +106,8 @@ extension Palette {
             lum += (0.299 * r + 0.587 * g + 0.114 * b) * a
             weight += a
         }
-        return weight > 0 && lum / weight < 0.38
+        // Anything that isn't already light gets drawn white, so it reads on poster-coloured backgrounds.
+        return weight > 0 && lum / weight < 0.58
     }
 }
 
