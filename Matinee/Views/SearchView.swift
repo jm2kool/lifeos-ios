@@ -103,15 +103,17 @@ struct SearchRow: View {
             .filmContextMenu(film)
 
             // A sibling of the row link (not inside it), so it draws and taps on its own.
-            Button { library.toggleWatchlist(film) } label: {
-                Image(systemName: saved ? "clock.fill" : "clock.badge.plus")
+            // "clock.badge.plus" isn't a real symbol, which is why this button used to draw empty.
+            GlassChip(circle: true, action: {
+                library.toggleWatchlist(film)
+                UIImpactFeedbackGenerator(style: saved ? .light : .medium).impactOccurred()
+            }) {
+                Image(systemName: saved ? "clock.fill" : "plus")
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(saved ? Theme.list : Color.white)
                     .contentTransition(.symbolEffect(.replace))
                     .frame(width: 44, height: 44)
-                    .glassEffect(.regular.interactive(), in: .circle)
             }
-            .buttonStyle(.plain)
             .accessibilityLabel(saved ? "Remove from watchlist" : "Add to watchlist")
         }
         .padding(.horizontal, 20).padding(.vertical, 8)

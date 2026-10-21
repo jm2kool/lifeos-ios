@@ -50,9 +50,7 @@ struct LibraryView: View {
                                 Text("Recently added").tag(false)
                                 Text("Title").tag(true)
                             }
-                            Button("Pick something for me", systemImage: "dice") {
-                                if let f = library.doc.watchlist.randomElement() { router.open(f) }
-                            }
+                            Button("Random pick", systemImage: "dice") { router.pickRandom(from: library) }
                         }
                     } label: { Image(systemName: "line.3.horizontal.decrease") }
                 }
@@ -81,7 +79,16 @@ struct LibraryView: View {
             Text("On letterboxd.com open your Watchlist and choose Export Watchlist (or Settings → Data → Export and unzip it in Files), then pick watchlist.csv.")
                 .font(.caption).foregroundStyle(Theme.dim).multilineTextAlignment(.center).padding(.horizontal, 40)
         } else {
-            Text("\(list.count) film\(list.count == 1 ? "" : "s") to watch").font(.subheadline).foregroundStyle(Theme.dim).padding(.horizontal, 20)
+            HStack {
+                Text("\(list.count) film\(list.count == 1 ? "" : "s") to watch").font(.subheadline).foregroundStyle(Theme.dim)
+                Spacer()
+                GlassChip(prominent: true, action: { router.pickRandom(from: library) }) {
+                    Label("Random pick", systemImage: "dice.fill")
+                }
+            }
+            .padding(.horizontal, 20)
+            Text("Tip: shake your phone or double-tap Library for a random pick too.")
+                .font(.caption).foregroundStyle(Theme.dim).padding(.horizontal, 20)
             PosterGrid(films: list).padding(.horizontal, 16)
         }
     }

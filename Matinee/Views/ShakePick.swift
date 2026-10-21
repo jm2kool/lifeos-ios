@@ -65,7 +65,7 @@ struct ShakePickView: View {
                                    .init(color: .black.opacity(0.95), location: 1)], startPoint: .top, endPoint: .bottom)
                 .opacity(expanded ? 0 : 1)
             VStack(spacing: 8) {
-                TitleArt(title: film.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 240, maxHeight: 90, fontSize: 32)
+                TitleArt(title: film.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 240, maxHeight: 90, fontSize: 32, poster: art?.poster ?? film.largePoster ?? film.poster)
                 HStack(spacing: 6) {
                     Text(film.yearText)
                     if let g = detail?.genres.prefix(2), !g.isEmpty { Text("·"); Text(g.joined(separator: ", ")) }
@@ -90,6 +90,7 @@ struct ShakePickView: View {
     /// then fade the card away so the page's own poster takes over.
     private func open() {
         guard !expanded else { return }
+        router.randomPickOpening = true
         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
         withAnimation(.smooth(duration: 0.45)) { expanded = true }
         Task {

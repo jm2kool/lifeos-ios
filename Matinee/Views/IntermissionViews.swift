@@ -44,7 +44,7 @@ struct NowWatchingBar: View {
                     .padding(.bottom, 1)
                 }
             }
-            .glassEffect(.regular.interactive(), in: .capsule)
+            .glassEffect(.regular, in: .capsule)
         }
         .padding(.horizontal, 16)
     }
@@ -107,7 +107,8 @@ struct IntermissionSheet: View {
                         VStack(alignment: .leading, spacing: 10) {
                             label("You stopped at")
                             HStack(alignment: .firstTextBaseline) {
-                                Text(filmClock(position)).font(.system(size: 44, weight: .bold, design: .rounded)).contentTransition(.numericText())
+                                Text(filmClock(position) + (Int(position) % 60 == 0 ? "" : " \(Int(position) % 60)s"))
+                                    .font(.system(size: 44, weight: .bold, design: .rounded)).contentTransition(.numericText())
                                 if let r = s.runtime { Text("of \(filmClock(r))").foregroundStyle(Theme.dim) }
                             }
                             if let r = s.runtime {
@@ -115,6 +116,7 @@ struct IntermissionSheet: View {
                             } else {
                                 Stepper("Adjust", value: $position, in: 0...(6 * 3600), step: 60).labelsHidden()
                             }
+                            ExactTimeField(position: $position, limit: s.runtime ?? 6 * 3600)
                         }
 
                         VStack(alignment: .leading, spacing: 10) {
@@ -198,6 +200,62 @@ struct IntermissionSheet: View {
         watching.intermission(sessionID, at: position, mood: mood, note: note)
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         dismiss()
+    }
+}
+
+/// Type the exact time you stopped at — hours, minutes and seconds — instead of dragging.
+struct ExactTimeField: View {
+    @Binding var position: TimeInterval
+    let limit: TimeInterval
+    @State private var h = ""
+    @State private var m = ""
+    @State private var sec = ""
+    @FocusState private var focus: Int?
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "keyboard").foregroundStyle(Theme.dim)
+            Text("Exact time").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.dim)
+            Spacer()
+            box($h, "h", 0)
+            Text(":").foregroundStyle(Theme.dim)
+            box($m, "mm", 1)
+            Text(":").foregroundStyle(Theme.dim)
+            box($sec, "ss", 2)
+        }
+        .font(.system(.body, design: .rounded).monospacedDigit())
+        .onAppear(perform: fill)
+        .onChange(of: position) { _, _ in if focus == nil { fill() } }
+        .onChange(of: h) { _, _ in commit() }
+        .onChange(of: m) { _, _ in commit() }
+        .onChange(of: sec) { _, _ in commit() }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { focus = nil; fill() }.fontWeight(.semibold)
+            }
+        }
+    }
+
+    private func box(_ text: Binding<String>, _ placeholder: String, _ tag: Int) -> some View {
+        TextField(placeholder, text: text)
+            .keyboardType(.numberPad)
+            .multilineTextAlignment(.center)
+            .focused($focus, equals: tag)
+            .frame(width: 46, height: 38)
+            .background(Theme.card, in: .rect(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(focus == tag ? Theme.accent : .clear, lineWidth: 1.5))
+    }
+
+    private func fill() {
+        let t = Int(position.rounded())
+        h = String(t / 3600); m = String(format: "%02d", t % 3600 / 60); sec = String(format: "%02d", t % 60)
+    }
+
+    private func commit() {
+        guard focus != nil else { return }
+        let total = TimeInterval((Int(h) ?? 0) * 3600 + min(59, Int(m) ?? 0) * 60 + min(59, Int(sec) ?? 0))
+        position = min(max(0, total), limit)
     }
 }
 

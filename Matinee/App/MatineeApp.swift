@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 @main
 struct MatineeApp: App {
@@ -78,6 +79,37 @@ final class Router {
     var libraryPath = NavigationPath()
     var profilePath = NavigationPath()
     var searchPath = NavigationPath()
+    /// The film card shown by shaking the phone, Random pick, or double-tapping Library.
+    var randomPick: FilmRef?
+    var randomPickOpening = false
+    @ObservationIgnored private var lastLibraryTap = Date.distantPast
+
+    /// A random film from the watchlist, never the one already showing.
+    func pickRandom(from library: Library) {
+        guard !randomPickOpening else { return }
+        let list = library.doc.watchlist
+        guard !list.isEmpty else {
+            library.toast = Toast(text: "Add films to your watchlist first", symbol: "clock")
+            return
+        }
+        let pick = list.filter { $0.id != randomPick?.id }.randomElement() ?? list[0]
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        withAnimation(.smooth) { randomPick = pick }
+    }
+
+    /// Tab selection that notices a quick double tap on Library.
+    func select(_ t: AppTab, library: Library) {
+        if t == .library {
+            let now = Date()
+            if now.timeIntervalSince(lastLibraryTap) < 0.45 {
+                lastLibraryTap = .distantPast
+                pickRandom(from: library)
+            } else {
+                lastLibraryTap = now
+            }
+        }
+        tab = t
+    }
 
     func open(_ f: FilmRef) {
         switch tab {

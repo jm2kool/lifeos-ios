@@ -31,6 +31,38 @@ struct FilmArt: Hashable {
     var backdrop: URL?    // textless backdrop
 }
 
+struct WatchProvider: Hashable, Identifiable {
+    var id: Int
+    var name: String
+    var logo: URL?
+
+    /// Straight to the film on the service where we know how to search it; otherwise nil.
+    func searchURL(for title: String) -> URL? {
+        let q = title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? title
+        let n = name.lowercased()
+        let s: String?
+        if n.contains("netflix") { s = "https://www.netflix.com/search?q=\(q)" }
+        else if n.contains("amazon") || n.contains("prime") { s = "https://www.primevideo.com/search/ref=atv_nb_sr?phrase=\(q)" }
+        else if n.contains("hotstar") { s = "https://www.hotstar.com/in/explore?search_query=\(q)" }
+        else if n.contains("apple") { s = "https://tv.apple.com/search?term=\(q)" }
+        else if n.contains("google play") { s = "https://play.google.com/store/search?q=\(q)&c=movies" }
+        else if n.contains("youtube") { s = "https://www.youtube.com/results?search_query=\(q)+full+movie" }
+        else if n.contains("zee5") { s = "https://www.zee5.com/search?q=\(q)" }
+        else if n.contains("mubi") { s = "https://mubi.com/en/in/search/films?query=\(q)" }
+        else { s = nil }
+        return s.flatMap(URL.init(string:))
+    }
+}
+
+struct WatchProviders: Hashable {
+    var link: URL?
+    var stream: [WatchProvider] = []
+    var free: [WatchProvider] = []
+    var rent: [WatchProvider] = []
+    var buy: [WatchProvider] = []
+    var isEmpty: Bool { stream.isEmpty && free.isEmpty && rent.isEmpty && buy.isEmpty }
+}
+
 enum HomeShelf: String, CaseIterable, Identifiable {
     case trending, topRated, newReleases
     var id: String { rawValue }
@@ -125,6 +157,46 @@ enum Catalog {
         art.backdrop = TMDB.img(best(j["backdrops"].array, lang: nil)?["file_path"].str, "w1280")
         artCache[id] = art
         return art
+    }
+
+    private static var trailerCache: [String: String] = [:]
+
+    /// The YouTube key of the film's best trailer, if TMDB has one.
+    static func trailer(_ id: String) async -> String? {
+        guard id.hasPrefix("tmdb-") else { return nil }
+        if let hit = trailerCache[id] { return hit.isEmpty ? nil : hit }
+        let num = id.replacingOccurrences(of: "tmdb-", with: "")
+        guard let j = try? await TMDB.call("/movie/\(num)/videos") else { return nil }
+        let vids = j["results"].array.filter { $0["site"].str == "YouTube" && $0["key"].str != nil }
+        func rank(_ v: J) -> Int {
+            (v["type"].str == "Trailer" ? 8 : v["type"].str == "Teaser" ? 4 : 0) + (v["official"].raw as? Bool == true ? 2 : 0)
+                + (v["iso_639_1"].str == "en" ? 1 : 0)
+        }
+        let best = vids.max { rank($0) < rank($1) }?["key"].str
+        trailerCache[id] = best ?? ""
+        return best
+    }
+
+    private static var providerCache: [String: WatchProviders] = [:]
+
+    /// Where the film streams, rents or sells in a country (India by default). Data from JustWatch via TMDB.
+    static func providers(_ id: String, region: String = "IN") async -> WatchProviders? {
+        guard id.hasPrefix("tmdb-") else { return nil }
+        let key = "\(id)|\(region)"
+        if let hit = providerCache[key] { return hit }
+        let num = id.replacingOccurrences(of: "tmdb-", with: "")
+        guard let j = try? await TMDB.call("/movie/\(num)/watch/providers") else { return nil }
+        let r = j["results"][region]
+        func list(_ k: String) -> [WatchProvider] {
+            r[k].array.sorted { ($0["display_priority"].int ?? 99) < ($1["display_priority"].int ?? 99) }.compactMap { p in
+                guard let name = p["provider_name"].str else { return nil }
+                return WatchProvider(id: p["provider_id"].int ?? name.hashValue, name: name, logo: TMDB.img(p["logo_path"].str, "w154"))
+            }
+        }
+        let out = WatchProviders(link: r["link"].str.flatMap(URL.init(string:)), stream: list("flatrate"),
+                                 free: list("free") + list("ads"), rent: list("rent"), buy: list("buy"))
+        providerCache[key] = out
+        return out
     }
 
     static let genres = ["Action", "Adventure", "Animation", "Comedy", "Crime", "Documentary", "Drama",

@@ -21,6 +21,11 @@ struct TasteProfile: Codable {
     var persona: Persona?
     var skipped = false
     var updatedAt = Date.now
+    // From your library: genres of films you've saved, rated and liked.
+    var libraryScores: [String: Double]?
+    var libraryYears: [Int]?
+    var librarySignature: String?
+    var libraryFilms: Int?
 }
 
 /// Your taste: built by the swipe quiz, refined by your ratings, and used for "Films you'd like".
@@ -37,22 +42,47 @@ final class Taste {
 
     private static let key = "tasteProfile"
 
+    private var beforeQuiz: TasteProfile?
+
     private init() {
         if let data = UserDefaults.standard.data(forKey: Self.key), let p = try? JSONDecoder().decode(TasteProfile.self, from: data) { profile = p }
+        else if let t = Library.shared.doc.taste { profile = t }
     }
 
-    private func save() {
+    private func save(sync: Bool = true) {
         profile.updatedAt = .now
         if let data = try? JSONEncoder().encode(profile) { UserDefaults.standard.set(data, forKey: Self.key) }
+        if sync { Library.shared.storeTaste(profile) }
+    }
+
+    /// Take the character saved on your account (after signing in on another device).
+    func adopt(_ t: TasteProfile) {
+        guard t.updatedAt > profile.updatedAt || profile.persona == nil else { return }
+        profile = t
+        if let data = try? JSONEncoder().encode(profile) { UserDefaults.standard.set(data, forKey: Self.key) }
+        picks = []
     }
 
     // MARK: Quiz
 
     func beginQuiz() {
-        let keepSkip = false
-        profile = TasteProfile()
-        profile.skipped = keepSkip
-        save()
+        // Keep the old character until the new one is ready, so skipping a retake loses nothing.
+        beforeQuiz = profile
+        var fresh = TasteProfile()
+        fresh.libraryScores = profile.libraryScores
+        fresh.libraryYears = profile.libraryYears
+        fresh.librarySignature = profile.librarySignature
+        fresh.libraryFilms = profile.libraryFilms
+        profile = fresh
+        save(sync: false)
+    }
+
+    /// Leaving the quiz without finishing puts your previous character back.
+    func abandonQuiz() {
+        guard let old = beforeQuiz else { return }
+        beforeQuiz = nil
+        profile = old
+        save(sync: false)
     }
 
     func record(_ film: FilmRef, genres: [String], liked: Bool) {
@@ -67,15 +97,72 @@ final class Taste {
         save()
     }
 
-    func skipQuiz() { profile.skipped = true; save() }
+    func skipQuiz() {
+        if beforeQuiz?.persona != nil { abandonQuiz(); return }
+        beforeQuiz = nil
+        profile.skipped = true
+        save()
+    }
 
     @discardableResult
     func finish() -> Persona {
+        beforeQuiz = nil
         let p = Self.persona(from: profile)
         profile.persona = p
         save()
         picks = []
         return p
+    }
+
+    // MARK: From your library
+
+    /// A fingerprint of the films that feed the character, so it's only rebuilt when they change.
+    static func signature(_ library: Library) -> String {
+        let ids = library.doc.watchlist.map(\.id) + library.doc.liked.map(\.id)
+            + library.doc.ratings.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }
+        var h = Hasher()
+        ids.forEach { h.combine($0) }
+        return "\(ids.count)-\(h.finalize())"
+    }
+
+    /// Work out your character from what you've saved, liked and rated — no quiz needed.
+    /// Watchlisted films count, rated films count by how much you liked them.
+    func learnFromLibrary(_ library: Library, force: Bool = false) async {
+        let sig = Self.signature(library)
+        guard force || profile.librarySignature != sig, Catalog.hasToken else { return }
+        var weights: [String: Double] = [:]
+        for f in library.doc.watchlist { weights[f.id, default: 0] += 1 }
+        for f in library.doc.liked { weights[f.id, default: 0] += 1.2 }
+        for (id, r) in library.doc.ratings {
+            weights[id, default: 0] += r >= 4 ? 1.2 : r >= 3 ? 0.4 : r <= 2 ? -0.7 : 0
+        }
+        let ids = Array(weights.keys.filter { $0.hasPrefix("tmdb-") || $0.hasPrefix("tt") }.prefix(160))
+        guard !ids.isEmpty else { return }
+        var details: [String: FilmDetail] = [:]
+        // A few at a time, so a big watchlist doesn't flood TMDB.
+        for chunk in stride(from: 0, to: ids.count, by: 8).map({ Array(ids[$0..<min($0 + 8, ids.count)]) }) {
+            await withTaskGroup(of: (String, FilmDetail?).self) { g in
+                for id in chunk { g.addTask { (id, try? await Catalog.detail(id)) } }
+                for await (id, d) in g { if let d { details[id] = d } }
+            }
+        }
+        var scores: [String: Double] = [:], years: [Int] = []
+        for (id, d) in details {
+            let w = weights[id] ?? 0
+            for g in d.genres where Catalog.genres.contains(g) { scores[g, default: 0] += w / Double(max(1, min(d.genres.count, 3))) * 1.5 }
+            if w > 0, let y = d.ref.year { years.append(y) }
+        }
+        guard !scores.isEmpty else { return }
+        profile.libraryScores = scores
+        profile.libraryYears = years
+        profile.librarySignature = sig
+        profile.libraryFilms = details.count
+        // Build (or refresh) the character once there's enough to go on.
+        if profile.persona != nil || details.count >= 5 {
+            profile.persona = Self.persona(from: profile)
+            picks = []
+        }
+        save()
     }
 
     // MARK: Persona
@@ -115,7 +202,9 @@ final class Taste {
         "Western": "Wide skies, long silences, one last ride."]
 
     static func persona(from p: TasteProfile) -> Persona {
-        let ranked = p.scores.filter { $0.value > 0 }.sorted { $0.value > $1.value }
+        // Quiz swipes and your library both count.
+        let combined = p.scores.merging(p.libraryScores ?? [:], uniquingKeysWith: +)
+        let ranked = combined.filter { $0.value > 0 }.sorted { $0.value > $1.value }
         let top = ranked.first?.key ?? "Drama"
         let second = ranked.dropFirst().first?.key ?? (top == "Drama" ? "Comedy" : "Drama")
         let noun = nouns[top] ?? "Film Fan"
@@ -124,7 +213,7 @@ final class Taste {
         let leaders = Array(ranked.prefix(4))
         let maxScore = leaders.first?.value ?? 1
 
-        let years = p.likedYears
+        let years = p.likedYears + (p.libraryYears ?? [])
         let avgYear = years.isEmpty ? 2010 : years.reduce(0, +) / years.count
         let era: String
         switch avgYear {
@@ -134,10 +223,16 @@ final class Taste {
         case ..<2018: era = "Modern-era regular"
         default: era = "Always on the new stuff"
         }
-        let likes = p.liked.count, total = max(1, likes + p.disliked.count)
-        let ratio = Double(likes) / Double(total)
-        var traits = [ratio > 0.7 ? "Easy to please" : ratio < 0.35 ? "Tough crowd" : "Picky in the best way"]
+        let likes = p.liked.count, total = likes + p.disliked.count
+        var traits: [String] = []
+        if total > 0 {
+            let ratio = Double(likes) / Double(total)
+            traits.append(ratio > 0.7 ? "Easy to please" : ratio < 0.35 ? "Tough crowd" : "Picky in the best way")
+        } else if let avg = Library.shared.averageRating {
+            traits.append(avg >= 3.9 ? "Easy to please" : avg <= 2.9 ? "Tough crowd" : "Picky in the best way")
+        }
         if ranked.count >= 5 { traits.append("Genre-hopper") } else { traits.append("Knows what they like") }
+        if Library.shared.doc.watchlist.count >= 40 { traits.append("Watchlist hoarder") }
 
         return Persona(name: "The \(adj) \(noun)", emoji: emojis[top] ?? "🎬", blurb: blurbs[top] ?? "",
                        topGenres: leaders.map(\.key), genreShares: leaders.map { $0.value / maxScore },

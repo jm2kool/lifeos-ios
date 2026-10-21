@@ -9,6 +9,7 @@ struct SettingsView: View {
     @State private var tmdb = ""
     @State private var importing = false
     @State private var importer = Importer()
+    @State private var importKind: Importer.Kind?
     @State private var confirmErase = false
     @State private var confirmSignOut = false
 
@@ -46,7 +47,9 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Button { importing = true } label: { Label("Import from Letterboxd…", systemImage: "square.and.arrow.down") }
+                    Button { importKind = nil; importing = true } label: { Label("Import from Letterboxd…", systemImage: "square.and.arrow.down") }
+                        .disabled(importer.running)
+                    Button { importKind = .ratings; importing = true } label: { Label("Import my Letterboxd ratings…", systemImage: "star.leadinghalf.filled") }
                         .disabled(importer.running)
                     if importer.running {
                         ProgressView(value: Double(importer.done), total: Double(max(importer.total, 1))) {
@@ -65,7 +68,7 @@ struct SettingsView: View {
                         ShareLink(item: url) { Label("Export my library (JSON)", systemImage: "square.and.arrow.up") }
                     }
                 } header: { Text("Your data") } footer: {
-                    Text("On letterboxd.com go to Settings → Data → Export, unzip it in Files, then pick diary.csv, watched.csv, ratings.csv, watchlist.csv and the rest.")
+                    Text("On letterboxd.com go to Settings → Data → Export, unzip it in Files, then pick diary.csv, watched.csv, ratings.csv, watchlist.csv and the rest. For ratings only, pick ratings.csv — rated films are added to your films too.")
                 }
 
                 Section {
@@ -82,7 +85,7 @@ struct SettingsView: View {
                 tmdb = UserDefaults.standard.string(forKey: "tmdbToken") ?? ""
             }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.commaSeparatedText, .plainText], allowsMultipleSelection: true) { result in
-                if case .success(let urls) = result { Task { await importer.run(urls, into: library) } }
+                if case .success(let urls) = result { Task { await importer.run(urls, into: library, forceKind: importKind) } }
             }
             .confirmationDialog("Erase your whole library?", isPresented: $confirmErase, titleVisibility: .visible) {
                 Button("Erase everything", role: .destructive) { library.eraseAll() }

@@ -289,7 +289,7 @@ struct ToastView: View {
     }
 }
 
-/// A film's title drawn as its official logo (white if the logo is dark ink), or as text when there's no logo.
+/// A film's title drawn as its official logo, always in colour, or as text when there's no logo.
 struct TitleArt: View {
     let title: String
     let logo: URL?
@@ -297,19 +297,18 @@ struct TitleArt: View {
     var maxWidth: CGFloat = 270
     var maxHeight: CGFloat = 110
     var fontSize: CGFloat = 38
+    /// The artwork the logo sits on; plain white or black logos take their colour from it.
+    var poster: URL? = nil
     @State private var image: UIImage?
-    @State private var dark = false
+    @State private var ink: Palette.LogoInk = .colour
+    @State private var tint: Color = Theme.accent
     @State private var failed = false
 
     var body: some View {
         Group {
             if let image {
                 let w = min(maxWidth, maxHeight * aspect)
-                Image(uiImage: image)
-                    .renderingMode(dark ? .template : .original)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .foregroundStyle(.white)
+                logoImage(image)
                     .frame(width: w, height: w / max(aspect, 0.1))
                     .transition(.opacity)
             } else if logo == nil || failed {
@@ -322,15 +321,44 @@ struct TitleArt: View {
                 Color.clear.frame(width: 1, height: maxHeight * 0.7)
             }
         }
-        .shadow(color: .black.opacity(0.4), radius: 14, y: 3)
+        // A tight dark edge plus a soft halo keeps any logo readable over bright artwork.
+        .shadow(color: .black.opacity(ink == .darkColour ? 0 : 0.55), radius: 2, y: 1)
+        .shadow(color: ink == .darkColour ? .white.opacity(0.45) : .black.opacity(0.5), radius: 16, y: 3)
         .accessibilityLabel(title)
-        .task(id: logo) {
-            image = nil; failed = false
-            guard let logo else { return }
-            if let img = await ImageStore.shared.load(logo) {
-                dark = Palette.isDark(img)
+        .task(id: "\(logo?.absoluteString ?? "")|\(poster?.absoluteString ?? "")") {
+            failed = false
+            guard let logo else { image = nil; return }
+            // Work out the colour before showing the logo, so it never flashes white and then changes.
+            async let loaded = ImageStore.shared.load(logo)
+            let palette = await Palette.of(poster)
+            let img = await loaded
+            guard let img else { image = nil; failed = true; return }
+            let kind = Palette.logoInk(img)
+            var t = Theme.accent
+            if let palette {
+                var sat: CGFloat = 0
+                palette.accentUI.getHue(nil, saturation: &sat, brightness: nil, alpha: nil)
+                if sat > 0.15 { t = palette.highlight }
+            }
+            if image == nil {
+                ink = kind; tint = t
                 withAnimation(.easeOut(duration: 0.3)) { image = img }
-            } else { failed = true }
+            } else {
+                withAnimation(.easeOut(duration: 0.3)) { ink = kind; tint = t; image = img }
+            }
+        }
+    }
+
+    /// Coloured logos keep their own colours. Plain white ones are dyed with the poster's colour
+    /// (keeping their shading), plain dark ones are redrawn in it, so every title is in colour.
+    @ViewBuilder private func logoImage(_ img: UIImage) -> some View {
+        switch ink {
+        case .colour, .darkColour:
+            Image(uiImage: img).resizable().aspectRatio(contentMode: .fit)
+        case .light:
+            Image(uiImage: img).resizable().aspectRatio(contentMode: .fit).colorMultiply(tint)
+        case .dark:
+            Image(uiImage: img).renderingMode(.template).resizable().aspectRatio(contentMode: .fit).foregroundStyle(tint)
         }
     }
 }

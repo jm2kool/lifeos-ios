@@ -12,6 +12,8 @@ struct FilmView: View {
     @State private var scroll = ScrollPosition(edge: .top)
     @State private var art: FilmArt?
     @State private var artLoaded = false
+    @State private var trailerKey: String?
+    @State private var showTrailer = false
 
     /// The page takes its colour from the poster: deep enough for white text, never washed out.
     private var bg: Color { palette?.background ?? .black }
@@ -36,7 +38,7 @@ struct FilmView: View {
                 header
                 VStack(alignment: .leading, spacing: 26) {
                     actionPanel.padding(.horizontal, 16)
-                    if let d = detail { info(d) } else if failed {
+                    if let d = detail { info(d); WatchProvidersSection(film: ref, surface: surface) } else if failed {
                         EmptyState(symbol: "film", title: "Couldn't load details", message: "You can still log, rate and save this film.")
                     } else {
                         ProgressView().frame(maxWidth: .infinity).padding(.vertical, 30)
@@ -75,6 +77,10 @@ struct FilmView: View {
                 } label: { Image(systemName: "ellipsis") }
             }
         }
+        .fullScreenCover(isPresented: $showTrailer) {
+            if let k = trailerKey { TrailerView(key: k, title: ref.title) }
+        }
+        .task(id: film.id) { trailerKey = await Catalog.trailer(film.id) }
         .task(id: film.id) {
             do {
                 let d = try await Catalog.detail(film.id)
@@ -112,13 +118,18 @@ struct FilmView: View {
                     let y = geo.frame(in: .scrollView).minY
                     return content.scaleEffect(y > 0 ? 1 + y / max(geo.size.height, 1) : 1, anchor: .bottom)
                 }
+                // Tap the poster for the trailer, full screen.
+                .contentShape(.rect)
+                .onTapGesture { playTrailer() }
+                .accessibilityAddTraits(.isButton)
+                .accessibilityLabel("Play trailer")
             LinearGradient(stops: [.init(color: .black.opacity(0.45), location: 0), .init(color: .clear, location: 0.16),
                                    .init(color: .clear, location: 0.5), .init(color: bg.opacity(0.8), location: 0.78),
                                    .init(color: bg, location: 1)],
                            startPoint: .top, endPoint: .bottom)
                 .allowsHitTesting(false)
             VStack(spacing: 10) {
-                TitleArt(title: ref.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 280, maxHeight: 110, fontSize: 40)
+                TitleArt(title: ref.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 280, maxHeight: 110, fontSize: 40, poster: heroURL)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: 300)
                     .opacity(artLoaded || failed ? 1 : 0)
@@ -150,6 +161,16 @@ struct FilmView: View {
                         Text("Directed by **\(dirs.prefix(2).joined(separator: ", "))**")
                             .font(.subheadline).foregroundStyle(.white.opacity(0.85))
                     }
+                    if trailerKey != nil {
+                        Button { playTrailer() } label: {
+                            Label("Trailer", systemImage: "play.fill").font(.footnote.weight(.bold))
+                                .padding(.horizontal, 14).padding(.vertical, 7)
+                                .contentShape(Capsule())
+                                .glassEffect(.regular, in: .capsule)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 2)
+                    }
                     Image(systemName: "chevron.compact.up")
                         .font(.title2.weight(.semibold)).foregroundStyle(.white.opacity(0.5))
                         .padding(.top, 4)
@@ -168,6 +189,15 @@ struct FilmView: View {
         .containerRelativeFrame(.vertical)
         .frame(maxWidth: .infinity)
         .zIndex(1)   // keeps the pinned logo above the page as it scrolls
+    }
+
+    private func playTrailer() {
+        if trailerKey != nil {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            showTrailer = true
+        } else {
+            library.toast = Toast(text: "No trailer for this one yet", symbol: "play.slash")
+        }
     }
 
     // MARK: Actions — the one place to watch, like, save, rate and log

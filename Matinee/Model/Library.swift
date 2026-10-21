@@ -52,14 +52,20 @@ final class Library {
     var thisYearCount: Int { let y = Date.now.year; return doc.entries.filter { $0.watchedOn.year == y }.count }
 
     /// How many films sit at each half-star (index 0 = ½ … 9 = 5★).
+    /// Ratings of films you've actually watched — the ones the ratings tracker can list.
+    var watchedRatings: [Double] {
+        let ids = Set(doc.watched.map(\.id) + doc.entries.map(\.film.id))
+        return doc.ratings.filter { ids.contains($0.key) && $0.value > 0 }.map(\.value)
+    }
+
     var ratingHistogram: [Int] {
         var bins = Array(repeating: 0, count: 10)
-        for r in doc.ratings.values { let i = Int((r * 2).rounded()) - 1; if (0..<10).contains(i) { bins[i] += 1 } }
+        for r in watchedRatings { let i = Int((r * 2).rounded()) - 1; if (0..<10).contains(i) { bins[i] += 1 } }
         return bins
     }
 
     var averageRating: Double? {
-        let v = doc.ratings.values
+        let v = watchedRatings
         return v.isEmpty ? nil : v.reduce(0, +) / Double(v.count)
     }
 
@@ -88,21 +94,33 @@ final class Library {
     func log(_ e: LogEntry) {
         mutate("Logged \(e.film.title)", symbol: "eye.fill") { d in
             if let i = d.entries.firstIndex(where: { $0.id == e.id }) { d.entries[i] = e } else { d.entries.append(e) }
-            if let r = e.rating { d.ratings[e.film.id] = r }
+            // The newest viewing sets the film's rating, so clearing the stars there clears it everywhere.
+            let newest = d.entries.filter { $0.film.id == e.film.id }.max { ($0.watchedOn, $0.createdAt) < ($1.watchedOn, $1.createdAt) }
+            if newest?.id == e.id { d.ratings[e.film.id] = e.rating.flatMap { $0 > 0 ? $0 : nil } }
+            else if let r = e.rating, d.ratings[e.film.id] == nil { d.ratings[e.film.id] = r }
             if e.liked, !d.liked.contains(where: { $0.id == e.film.id }) { d.liked.append(e.film) }
             d.watchlist.removeAll { $0.id == e.film.id }
         }
     }
 
     func delete(_ e: LogEntry) {
-        mutate("Entry deleted", symbol: "trash", undoable: true) { d in d.entries.removeAll { $0.id == e.id } }
+        mutate("Entry deleted", symbol: "trash", undoable: true) { d in
+            d.entries.removeAll { $0.id == e.id }
+            // Deleting a diary entry doesn't un-watch the film (use Remove from watched for that).
+            if !d.entries.contains(where: { $0.film.id == e.film.id }) && !d.watched.contains(where: { $0.id == e.film.id }) {
+                d.watched.append(e.film)
+            }
+        }
     }
 
     func toggleWatched(_ f: FilmRef) {
         if isWatched(f.id) {
+            // Un-watching wipes everything that says you saw it: diary entries, the rating and the like.
             mutate("Removed from watched", symbol: "eye.slash", undoable: true) { d in
                 d.watched.removeAll { $0.id == f.id }
                 d.entries.removeAll { $0.film.id == f.id }
+                d.ratings[f.id] = nil
+                d.liked.removeAll { $0.id == f.id }
             }
         } else {
             mutate("Marked as watched", symbol: "eye.fill") { d in
@@ -170,6 +188,18 @@ final class Library {
 
     func setProfile(_ p: Profile) { mutate { d in d.profile = p } }
 
+    /// Quiet batch changes (imports): no toast per film.
+    func apply(_ change: (inout LibraryDoc) -> Void) { mutate(change) }
+
+    /// Your film character rides along with the library so it syncs to your account.
+    func storeTaste(_ t: TasteProfile) {
+        var d = doc
+        d.taste = t
+        d.updatedAt = .now
+        doc = d
+        persist()
+    }
+
     func rememberSearch(_ q: String) {
         let q = q.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return }
@@ -214,8 +244,11 @@ final class Library {
         guard Auth.shared.signedIn else { return }
         if let data = await Auth.shared.pullLibrary(), let remote = try? Self.decoder.decode(LibraryDoc.self, from: data) {
             if remote.updatedAt > doc.updatedAt || doc.entries.isEmpty && doc.watchlist.isEmpty {
-                doc = remote
+                var r = remote
+                if r.taste == nil { r.taste = doc.taste }
+                doc = r
                 persist(sync: false)
+                if let t = r.taste { Taste.shared.adopt(t) }
                 return
             }
         }

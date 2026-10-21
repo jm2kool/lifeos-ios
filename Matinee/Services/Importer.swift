@@ -27,26 +27,56 @@ final class Importer {
             rows += parse(text, kind: kind)
         }
         total = rows.count
+        // Match each distinct title once, a few at a time.
         var resolved: [String: FilmRef] = [:]
-        var entries: [LogEntry] = []
-        for r in rows {
-            let key = "\(r.name.lowercased())|\(r.year ?? 0)"
-            var film = resolved[key]
-            if film == nil, let hits = try? await Catalog.search(r.name) {
-                film = hits.first { $0.year == r.year } ?? hits.first { abs(($0.year ?? 0) - (r.year ?? 0)) <= 1 } ?? (r.year == nil ? hits.first : nil)
-                if let film { resolved[key] = film }
+        func key(_ r: Row) -> String { "\(r.name.lowercased())|\(r.year ?? 0)" }
+        var distinct: [Row] = []
+        var seenKeys = Set<String>()
+        for r in rows where seenKeys.insert(key(r)).inserted { distinct.append(r) }
+        total = distinct.count
+        for start in stride(from: 0, to: distinct.count, by: 6) {
+            let chunk = Array(distinct[start..<min(start + 6, distinct.count)])
+            await withTaskGroup(of: (String, FilmRef?).self) { g in
+                for r in chunk {
+                    g.addTask {
+                        guard let hits = try? await Catalog.search(r.name) else { return (key(r), nil) }
+                        let f = hits.first { $0.year == r.year } ?? hits.first { abs(($0.year ?? 0) - (r.year ?? 0)) <= 1 } ?? (r.year == nil ? hits.first : nil)
+                        return (key(r), f)
+                    }
+                }
+                for await (k, f) in g { if let f { resolved[k] = f } }
             }
-            done += 1
-            guard let f = film else { unmatched.append("\(r.name) (\(r.year.map(String.init) ?? "?"))"); continue }
-            switch r.kind {
-            case .diary, .reviews:
-                entries.append(LogEntry(film: f, watchedOn: r.date ?? .now, rating: r.rating, liked: false, rewatch: r.rewatch, review: r.review, tags: r.tags))
-            case .watched: if !library.isWatched(f.id) { library.toggleWatched(f) }
-            case .watchlist: if !library.inWatchlist(f.id) { library.toggleWatchlist(f) }
-            case .ratings: library.rate(f, r.rating)
-            case .likes: if !library.isLiked(f.id) { library.toggleLike(f) }
+            done = start + chunk.count
+        }
+        var entries: [LogEntry] = []
+        var unmatchedKeys = Set<String>()
+        library.apply { d in
+            for r in rows {
+                guard let f = resolved[key(r)] else {
+                    if unmatchedKeys.insert(key(r)).inserted { unmatched.append("\(r.name) (\(r.year.map(String.init) ?? "?"))") }
+                    continue
+                }
+                let watched = d.watched.contains { $0.id == f.id } || d.entries.contains { $0.film.id == f.id }
+                switch r.kind {
+                case .diary, .reviews:
+                    entries.append(LogEntry(film: f, watchedOn: r.date ?? .now, rating: r.rating, liked: false, rewatch: r.rewatch, review: r.review, tags: r.tags))
+                case .watched:
+                    if !watched { d.watched.append(f) }
+                    d.watchlist.removeAll { $0.id == f.id }
+                case .watchlist:
+                    if !watched && !d.watchlist.contains(where: { $0.id == f.id }) { d.watchlist.append(f) }
+                case .ratings:
+                    // On Letterboxd a rating means you've seen it, so it lands in your films and ratings tracker.
+                    if let rt = r.rating, rt > 0 { d.ratings[f.id] = rt }
+                    if !watched { d.watched.append(f) }
+                    d.watchlist.removeAll { $0.id == f.id }
+                case .likes:
+                    if !d.liked.contains(where: { $0.id == f.id }) { d.liked.append(f) }
+                    if !watched { d.watched.append(f) }
+                }
             }
         }
+        done = total
         // Reviews and diary rows describe the same viewing; keep one per film+date, preferring the one with text.
         var byKey: [String: LogEntry] = [:]
         for e in entries {
@@ -54,11 +84,17 @@ final class Importer {
             if let old = byKey[k], old.review.count >= e.review.count { continue }
             byKey[k] = e
         }
-        for e in byKey.values.sorted(by: { $0.watchedOn < $1.watchedOn }) where !library.doc.entries.contains(where: { $0.film.id == e.film.id && Calendar.current.isDate($0.watchedOn, inSameDayAs: e.watchedOn) }) {
-            library.log(e)
+        // Add diary entries in one go (no toast per film); the newest viewing sets each film's rating.
+        library.apply { d in
+            for e in byKey.values.sorted(by: { $0.watchedOn < $1.watchedOn })
+            where !d.entries.contains(where: { $0.film.id == e.film.id && Calendar.current.isDate($0.watchedOn, inSameDayAs: e.watchedOn) }) {
+                d.entries.append(e)
+                if let r = e.rating, r > 0 { d.ratings[e.film.id] = r }
+                d.watchlist.removeAll { $0.id == e.film.id }
+            }
         }
-        library.toast = Toast(text: "Imported \(total - unmatched.count) of \(total)", symbol: "square.and.arrow.down")
-        summary = "Matched \(total - unmatched.count) of \(total) rows." + (unmatched.isEmpty ? "" : " \(unmatched.count) couldn't be matched.")
+        library.toast = Toast(text: "Imported \(total - unmatched.count) of \(total) films", symbol: "square.and.arrow.down")
+        summary = "Matched \(total - unmatched.count) of \(total) films." + (unmatched.isEmpty ? "" : " \(unmatched.count) couldn't be matched.")
     }
 
     private func parse(_ text: String, kind: Kind) -> [Row] {

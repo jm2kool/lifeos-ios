@@ -110,6 +110,7 @@ struct HomeView: View {
                     Image(systemName: "chevron.right").foregroundStyle(Theme.dim)
                 }
                 .padding(18)
+                .contentShape(.rect(cornerRadius: 24))
                 .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 24))
             }
             .buttonStyle(.plain)
@@ -255,7 +256,7 @@ struct HeroPage: View {
             .accessibilityLabel(film.title)
 
             VStack(spacing: 12) {
-                TitleArt(title: film.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 260, maxHeight: 96, fontSize: 34)
+                TitleArt(title: film.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 260, maxHeight: 96, fontSize: 34, poster: art?.backdrop ?? film.backdrop ?? film.poster)
                     .shadow(color: .black.opacity(0.6), radius: 18, y: 4)
                     .allowsHitTesting(false)
                 Text(["Trending now", film.yearText].filter { !$0.isEmpty }.joined(separator: " · ").uppercased())
@@ -287,7 +288,11 @@ struct Avatar: View {
         ZStack {
             Circle().fill(LinearGradient(colors: [Theme.accent, Theme.heart], startPoint: .topLeading, endPoint: .bottomTrailing))
             Text(initials).font(.system(size: size * 0.4, weight: .bold)).foregroundStyle(.white)
-            if let a = profile.avatar { RemoteImage(url: a).clipShape(Circle()) }
+            if let d = profile.avatarData, let img = UIImage(data: d) {
+                Image(uiImage: img).resizable().aspectRatio(contentMode: .fill).frame(width: size, height: size).clipShape(Circle())
+            } else if let a = profile.avatar {
+                RemoteImage(url: a).clipShape(Circle())
+            }
         }
         .frame(width: size, height: size)
         .overlay(Circle().strokeBorder(Color.white.opacity(0.15), lineWidth: 0.5))

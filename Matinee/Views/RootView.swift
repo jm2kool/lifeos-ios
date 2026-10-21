@@ -7,7 +7,6 @@ struct RootView: View {
     @Environment(Watching.self) private var watching
     @Environment(Taste.self) private var taste
     @State private var showSignIn = false
-    @State private var shakePick: FilmRef?
     @State private var showSplash: Bool = {
         let env = ProcessInfo.processInfo.environment
         return env["MATINEE_PREVIEW"] == nil || env["MATINEE_SPLASH"] != nil
@@ -15,7 +14,7 @@ struct RootView: View {
 
     var body: some View {
         @Bindable var router = router
-        TabView(selection: $router.tab) {
+        TabView(selection: Binding(get: { router.tab }, set: { router.select($0, library: library) })) {
             Tab("Films", systemImage: "film.stack", value: AppTab.films) {
                 NavigationStack(path: $router.filmsPath) { HomeView().destinations() }
             }
@@ -74,8 +73,8 @@ struct RootView: View {
         .animation(.smooth(duration: 0.35), value: library.toast)
         .overlay {
             // Shake for a random film from your watchlist.
-            if let f = shakePick {
-                ShakePickView(film: f) { withAnimation(.easeOut(duration: 0.3)) { shakePick = nil } }
+            if let f = router.randomPick {
+                ShakePickView(film: f) { withAnimation(.easeOut(duration: 0.3)) { router.randomPick = nil; router.randomPickOpening = false } }
                     .id(f.id)
                     .transition(.opacity)
             }
@@ -105,17 +104,10 @@ struct RootView: View {
         if !showSignIn && taste.shouldOffer { taste.showQuiz = true }
     }
 
-    /// A random film from the watchlist, never the one already showing.
+    /// Shaking works anywhere except over sign-in, the quiz and sheets.
     private func pickFromWatchlist() {
         guard !showSplash, !showSignIn, !taste.showQuiz, router.sheet == nil else { return }
-        let list = library.doc.watchlist
-        guard !list.isEmpty else {
-            library.toast = Toast(text: "Add films to your watchlist, then shake", symbol: "clock")
-            return
-        }
-        let pick = list.filter { $0.id != shakePick?.id }.randomElement() ?? list[0]
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
-        withAnimation(.smooth) { shakePick = pick }
+        router.pickRandom(from: library)
     }
 
     /// Hooks used by the CI simulator run to capture screenshots.

@@ -61,6 +61,7 @@ struct Profile: Codable, Hashable {
     var handle = ""
     var bio = ""
     var avatar: URL?
+    var avatarData: Data?             // a photo you picked, small enough to sync with the library
 }
 
 /// The whole user library — saved to disk as one JSON document and, when signed in, synced.
@@ -74,6 +75,7 @@ struct LibraryDoc: Codable {
     var favorites: [FilmRef] = []             // up to four, shown on your profile
     var profile = Profile()
     var recentSearches: [String] = []
+    var taste: TasteProfile?                  // your film character, so it follows you between devices
     var updatedAt = Date.now
 }
 

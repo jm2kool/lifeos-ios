@@ -96,6 +96,7 @@ struct SwipeDeck<Empty: View>: View {
                 .font(.system(size: size * 0.38, weight: .bold))
                 .foregroundStyle(color)
                 .frame(width: size, height: size)
+                .contentShape(Circle())
                 .glassEffect(.regular.interactive(), in: .circle)
         }
         .buttonStyle(.plain)
@@ -120,7 +121,7 @@ struct DeckCard: View {
             LinearGradient(stops: [.init(color: .clear, location: 0.45), .init(color: .black.opacity(0.75), location: 0.8),
                                    .init(color: .black.opacity(0.95), location: 1)], startPoint: .top, endPoint: .bottom)
             VStack(spacing: 8) {
-                TitleArt(title: film.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 240, maxHeight: 90, fontSize: 32)
+                TitleArt(title: film.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 240, maxHeight: 90, fontSize: 32, poster: art?.poster ?? film.largePoster ?? film.poster)
                 HStack(spacing: 6) {
                     Text(film.yearText)
                     if let g = detail?.genres.prefix(2), !g.isEmpty { Text("·"); Text(g.joined(separator: ", ")) }
@@ -330,6 +331,7 @@ struct TasteQuizView: View {
         }
         .preferredColorScheme(.dark)
         .animation(.smooth(duration: 0.5), value: result)
+        .onDisappear { if result == nil { taste.abandonQuiz() } }
         .task {
             taste.beginQuiz()
             await engine.start()
