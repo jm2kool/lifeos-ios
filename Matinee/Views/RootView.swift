@@ -80,6 +80,21 @@ struct RootView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in pickFromWatchlist() }
+        // Widgets and the Live Activity open films with matinee://film/<id>?title=…
+        .onOpenURL { url in
+            guard url.scheme == "matinee", url.host == "film" else { return }
+            let id = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            guard !id.isEmpty else { return }
+            let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+            func v(_ k: String) -> String? { q.first { $0.name == k }?.value }
+            let film = library.doc.watchlist.first { $0.id == id } ?? library.watchedFilms.first { $0.id == id }
+                ?? FilmRef(id: id, title: v("title") ?? "", year: v("year").flatMap(Int.init), poster: v("poster").flatMap(URL.init(string:)))
+            router.sheet = nil
+            router.randomPick = nil
+            router.tab = .films
+            router.filmsPath = NavigationPath()
+            router.open(film)
+        }
         .overlay {
             if showSplash {
                 SplashView { withAnimation(.easeOut(duration: 0.25)) { showSplash = false } }
@@ -95,6 +110,7 @@ struct RootView: View {
             library.adoptAccountProfile()
             Task { await library.reconcileWithCloud() }
         }
+        .task { NowWatchingActivity.sync(watching.sessions) }
         .task { await previewMode() }
     }
 

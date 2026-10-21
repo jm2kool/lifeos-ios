@@ -105,6 +105,7 @@ final class Watching {
         change(&s)
         withAnimation(.smooth) { sessions = s }
         if let data = try? Library.encoder.encode(sessions) { try? data.write(to: Self.fileURL, options: .atomic) }
+        NowWatchingActivity.sync(sessions)
     }
 
     func seedDemo(_ film: FilmRef) {

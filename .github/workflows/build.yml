@@ -59,6 +59,12 @@ jobs:
         run: |
           rm -rf Payload && mkdir Payload
           cp -R build/Release-iphoneos/Matinee.app Payload/
+          # Ad-hoc sign with entitlements so the re-signer sees the app group the widget shares with the app.
+          if [ -d Payload/Matinee.app/PlugIns/MatineeWidgets.appex ]; then
+            codesign --force --sign - --entitlements Config/MatineeWidgets.entitlements Payload/Matinee.app/PlugIns/MatineeWidgets.appex || true
+          fi
+          codesign --force --sign - --entitlements Config/Matinee.entitlements Payload/Matinee.app || true
+          ls Payload/Matinee.app/PlugIns || true
           zip -qry Matinee.ipa Payload
           ls -lh Matinee.ipa
 

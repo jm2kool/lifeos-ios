@@ -16,6 +16,9 @@ targets:
     platform: iOS
     sources:
       - path: Matinee
+      - path: Shared
+    dependencies:
+      - target: MatineeWidgets
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jm2kool.matinee
@@ -33,4 +36,28 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: Config/Matinee.entitlements
+        INFOPLIST_KEY_NSSupportsLiveActivities: YES
         ENABLE_PREVIEWS: YES
+  MatineeWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: MatineeWidgets
+      - path: Shared
+    info:
+      path: MatineeWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: Matinee
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jm2kool.matinee.widgets
+        PRODUCT_NAME: MatineeWidgets
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Matinee
+        TARGETED_DEVICE_FAMILY: "1"
+        SKIP_INSTALL: YES
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: Config/MatineeWidgets.entitlements

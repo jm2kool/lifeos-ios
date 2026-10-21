@@ -30,6 +30,7 @@ final class Library {
 
     private init() {
         if let data = try? Data(contentsOf: Self.fileURL), let d = try? Self.decoder.decode(LibraryDoc.self, from: data) { doc = d }
+        WatchlistWidget.publish(doc.watchlist)
     }
 
     // MARK: Reading
@@ -189,7 +190,7 @@ final class Library {
     func setProfile(_ p: Profile) { mutate { d in d.profile = p } }
 
     /// Quiet batch changes (imports): no toast per film.
-    func apply(_ change: (inout LibraryDoc) -> Void) { mutate(change) }
+    func apply(_ change: (inout LibraryDoc) -> Void) { mutate(nil, change) }
 
     /// Your film character rides along with the library so it syncs to your account.
     func storeTaste(_ t: TasteProfile) {
@@ -228,6 +229,7 @@ final class Library {
     // MARK: Persistence & sync
 
     private func persist(sync: Bool = true) {
+        WatchlistWidget.publish(doc.watchlist)
         let data = try? Self.encoder.encode(doc)
         if let data { try? data.write(to: Self.fileURL, options: .atomic) }
         guard sync, Auth.shared.signedIn, let data else { return }

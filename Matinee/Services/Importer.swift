@@ -29,19 +29,18 @@ final class Importer {
         total = rows.count
         // Match each distinct title once, a few at a time.
         var resolved: [String: FilmRef] = [:]
-        func key(_ r: Row) -> String { "\(r.name.lowercased())|\(r.year ?? 0)" }
         var distinct: [Row] = []
         var seenKeys = Set<String>()
-        for r in rows where seenKeys.insert(key(r)).inserted { distinct.append(r) }
+        for r in rows where seenKeys.insert(importKey(r)).inserted { distinct.append(r) }
         total = distinct.count
         for start in stride(from: 0, to: distinct.count, by: 6) {
             let chunk = Array(distinct[start..<min(start + 6, distinct.count)])
             await withTaskGroup(of: (String, FilmRef?).self) { g in
                 for r in chunk {
                     g.addTask {
-                        guard let hits = try? await Catalog.search(r.name) else { return (key(r), nil) }
+                        guard let hits = try? await Catalog.search(r.name) else { return (importKey(r), nil) }
                         let f = hits.first { $0.year == r.year } ?? hits.first { abs(($0.year ?? 0) - (r.year ?? 0)) <= 1 } ?? (r.year == nil ? hits.first : nil)
-                        return (key(r), f)
+                        return (importKey(r), f)
                     }
                 }
                 for await (k, f) in g { if let f { resolved[k] = f } }
@@ -52,8 +51,8 @@ final class Importer {
         var unmatchedKeys = Set<String>()
         library.apply { d in
             for r in rows {
-                guard let f = resolved[key(r)] else {
-                    if unmatchedKeys.insert(key(r)).inserted { unmatched.append("\(r.name) (\(r.year.map(String.init) ?? "?"))") }
+                guard let f = resolved[importKey(r)] else {
+                    if unmatchedKeys.insert(importKey(r)).inserted { unmatched.append("\(r.name) (\(r.year.map(String.init) ?? "?"))") }
                     continue
                 }
                 let watched = d.watched.contains { $0.id == f.id } || d.entries.contains { $0.film.id == f.id }
@@ -115,6 +114,9 @@ final class Importer {
         }
     }
 }
+
+/// One film per title + year, however many CSV rows mention it.
+private func importKey(_ r: Importer.Row) -> String { "\(r.name.lowercased())|\(r.year ?? 0)" }
 
 enum CSV {
     static func parse(_ text: String) -> [[String]] {
