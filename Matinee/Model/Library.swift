@@ -127,13 +127,11 @@ final class Library {
         }
     }
 
+    /// Rating on its own never marks a film watched or touches the watchlist — a stray tap on the
+    /// stars shouldn't change your history. Use Watched or Log for that.
     func rate(_ f: FilmRef, _ r: Double?) {
         mutate { d in
-            if let r, r > 0 {
-                d.ratings[f.id] = r
-                if !d.watched.contains(where: { $0.id == f.id }) && !d.entries.contains(where: { $0.film.id == f.id }) { d.watched.append(f) }
-                d.watchlist.removeAll { $0.id == f.id }
-            } else { d.ratings[f.id] = nil }
+            if let r, r > 0 { d.ratings[f.id] = r } else { d.ratings[f.id] = nil }
         }
     }
 

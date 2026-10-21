@@ -47,21 +47,6 @@ struct ProfileView: View {
                 .glassEffect(.regular, in: .rect(cornerRadius: 24))
                 .padding(.horizontal, 16)
 
-                if let persona = taste.profile.persona {
-                    VStack(alignment: .leading, spacing: 10) {
-                        PersonaCard(persona: persona)
-                        Button("Retake the swipe quiz") { taste.showQuiz = true }
-                            .font(.footnote.weight(.semibold)).foregroundStyle(Theme.accent)
-                            .padding(.leading, 6)
-                    }
-                    .padding(.horizontal, 16)
-                } else {
-                    Button { taste.showQuiz = true } label: {
-                        Label("Find your film character", systemImage: "sparkles").frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.glass).controlSize(.large).padding(.horizontal, 16)
-                }
-
                 favorites
 
                 ratings
@@ -87,6 +72,22 @@ struct ProfileView: View {
                         SectionHeader(title: "Likes") { NavigationLink("See all", value: CollectionRoute.liked) }
                         PosterRow(films: Array(library.doc.liked.reversed().prefix(12)), width: 92)
                     }
+                }
+
+                // Your film character lives at the very bottom.
+                if let persona = taste.profile.persona {
+                    VStack(alignment: .leading, spacing: 10) {
+                        PersonaCard(persona: persona)
+                        Button("Retake the swipe quiz") { taste.showQuiz = true }
+                            .font(.footnote.weight(.semibold)).foregroundStyle(Theme.accent)
+                            .padding(.leading, 6)
+                    }
+                    .padding(.horizontal, 16)
+                } else {
+                    Button { taste.showQuiz = true } label: {
+                        Label("Find your film character", systemImage: "sparkles").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.glass).controlSize(.large).padding(.horizontal, 16)
                 }
             }
             .padding(.bottom, 40)

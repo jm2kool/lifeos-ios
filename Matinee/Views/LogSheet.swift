@@ -16,22 +16,32 @@ struct LogSheet: View {
     @State private var tagDraft = ""
     @State private var showCalendar = false
     @FocusState private var reviewFocused: Bool
+    @State private var art: FilmArt?
+    @State private var palette: PosterPalette?
+
+    /// The sheet is painted in the film's accent colour, like its page.
+    private var bg: Color { palette?.background ?? .black }
+    private var surface: Color { palette?.surface ?? Theme.card }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
-                    HStack(alignment: .top, spacing: 14) {
-                        PosterView(film: film, width: 70, corner: 6)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(film.title).font(.title3.weight(.bold)).lineLimit(2)
-                            Text(film.yearText).foregroundStyle(Theme.dim)
+                    // The film's logo, big, as the heading.
+                    VStack(spacing: 10) {
+                        TitleArt(title: film.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 280, maxHeight: 110, fontSize: 34)
+                            .frame(minHeight: 80)
+                        HStack(spacing: 6) {
+                            Text(film.yearText)
                             if !library.entries(for: film.id).isEmpty && existing == nil {
-                                Label("You've seen this before", systemImage: "arrow.triangle.2.circlepath")
-                                    .font(.caption.weight(.semibold)).foregroundStyle(Theme.watch)
+                                Text("·")
+                                Label("Seen before", systemImage: "arrow.triangle.2.circlepath").foregroundStyle(Theme.watch)
                             }
                         }
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(.white.opacity(0.75))
                     }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 4)
 
                     // When
                     VStack(alignment: .leading, spacing: 10) {
@@ -51,7 +61,7 @@ struct LogSheet: View {
                             DatePicker("", selection: $date, in: ...Date.now, displayedComponents: .date)
                                 .datePickerStyle(.graphical)
                                 .padding(8)
-                                .background(Theme.card, in: .rect(cornerRadius: 20))
+                                .background(surface, in: .rect(cornerRadius: 20))
                                 .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                     }
@@ -72,7 +82,7 @@ struct LogSheet: View {
                             .accessibilityLabel(liked ? "Liked" : "Like")
                         }
                         Text(rating.map { "\(Stars.text($0))  ·  \(ratingWord($0))" } ?? "Slide across the stars — half stars work too")
-                            .font(.footnote).foregroundStyle(Theme.dim)
+                            .font(.footnote).foregroundStyle(.white.opacity(0.65))
                     }
 
                     Toggle(isOn: $rewatch) {
@@ -87,7 +97,7 @@ struct LogSheet: View {
                             .lineLimit(4...12)
                             .focused($reviewFocused)
                             .padding(14)
-                            .background(Theme.card, in: .rect(cornerRadius: 18))
+                            .background(surface, in: .rect(cornerRadius: 18))
                     }
 
                     // Tags
@@ -101,7 +111,7 @@ struct LogSheet: View {
                             if !tagDraft.isEmpty { Button("Add", action: addTag).fontWeight(.semibold) }
                         }
                         .padding(14)
-                        .background(Theme.card, in: .rect(cornerRadius: 18))
+                        .background(surface, in: .rect(cornerRadius: 18))
                         let suggestions = library.allTags.filter { !tags.contains($0) && (tagDraft.isEmpty || $0.hasPrefix(tagDraft.lowercased())) }
                         if !suggestions.isEmpty {
                             ScrollView(.horizontal) {
@@ -121,7 +131,17 @@ struct LogSheet: View {
                 .padding(20)
             }
             .scrollDismissesKeyboard(.interactively)
-            .oledBackground()
+            .background {
+                ZStack {
+                    bg
+                    // A soft glow from the poster behind the logo.
+                    if let g = palette?.glow {
+                        Circle().fill(g).frame(width: 420, height: 420).blur(radius: 120).opacity(0.45).offset(y: -260)
+                    }
+                }
+                .ignoresSafeArea()
+            }
+            .scrollContentBackground(.hidden)
             .navigationTitle(existing == nil ? "Log film" : "Edit entry")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -132,13 +152,22 @@ struct LogSheet: View {
             }
         }
         .presentationDragIndicator(.visible)
+        .presentationBackground(bg)
+        .animation(.easeInOut(duration: 0.5), value: palette)
+        .task(id: film.id) {
+            async let a = Catalog.art(film.id)
+            let url = film.largePoster ?? film.poster
+            if let hit = Palette.cached(url) { palette = hit }
+            art = await a
+            if palette == nil, let p = await Palette.of((art?.poster) ?? url) { palette = p }
+        }
         .onAppear(perform: prefill)
     }
 
     private var isCustomDate: Bool { !Calendar.current.isDateInToday(date) && !Calendar.current.isDateInYesterday(date) }
 
     private func label(_ t: String) -> some View {
-        Text(t.uppercased()).font(.caption.weight(.heavy)).tracking(1.2).foregroundStyle(Theme.dim)
+        Text(t.uppercased()).font(.caption.weight(.heavy)).tracking(1.2).foregroundStyle(.white.opacity(0.65))
     }
 
     private func chip(_ t: String, _ on: Bool, _ action: @escaping () -> Void) -> some View {

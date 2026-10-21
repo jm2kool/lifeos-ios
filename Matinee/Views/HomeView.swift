@@ -76,7 +76,7 @@ struct HomeView: View {
             }
             .padding(.bottom, 32)
         }
-        .ambientBackground(glowFilms, intensity: 0.42)
+        .ambientBackground(glowFilms, intensity: 0.5)
         .ignoresSafeArea(edges: .top)
         .toolbar(.hidden, for: .navigationBar)
         .refreshable { await load(force: true) }
@@ -143,7 +143,7 @@ struct HomeView: View {
     private var heroSection: some View {
         ZStack(alignment: .top) {
             if hero.isEmpty {
-                Rectangle().fill(Theme.card)
+                Color.clear
                     .overlay { if !failed { ProgressView() } }
             } else {
                 TabView(selection: $heroPage) {
@@ -237,10 +237,16 @@ struct HeroPage: View {
                 Color.clear
                     .overlay { RemoteImage(url: art?.backdrop ?? film.backdrop ?? film.poster) }
                     .clipped()
+                    // Darken only behind the status bar and greeting…
                     .overlay {
-                        LinearGradient(stops: [.init(color: .black.opacity(0.55), location: 0), .init(color: .clear, location: 0.28),
-                                               .init(color: .clear, location: 0.42), .init(color: .black.opacity(0.85), location: 0.8),
-                                               .init(color: .black, location: 1)],
+                        LinearGradient(stops: [.init(color: .black.opacity(0.5), location: 0), .init(color: .clear, location: 0.26)],
+                                       startPoint: .top, endPoint: .bottom)
+                    }
+                    // …and dissolve the bottom into the glowing page instead of a hard black edge.
+                    .mask {
+                        LinearGradient(stops: [.init(color: .white, location: 0), .init(color: .white, location: 0.42),
+                                               .init(color: .white.opacity(0.55), location: 0.68), .init(color: .white.opacity(0.15), location: 0.88),
+                                               .init(color: .clear, location: 1)],
                                        startPoint: .top, endPoint: .bottom)
                     }
                     .contentShape(.rect)
@@ -250,10 +256,12 @@ struct HeroPage: View {
 
             VStack(spacing: 12) {
                 TitleArt(title: film.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 260, maxHeight: 96, fontSize: 34)
+                    .shadow(color: .black.opacity(0.6), radius: 18, y: 4)
                     .allowsHitTesting(false)
                 Text(["Trending now", film.yearText].filter { !$0.isEmpty }.joined(separator: " · ").uppercased())
                     .font(.caption.weight(.bold)).tracking(1.2)
-                    .foregroundStyle(.white.opacity(0.75))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .shadow(color: .black.opacity(0.7), radius: 6)
                     .allowsHitTesting(false)
                 HStack(spacing: 10) {
                     GlassChip(prominent: true, action: { router.sheet = .log(film, nil) }) {

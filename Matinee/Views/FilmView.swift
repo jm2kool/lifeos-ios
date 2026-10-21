@@ -57,10 +57,10 @@ struct FilmView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                ShareLink(item: "\(ref.title)\(ref.year.map { " (\($0))" } ?? "") — on my watch list in Matinee")
-            }
-            ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    ShareLink(item: "\(ref.title)\(ref.year.map { " (\($0))" } ?? "") — on my watch list in Matinee") {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
                     Button { router.sheet = .addToList(ref) } label: { Label("Add to list…", systemImage: "text.badge.plus") }
                     Menu {
                         ForEach(0..<4) { i in
@@ -126,8 +126,8 @@ struct FilmView: View {
                         // Shrink toward the nav bar as you scroll, then stay pinned there.
                         let f = geo.frame(in: .scrollView)
                         let pinTop = safeTop + 8
-                        // Fit between the back button and the share/menu buttons: at most 30pt tall and 150pt wide.
-                        let fit = min(1, 30 / max(f.height, 1), 150 / max(f.width, 1))
+                        // Fit between the back button and the ••• menu: at most 30pt tall and 180pt wide.
+                        let fit = min(1, 30 / max(f.height, 1), 180 / max(f.width, 1))
                         let travel: CGFloat = 220
                         let distance = f.minY - pinTop
                         let p = min(1, max(0, 1 - distance / travel))

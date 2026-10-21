@@ -7,6 +7,10 @@ struct RootView: View {
     @Environment(Watching.self) private var watching
     @Environment(Taste.self) private var taste
     @State private var showSignIn = false
+    @State private var showSplash: Bool = {
+        let env = ProcessInfo.processInfo.environment
+        return env["MATINEE_PREVIEW"] == nil || env["MATINEE_SPLASH"] != nil
+    }()
 
     var body: some View {
         @Bindable var router = router
@@ -67,10 +71,15 @@ struct RootView: View {
             }
         }
         .animation(.smooth(duration: 0.35), value: library.toast)
-        .onAppear {
-            showSignIn = auth.needsOnboarding
-            if !showSignIn && taste.shouldOffer { taste.showQuiz = true }
+        .overlay {
+            if showSplash {
+                SplashView { withAnimation(.easeOut(duration: 0.25)) { showSplash = false } }
+                    .transition(.opacity)
+                    .zIndex(10)
+            }
         }
+        .onAppear { if !showSplash { afterSplash() } }
+        .onChange(of: showSplash) { _, on in if !on { afterSplash() } }
         .onChange(of: auth.needsOnboarding) { _, v in showSignIn = v }
         .onChange(of: auth.session?.userID) { _, id in
             guard id != nil else { return }
@@ -78,6 +87,12 @@ struct RootView: View {
             Task { await library.reconcileWithCloud() }
         }
         .task { await previewMode() }
+    }
+
+    /// Sign-in (first launch) and the taste quiz wait until the opening titles finish.
+    private func afterSplash() {
+        showSignIn = auth.needsOnboarding
+        if !showSignIn && taste.shouldOffer { taste.showQuiz = true }
     }
 
     /// Hooks used by the CI simulator run to capture screenshots.
