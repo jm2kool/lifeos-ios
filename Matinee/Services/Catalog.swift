@@ -149,7 +149,7 @@ enum Catalog {
                 .first
         }
         let logos = j["logos"].array.filter { ($0["file_path"].str ?? "").hasSuffix(".png") }
-        let logo = best(logos, lang: "en")
+        let logo = await colourfulLogo(logos) ?? best(logos, lang: "en")
         var art = FilmArt()
         art.logo = TMDB.img(logo?["file_path"].str, "w500")
         art.logoAspect = logo?["aspect_ratio"].double ?? 3
@@ -197,6 +197,29 @@ enum Catalog {
                                  free: list("free") + list("ads"), rent: list("rent"), buy: list("buy"))
         providerCache[key] = out
         return out
+    }
+
+    /// Films often have several logos on TMDB — a coloured original plus white and black versions.
+    /// Prefer the coloured one: check the best-rated English logos (small thumbnails) and take the
+    /// first that has real colour in it. nil when every version is plain white or black.
+    private static func colourfulLogo(_ logos: [J]) async -> J? {
+        var english = logos.filter { $0["iso_639_1"].str == "en" }
+        if english.isEmpty { english = logos }
+        let ranked = english.sorted { ($0["vote_average"].double ?? 0, $0["vote_count"].double ?? 0) > ($1["vote_average"].double ?? 0, $1["vote_count"].double ?? 0) }
+        let candidates = Array(ranked.prefix(6))
+        guard candidates.count > 1 else { return nil }
+        var kinds: [Int: Palette.LogoInk] = [:]
+        await withTaskGroup(of: (Int, Palette.LogoInk?).self) { g in
+            for (i, c) in candidates.enumerated() {
+                guard let url = TMDB.img(c["file_path"].str, "w185") else { continue }
+                g.addTask {
+                    guard let img = await ImageStore.shared.load(url) else { return (i, nil) }
+                    return (i, Palette.logoInk(img))
+                }
+            }
+            for await (i, k) in g { if let k { kinds[i] = k } }
+        }
+        return candidates.indices.first { kinds[$0] == .colour || kinds[$0] == .darkColour }.map { candidates[$0] }
     }
 
     static let genres = ["Action", "Adventure", "Animation", "Comedy", "Crime", "Documentary", "Drama",

@@ -90,7 +90,7 @@ struct ShakePickView: View {
                                    .init(color: .black.opacity(0.95), location: 1)], startPoint: .top, endPoint: .bottom)
                 .opacity(expanded ? 0 : 1)
             VStack(spacing: 8) {
-                TitleArt(title: film.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 240, maxHeight: 90, fontSize: 32, poster: art?.poster ?? film.largePoster ?? film.poster)
+                TitleArt(title: film.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 240, maxHeight: 90, fontSize: 32)
                 HStack(spacing: 6) {
                     Text(film.yearText)
                     if let g = detail?.genres.prefix(2), !g.isEmpty { Text("·"); Text(g.joined(separator: ", ")) }

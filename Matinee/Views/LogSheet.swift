@@ -29,7 +29,7 @@ struct LogSheet: View {
                 VStack(alignment: .leading, spacing: 22) {
                     // The film's logo, big, as the heading.
                     VStack(spacing: 10) {
-                        TitleArt(title: film.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 280, maxHeight: 110, fontSize: 34, poster: art?.poster ?? film.largePoster ?? film.poster)
+                        TitleArt(title: film.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 280, maxHeight: 110, fontSize: 34)
                             .frame(minHeight: 80)
                         HStack(spacing: 6) {
                             Text(film.yearText)

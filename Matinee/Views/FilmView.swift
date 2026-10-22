@@ -143,7 +143,7 @@ struct FilmView: View {
                            startPoint: .top, endPoint: .bottom)
                 .allowsHitTesting(false)
             VStack(spacing: 10) {
-                TitleArt(title: ref.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 280, maxHeight: 110, fontSize: 40, poster: heroURL)
+                TitleArt(title: ref.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 280, maxHeight: 110, fontSize: 40)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: 300)
                     .opacity(artLoaded || failed ? 1 : 0)

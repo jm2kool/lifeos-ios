@@ -256,7 +256,7 @@ struct HeroPage: View {
             .accessibilityLabel(film.title)
 
             VStack(spacing: 12) {
-                TitleArt(title: film.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 260, maxHeight: 96, fontSize: 34, poster: art?.backdrop ?? film.backdrop ?? film.poster)
+                TitleArt(title: film.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 260, maxHeight: 96, fontSize: 34)
                     .shadow(color: .black.opacity(0.6), radius: 18, y: 4)
                     .allowsHitTesting(false)
                 Text(["Trending now", film.yearText].filter { !$0.isEmpty }.joined(separator: " · ").uppercased())
