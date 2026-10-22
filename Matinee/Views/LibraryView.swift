@@ -30,11 +30,12 @@ struct LibraryView: View {
             .animation(.smooth, value: section)
         }
         .ambientBackground(glowFilms)
-        .fileImporter(isPresented: $importingWatchlist, allowedContentTypes: [.commaSeparatedText, .plainText], allowsMultipleSelection: false) { result in
-            if case .success(let urls) = result {
+        .sheet(isPresented: $importingWatchlist) {
+            CSVPicker { urls in
                 section = .watchlist
                 Task { await importer.run(urls, into: library, forceKind: .watchlist) }
             }
+            .ignoresSafeArea()
         }
         .navigationTitle("Library")
         .toolbar {

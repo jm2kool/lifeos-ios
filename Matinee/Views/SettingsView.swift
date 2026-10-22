@@ -84,8 +84,13 @@ struct SettingsView: View {
             .onAppear {
                 tmdb = UserDefaults.standard.string(forKey: "tmdbToken") ?? ""
             }
-            .fileImporter(isPresented: $importing, allowedContentTypes: [.commaSeparatedText, .plainText], allowsMultipleSelection: true) { result in
-                if case .success(let urls) = result { Task { await importer.run(urls, into: library, forceKind: importKind) } }
+            .sheet(isPresented: $importing) {
+                // Ratings: pick ratings.csv with one tap. Full import: select several CSVs, then Open.
+                CSVPicker(multiple: importKind == nil) { urls in
+                    let kind = importKind
+                    Task { await importer.run(urls, into: library, forceKind: kind) }
+                }
+                .ignoresSafeArea()
             }
             .confirmationDialog("Erase your whole library?", isPresented: $confirmErase, titleVisibility: .visible) {
                 Button("Erase everything", role: .destructive) { library.eraseAll() }

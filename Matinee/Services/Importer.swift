@@ -1,4 +1,7 @@
 import Foundation
+import SwiftUI
+import UIKit
+import UniformTypeIdentifiers
 
 /// Brings over a Letterboxd export (Settings → Import & Export on letterboxd.com gives a ZIP of CSVs).
 /// Each film is matched against the catalog by title and year.
@@ -20,13 +23,20 @@ final class Importer {
         for url in urls {
             let access = url.startAccessingSecurityScopedResource()
             defer { if access { url.stopAccessingSecurityScopedResource() } }
-            guard let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            guard var text = (try? String(contentsOf: url, encoding: .utf8)) ?? (try? String(contentsOf: url, encoding: .isoLatin1)) else { continue }
+            if text.hasPrefix("\u{FEFF}") { text.removeFirst() }
             let name = url.deletingPathExtension().lastPathComponent.lowercased()
             let kind: Kind = forceKind ?? (name.contains("diary") ? .diary : name.contains("watchlist") ? .watchlist : name.contains("rating") ? .ratings
                 : name.contains("like") ? .likes : name.contains("review") ? .reviews : .watched)
             rows += parse(text, kind: kind)
         }
         total = rows.count
+        guard total > 0 else {
+            summary = "Couldn't find any films in that file. Pick a Letterboxd CSV such as ratings.csv."
+            library.toast = Toast(text: "Nothing to import", symbol: "exclamationmark.triangle")
+            return
+        }
+        library.toast = Toast(text: "Importing \(total) films…", symbol: "square.and.arrow.down")
         // Match each distinct title once, a few at a time.
         var resolved: [String: FilmRef] = [:]
         var distinct: [Row] = []
@@ -140,5 +150,30 @@ enum CSV {
         }
         if !field.isEmpty || !row.isEmpty { row.append(field); rows.append(row) }
         return rows
+    }
+}
+
+/// The Files picker for Letterboxd CSVs. Files are copied into the app first, so reading them never
+/// depends on security-scoped access, and one tap on a file picks it (no Select / Done step).
+struct CSVPicker: UIViewControllerRepresentable {
+    var multiple = false
+    var onPick: ([URL]) -> Void
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let types: [UTType] = [.commaSeparatedText, .plainText, .text, UTType(filenameExtension: "csv")].compactMap { $0 }
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: true)
+        picker.allowsMultipleSelection = multiple
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ vc: UIDocumentPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(onPick: onPick) }
+
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let onPick: ([URL]) -> Void
+        init(onPick: @escaping ([URL]) -> Void) { self.onPick = onPick }
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) { onPick(urls) }
     }
 }
