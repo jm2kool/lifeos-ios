@@ -28,16 +28,42 @@ enum NowWatchingActivity {
     }
 }
 
-/// The watchlist snapshot the home-screen widget picks from.
-@MainActor
-enum WatchlistWidget {
-    private static var last: [SharedStore.Film] = []
+/// Gets your watchlist to the home-screen widget: through the folder the app shares with it when
+/// iOS allows that, and always through your account server too (for sideloaded builds without it).
+@Observable @MainActor
+final class WatchlistWidget {
+    static let shared = WatchlistWidget()
+    enum Status: Equatable { case unknown, syncing, ok, needsSetup, offline, noServer }
+    private(set) var status: Status = .unknown
+    @ObservationIgnored private var last: [SharedStore.Film]?
+    @ObservationIgnored private var pushTask: Task<Void, Never>?
 
-    static func publish(_ films: [FilmRef]) {
+    var sharedFolder: Bool { SharedStore.hasSharedFolder }
+
+    static func publish(_ films: [FilmRef]) { shared.publish(films) }
+
+    func publish(_ films: [FilmRef], force: Bool = false) {
         let out = films.map { SharedStore.Film(id: $0.id, title: $0.title, year: $0.year, poster: $0.poster) }
-        guard out != last else { return }
+        guard force || out != last else { return }
         last = out
         SharedStore.saveWatchlist(out)
         WidgetCenter.shared.reloadTimelines(ofKind: SharedStore.widgetKind)
+        pushTask?.cancel()
+        pushTask = Task {
+            try? await Task.sleep(for: .seconds(force ? 0 : 1.5))
+            guard !Task.isCancelled else { return }
+            guard let server = Self.server, let device = SharedStore.deviceKey else { status = .noServer; return }
+            status = .syncing
+            switch await SharedStore.pushRemote(out, device: device, server: server) {
+            case .ok:
+                status = .ok
+                WidgetCenter.shared.reloadTimelines(ofKind: SharedStore.widgetKind)
+            case .needsSetup: status = .needsSetup
+            case .offline: status = .offline
+            }
+        }
     }
+
+    /// The server the widget can reach: the one baked into the app (the widget can't see Settings).
+    static var server: SharedStore.Server? { SharedStore.bakedServer() }
 }

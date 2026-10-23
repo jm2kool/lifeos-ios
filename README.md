@@ -74,3 +74,7 @@ Matinee/Services   Catalog (TMDB), Auth (Supabase + PKCE), Letterboxd importer
 Matinee/Views      Home, Film, Log sheet, Diary, Library, Lists, Profile, Search, Sign-in, Settings
 project.yml        XcodeGen spec. CI runs `xcodegen generate` and then builds.
 ```
+
+### Optional: the watchlist widget on sideloaded builds
+
+Sideloadly with a free Apple ID drops the permission that lets the app and its widget share files, so the widget sends your watchlist through your Supabase project instead. In the app, open **Settings → Widget → Copy setup SQL**, paste it into Supabase's SQL editor and run it once. Each phone reads only its own row, identified by a private device ID.

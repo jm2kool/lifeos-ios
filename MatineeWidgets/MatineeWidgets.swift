@@ -36,8 +36,25 @@ struct PickProvider: TimelineProvider {
         Task { completion(Timeline(entries: await entries(count: 4), policy: .atEnd)) }
     }
 
+    /// The shared folder when iOS allows it; otherwise the copy the app keeps on your account server,
+    /// remembered here for when you're offline.
+    private func watchlist() async -> [SharedStore.Film] {
+        let local = SharedStore.loadWatchlist()
+        if !local.isEmpty { return local }
+        let cacheKey = "remoteWatchlist"
+        if let server = SharedStore.bakedServer(), let device = await SharedStore.deviceKey,
+           let remote = await SharedStore.fetchRemote(device: device, server: server) {
+            if let data = try? JSONEncoder().encode(remote) { UserDefaults.standard.set(data, forKey: cacheKey) }
+            return remote
+        }
+        if let data = UserDefaults.standard.data(forKey: cacheKey), let cached = try? JSONDecoder().decode([SharedStore.Film].self, from: data) {
+            return cached
+        }
+        return []
+    }
+
     private func entries(count: Int) async -> [PickEntry] {
-        let list = SharedStore.loadWatchlist()
+        let list = await watchlist()
         guard !list.isEmpty else { return [PickEntry(date: .now, film: nil, poster: nil, count: 0)] }
         var picks = Array(list.shuffled().prefix(count))
         while picks.count < count { picks.append(list.randomElement()!) }
@@ -86,6 +103,8 @@ struct PickWidgetView: View {
                 VStack(spacing: 6) {
                     Image(systemName: "clock").font(.title2).foregroundStyle(accent)
                     Text("Add films to your watchlist in Matinee").font(.caption.weight(.semibold)).multilineTextAlignment(.center)
+                    Text("Already have some? Open Matinee → Settings → Widget.").font(.caption2).foregroundStyle(.white.opacity(0.6))
+                        .multilineTextAlignment(.center)
                 }
                 .padding()
                 .containerBackground(for: .widget) { Color.black }

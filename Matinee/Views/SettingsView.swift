@@ -71,6 +71,8 @@ struct SettingsView: View {
                     Text("On letterboxd.com go to Settings → Data → Export, unzip it in Files, then pick diary.csv, watched.csv, ratings.csv, watchlist.csv and the rest. For ratings only, pick ratings.csv — rated films are added to your films too.")
                 }
 
+                WidgetSettingsSection()
+
                 Section {
                     Button("Erase library", role: .destructive) { confirmErase = true }
                 } footer: {
@@ -106,5 +108,47 @@ struct SettingsView: View {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("matinee-library.json")
         try? data.write(to: url)
         return url
+    }
+}
+
+/// Whether the home-screen widget can see your watchlist, and the one-time server setup if not.
+struct WidgetSettingsSection: View {
+    @Environment(Library.self) private var library
+    @State private var copied = false
+    private var sync: WatchlistWidget { WatchlistWidget.shared }
+
+    var body: some View {
+        Section {
+            HStack {
+                Text("Watchlist pick widget")
+                Spacer()
+                status
+            }
+            if sync.status == .needsSetup {
+                Text("Sideloaded builds can't share files with the widget, so the app sends your watchlist through your account server instead. That needs one table there:")
+                    .font(.footnote).foregroundStyle(Theme.dim)
+                Button {
+                    UIPasteboard.general.string = SharedStore.setupSQL
+                    copied = true
+                } label: { Label(copied ? "Copied — paste it into Supabase" : "Copy setup SQL", systemImage: copied ? "checkmark" : "doc.on.doc") }
+                Text("In supabase.com open your project → SQL Editor → New query, paste, tap Run. Then come back and tap Sync now.")
+                    .font(.footnote).foregroundStyle(Theme.dim)
+            }
+            Button("Sync now", systemImage: "arrow.clockwise") { sync.publish(library.doc.watchlist, force: true) }
+                .disabled(sync.status == .syncing)
+        } header: { Text("Widget") } footer: {
+            Text("After it says Working, long-press the widget → Edit Widget or remove and re-add it if it still shows the empty message.")
+        }
+        .task { if sync.status == .unknown { sync.publish(library.doc.watchlist, force: true) } }
+    }
+
+    @ViewBuilder private var status: some View {
+        switch sync.status {
+        case .ok: Label("Working", systemImage: "checkmark.circle.fill").foregroundStyle(Theme.watch)
+        case .syncing, .unknown: ProgressView()
+        case .needsSetup: Label("Needs setup", systemImage: "exclamationmark.circle.fill").foregroundStyle(Theme.accent)
+        case .offline: Label("Couldn't reach server", systemImage: "wifi.exclamationmark").foregroundStyle(Theme.accent)
+        case .noServer: Text(sync.sharedFolder ? "Working" : "No account server").foregroundStyle(sync.sharedFolder ? Theme.watch : Theme.accent)
+        }
     }
 }
