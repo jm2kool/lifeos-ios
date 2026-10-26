@@ -12,6 +12,7 @@ struct SettingsView: View {
     @State private var importKind: Importer.Kind?
     @State private var confirmErase = false
     @State private var confirmSignOut = false
+    @AppStorage(FilmRatingStyle.key) private var filmStyle: FilmRatingStyle = .score
 
     var body: some View {
         NavigationStack {
@@ -44,6 +45,16 @@ struct SettingsView: View {
                     }
                 } header: { Text("Film data") } footer: {
                     Text("Films, posters and cast come from TMDB. Get a free API Read Access Token at themoviedb.org → Settings → API and paste it here.")
+                }
+
+                Section {
+                    Picker("Rate films with", selection: $filmStyle) {
+                        Text("Score 1–100").tag(FilmRatingStyle.score)
+                        Text("Stars 1–5").tag(FilmRatingStyle.stars)
+                    }
+                    .pickerStyle(.segmented)
+                } header: { Text("Film ratings") } footer: {
+                    Text("Ratings are kept as a score out of 100, so you can switch any time. In stars, each half star is 10 points (★★★★ = 80). Shows and episodes always use stars.")
                 }
 
                 Section {

@@ -175,10 +175,20 @@ struct LibraryDoc: Codable {
     }
 }
 
+/// How you like to rate films. Either way the library stores a score out of 100, so switching
+/// back and forth never loses anything: stars show it in half steps (10 points each).
+enum FilmRatingStyle: String, CaseIterable {
+    case score, stars
+    static let key = "filmRatingStyle"
+    static var current: FilmRatingStyle { UserDefaults.standard.string(forKey: key).flatMap(Self.init(rawValue:)) ?? .score }
+}
+
 /// Films are scored 1–100.
 enum Score {
     static func fromStars(_ s: Double) -> Double { min(100, max(1, (s * 20).rounded())) }
     static func toStars(_ s: Double) -> Double { s / 20 }
+    /// A score as the nearest half star, for showing it in stars.
+    static func starsShown(_ s: Double) -> Double { max(0.5, (s / 10).rounded() / 2) }
     static func word(_ s: Double) -> String {
         switch s {
         case ..<20: return "Awful"

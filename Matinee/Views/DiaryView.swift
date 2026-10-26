@@ -110,6 +110,7 @@ struct DiaryRow: View {
 /// This year at a glance, with a GitHub-style heatmap of film nights.
 struct YearSummary: View {
     @Environment(Library.self) private var library
+    @AppStorage(FilmRatingStyle.key) private var filmStyle: FilmRatingStyle = .score
 
     var body: some View {
         let year = Date.now.year
@@ -124,7 +125,11 @@ struct YearSummary: View {
                 stat("\(films.count)", "films")
                 stat("\(episodes)", "episodes")
                 stat("\(thisYear.filter(\.liked).count)", "liked")
-                stat(rated.isEmpty ? "–" : String(Int((rated.reduce(0, +) / Double(rated.count)).rounded())), "avg score")
+                if filmStyle == .stars {
+                    stat(rated.isEmpty ? "–" : Score.toStars(rated.reduce(0, +) / Double(rated.count)).formatted(.number.precision(.fractionLength(1))), "avg ★")
+                } else {
+                    stat(rated.isEmpty ? "–" : String(Int((rated.reduce(0, +) / Double(rated.count)).rounded())), "avg score")
+                }
             }
             Heatmap(dates: library.doc.entries.map(\.watchedOn))
         }

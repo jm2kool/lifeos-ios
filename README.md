@@ -19,7 +19,7 @@ Matinee is not affiliated with Letterboxd.
 | — | **Now watching** | Start watching puts a live timer in the Dynamic Island and on the Lock Screen. Pause with an exact time, a mood and a note. |
 | Film page | **Trailer + where to watch** | Tap the poster for the trailer, full screen. See where it streams, rents or sells in India. |
 | — | **Story card** | Share any film as a story-sized image with your rating. |
-| Rating stars | **Score out of 100** | Films get a score from 1 to 100 on a dial: drag round it, nudge with − and +, tap the number to clear. Older star ratings convert automatically (★★★★ → 80). |
+| Rating stars | **Score out of 100, or stars** | Films get a score from 1 to 100 on a dial: drag round it, nudge with − and +, tap the number to clear. Prefer stars? Switch in Settings → Film ratings; each half star is 10 points. Older star ratings convert automatically (★★★★ → 80). |
 | — | **TV shows** | Search finds shows as well as films. Tick off episodes, rate each one in stars, and see what's up next. |
 | — | **Season and series wrap-up** | Finish a season or a whole show and you see the average of your episode ratings next to a rating you choose yourself. |
 | Lists | **Lists with progress** | Shows "you've seen 3 of 7". Lists can be ranked and reordered by dragging. |

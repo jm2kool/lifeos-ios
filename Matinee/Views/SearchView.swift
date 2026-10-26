@@ -232,7 +232,7 @@ struct CollectionView: View {
         case .liked: return "Likes"
         case .watchlist: return "Watchlist"
         case .tag(let t): return "#\(t)"
-        case .rated(let b): return "Scored \(b * 10 + 1)–\(b * 10 + 10)"
+        case .rated(let b): return FilmRatingStyle.current == .stars ? Stars.text(Double(b + 1) / 2) : "Scored \(b * 10 + 1)–\(b * 10 + 10)"
         case .forYou: return "Films you'd like"
         case .shows: return "Shows"
         }

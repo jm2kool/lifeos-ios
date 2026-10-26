@@ -30,8 +30,8 @@ struct ShareCard: View {
                 }
                 HStack(spacing: 22) {
                     if let r = rating, r > 0 {
-                        if film.isShow {
-                            Text(Stars.text(r)).font(.system(size: 84, weight: .semibold)).foregroundStyle(Theme.star)
+                        if film.isShow || FilmRatingStyle.current == .stars {
+                            Text(Stars.text(film.isShow ? r : Score.starsShown(r))).font(.system(size: 84, weight: .semibold)).foregroundStyle(Theme.star)
                         } else {
                             HStack(alignment: .firstTextBaseline, spacing: 6) {
                                 Text(Score.text(r)).font(.system(size: 130, weight: .heavy, design: .rounded))

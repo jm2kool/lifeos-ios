@@ -26,6 +26,7 @@ struct LogSheet: View {
     private var bg: Color { palette?.background ?? .black }
     private var surface: Color { palette?.surface ?? Theme.card }
 
+    @AppStorage(FilmRatingStyle.key) private var filmStyle: FilmRatingStyle = .score
     private var context: LogEntry? { existing ?? draft }
     private var isPart: Bool { context?.season != nil }
     private var usesStars: Bool { film.isShow }
@@ -89,7 +90,7 @@ struct LogSheet: View {
 
                     // Rating + like
                     VStack(alignment: .leading, spacing: 10) {
-                        label(usesStars ? "Rating" : "Score")
+                        label(usesStars || filmStyle == .stars ? "Rating" : "Score")
                         if usesStars {
                             HStack {
                                 StarRating(rating: rating, size: 34, spacing: 7) { rating = $0 }
@@ -99,9 +100,17 @@ struct LogSheet: View {
                             Text(rating.map { "\(Stars.text($0))  ·  \(ratingWord($0))" } ?? "Slide across the stars — half stars work too")
                                 .font(.footnote).foregroundStyle(.white.opacity(0.65))
                         } else {
-                            ScoreDial(score: rating, size: 210) { rating = $0 }
-                                .frame(maxWidth: .infinity)
-                                .overlay(alignment: .topTrailing) { likeButton }
+                            if filmStyle == .stars {
+                                HStack(alignment: .top) {
+                                    FilmRatingInput(score: rating, starSize: 34) { rating = $0 }
+                                    Spacer()
+                                    likeButton
+                                }
+                            } else {
+                                FilmRatingInput(score: rating, dialSize: 210) { rating = $0 }
+                                    .frame(maxWidth: .infinity)
+                                    .overlay(alignment: .topTrailing) { likeButton }
+                            }
                         }
                     }
 

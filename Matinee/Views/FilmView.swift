@@ -252,7 +252,7 @@ struct FilmView: View {
                     }
                 }
             } else {
-                ScoreDial(score: library.rating(ref.id), size: 200) { library.rate(ref, $0) }
+                FilmRatingInput(score: library.rating(ref.id)) { library.rate(ref, $0) }
             }
             GlassEffectContainer(spacing: 10) {
                 HStack(spacing: 10) {

@@ -4,6 +4,7 @@ import CoreMotion
 import PhotosUI
 
 struct ProfileView: View {
+    @AppStorage(FilmRatingStyle.key) private var filmStyle: FilmRatingStyle = .score
     @Environment(Library.self) private var library
     @Environment(Auth.self) private var auth
     @Environment(Router.self) private var router
@@ -216,7 +217,10 @@ struct ProfileView: View {
         let bins = library.ratingHistogram
         let peak = max(1, bins.max() ?? 1)
         return VStack(alignment: .leading, spacing: 12) {
-            SectionHeader("Ratings", subtitle: library.averageRating.map { "Average score \(Int($0.rounded())) across \(library.watchedRatings.count) films" } ?? "Score films to see your spread")
+            SectionHeader("Ratings", subtitle: library.averageRating.map {
+                filmStyle == .stars ? "Average \(Score.toStars($0).formatted(.number.precision(.fractionLength(1)))) ★ across \(library.watchedRatings.count) films"
+                    : "Average score \(Int($0.rounded())) across \(library.watchedRatings.count) films"
+            } ?? "Rate films to see your spread")
             HStack(alignment: .bottom, spacing: 4) {
                 ForEach(0..<10, id: \.self) { i in
                     NavigationLink(value: CollectionRoute.rated(i)) {
@@ -225,7 +229,9 @@ struct ProfileView: View {
                             RoundedRectangle(cornerRadius: 3)
                                 .fill(Score.color(Double(i * 10 + 5)).opacity(bins[i] == 0 ? 0.12 : bins[i] == peak ? 1 : 0.55))
                                 .frame(height: max(4, 80 * CGFloat(bins[i]) / CGFloat(peak)))
-                            Text("\(i * 10 + 10)").font(.system(size: 8, weight: .semibold, design: .rounded)).foregroundStyle(Theme.dim)
+                            // Each band of ten points is one half star.
+                            Text(filmStyle == .stars ? (i % 2 == 1 ? "\((i + 1) / 2)★" : " ") : "\(i * 10 + 10)")
+                                .font(.system(size: 8, weight: .semibold, design: .rounded)).foregroundStyle(Theme.dim)
                         }
                         .frame(maxWidth: .infinity)
                     }

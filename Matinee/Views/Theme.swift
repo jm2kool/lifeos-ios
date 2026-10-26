@@ -366,13 +366,41 @@ struct ScorePill: View {
     }
 }
 
-/// A rating in whichever scale its title uses: a score pill for films, stars for shows and episodes.
+/// A rating in whichever scale its title uses: shows and episodes in stars, films as a score pill
+/// or in stars, whichever you picked in Settings.
 struct SmallRating: View {
     let rating: Double?
     let id: String
+    @AppStorage(FilmRatingStyle.key) private var style: FilmRatingStyle = .score
     var body: some View {
         if let r = rating, r > 0 {
-            if FilmRef.isShowID(id) { SmallStars(rating: r) } else { ScorePill(score: r) }
+            if FilmRef.isShowID(id) { SmallStars(rating: r) }
+            else if style == .stars { SmallStars(rating: Score.starsShown(r)) }
+            else { ScorePill(score: r) }
+        }
+    }
+}
+
+/// Rate a film the way you prefer: the 1–100 dial, or stars (saved as a score, 10 points per half star).
+struct FilmRatingInput: View {
+    let score: Double?
+    var dialSize: CGFloat = 200
+    var starSize: CGFloat = 36
+    var showsHint = true
+    let onChange: (Double?) -> Void
+    @AppStorage(FilmRatingStyle.key) private var style: FilmRatingStyle = .score
+
+    var body: some View {
+        if style == .stars {
+            VStack(spacing: 8) {
+                StarRating(rating: score.map(Score.starsShown), size: starSize, spacing: starSize * 0.22) { onChange($0.map(Score.fromStars)) }
+                if showsHint {
+                    Text(score.map { "\(Stars.text(Score.starsShown($0)))  ·  \(Score.word($0))" } ?? "Slide across the stars — half stars work too")
+                        .font(.footnote).foregroundStyle(.white.opacity(0.65))
+                }
+            }
+        } else {
+            ScoreDial(score: score, size: dialSize, onChange: onChange)
         }
     }
 }
