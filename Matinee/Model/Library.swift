@@ -50,7 +50,9 @@ final class Library {
     /// Comfort films and shows get watched and logged, but never asked for a rating.
     func isComfort(_ id: String) -> Bool { doc.comfort?.contains(id) ?? false }
     var favoriteShows: [FilmRef] { doc.favoriteShows ?? [] }
-    func favorites(shows: Bool) -> [FilmRef] { shows ? favoriteShows : doc.favorites }
+    var allFavorites: [FilmRef] { doc.allFavorites }
+    func isFavorite(_ id: String) -> Bool { allFavorites.contains { $0.id == id } }
+    var favoritesFull: Bool { allFavorites.count >= LibraryDoc.maxFavorites }
     var currentlyWatching: [FilmRef] { doc.currentlyWatching ?? [] }
     func isCurrentlyWatching(_ id: String) -> Bool { currentlyWatching.contains { $0.id == id } }
 
@@ -188,18 +190,19 @@ final class Library {
         }
     }
 
-    /// Four favourite films and four favourite shows; a show goes into the shows row.
-    func setFavorite(_ f: FilmRef, slot: Int) {
-        mutate("Added to favourites", symbol: "star.fill") { d in
-            var list = f.isShow ? d.favoriteShows ?? [] : d.favorites
-            list.removeAll { $0.id == f.id }
-            if slot < list.count { list[slot] = f } else { list.append(f) }
-            if f.isShow { d.favoriteShows = Array(list.prefix(4)) } else { d.favorites = Array(list.prefix(4)) }
-        }
+    /// Up to eight favourite films and shows, in one list.
+    func addFavorite(_ f: FilmRef) {
+        guard !isFavorite(f.id), !favoritesFull else { return }
+        mutate("Added to favourites", symbol: "star.fill") { d in d.setFavorites(d.allFavorites + [f]) }
     }
     func removeFavorite(_ f: FilmRef) {
+        mutate { d in d.setFavorites(d.allFavorites.filter { $0.id != f.id }) }
+    }
+    func moveFavorites(from source: IndexSet, to destination: Int) {
         mutate { d in
-            if f.isShow { d.favoriteShows?.removeAll { $0.id == f.id } } else { d.favorites.removeAll { $0.id == f.id } }
+            var list = d.allFavorites
+            list.move(fromOffsets: source, toOffset: destination)
+            d.setFavorites(list)
         }
     }
 
@@ -363,6 +366,7 @@ final class Library {
         for i in d.watched.indices { fix(&d.watched[i]) }
         for i in d.favorites.indices { fix(&d.favorites[i]) }
         if var l = d.favoriteShows { for i in l.indices { fix(&l[i]) }; d.favoriteShows = l }
+        if var l = d.topFavorites { for i in l.indices { fix(&l[i]) }; d.topFavorites = l }
         if var l = d.currentlyWatching { for i in l.indices { fix(&l[i]) }; d.currentlyWatching = l }
         for l in d.lists.indices { for i in d.lists[l].films.indices { fix(&d.lists[l].films[i]) } }
         if var shows = d.shows, shows[r.id] != nil { fix(&shows[r.id]!.show); d.shows = shows }
@@ -465,9 +469,8 @@ final class Library {
         p.episodeRatings[EpisodeKey.make(2, 1)] = 85
         d.shows = [show.id: p]
         d.currentlyWatching = [show]
-        d.favoriteShows = [show]
         d.watchlist = [refs[10], refs[11]]
-        d.favorites = [refs[2], refs[0], refs[6], refs[9]]
+        d.setFavorites([refs[2], show, refs[0], refs[6], refs[9]])
         d.lists = [FilmList(name: "Desert planets & big sound", note: "Films to feel in your chest.", ranked: true, films: [refs[0], refs[8], refs[4], refs[3]])]
         d.profile = Profile(name: "Alex Rivera", handle: "alex", bio: "Film nights every Friday.")
         doc = d

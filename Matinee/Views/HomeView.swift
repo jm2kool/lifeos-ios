@@ -184,23 +184,19 @@ struct HomeView: View {
         }
     }
 
-    /// The greeting with the All / Movies / Shows switch under it.
+    /// The greeting, the All / Movies / Shows switch and your avatar, all on one line.
     private var header: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            greeting
-            MediaFilterBar(selection: $media).padding(.horizontal, 20)
-        }
-    }
-
-    private var greeting: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(Date.now.formatted(.dateTime.weekday(.wide).day().month(.wide)).uppercased())
-                    .font(.caption.weight(.semibold)).tracking(1.2).foregroundStyle(.white.opacity(0.7))
-                Text(greetingText).font(.title.weight(.heavy))
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(Date.now.formatted(.dateTime.weekday(.wide).day().month(.abbreviated)).uppercased())
+                    .font(.caption2.weight(.semibold)).tracking(1).foregroundStyle(.white.opacity(0.7))
+                Text(greetingText).font(.title3.weight(.heavy))
             }
-            Spacer()
-            Button { router.sheet = .settings } label: { Avatar(profile: library.doc.profile, size: 40) }
+            .lineLimit(1).minimumScaleFactor(0.7)
+            .layoutPriority(1)
+            Spacer(minLength: 0)
+            MediaFilterBar(selection: $media, compact: true)
+            Button { router.sheet = .settings } label: { Avatar(profile: library.doc.profile, size: 36) }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Settings")
         }

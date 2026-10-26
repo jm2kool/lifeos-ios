@@ -52,7 +52,7 @@ enum SheetRoute: Identifiable, Equatable {
     case addToList(FilmRef)
     case newList(FilmRef?)
     case editList(FilmList)
-    case pickFavorite(Int, shows: Bool)
+    case editFavorites
     case editProfile
     case settings
     case signIn
@@ -68,7 +68,7 @@ enum SheetRoute: Identifiable, Equatable {
         case .addToList(let f): return "add-\(f.id)"
         case .newList(let f): return "new-\(f?.id ?? "")"
         case .editList(let l): return "edit-\(l.id)"
-        case .pickFavorite(let i, let shows): return "fav-\(shows ? "show" : "film")-\(i)"
+        case .editFavorites: return "favorites"
         case .editProfile: return "profile"
         case .settings: return "settings"
         case .signIn: return "signin"

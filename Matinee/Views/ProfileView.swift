@@ -50,9 +50,10 @@ struct ProfileView: View {
                         }
                     }
                     .padding(.top, 4)
-                    Text(auth.signedIn ? "Everyone can see your name, photo, favourites and Currently watching. Your diary, watchlist and ratings stay private."
-                         : "Sign in to share your profile. Until then it stays on this iPhone.")
-                        .font(.caption).foregroundStyle(Theme.dim).multilineTextAlignment(.center).padding(.horizontal, 30)
+                    if !auth.signedIn {
+                        Text("Sign in to share your profile. Until then it stays on this iPhone.")
+                            .font(.caption).foregroundStyle(Theme.dim).multilineTextAlignment(.center).padding(.horizontal, 30)
+                    }
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.top, 10)
@@ -75,9 +76,7 @@ struct ProfileView: View {
                     }
                 }
 
-                favorites(shows: false)
-
-                favorites(shows: true)
+                favorites
 
                 ratings
 
@@ -138,7 +137,7 @@ struct ProfileView: View {
         }
         .scrollContentBackground(.hidden)
         .background {
-            // Like Apple Card: a slowly shifting blend of colour — here drawn from your four favourite posters.
+            // Like Apple Card: a slowly shifting blend of colour — here drawn from your favourite posters.
             ZStack(alignment: .top) {
                 Color.black
                 FavoritesMesh(colors: meshColors)
@@ -149,7 +148,7 @@ struct ProfileView: View {
             }
             .ignoresSafeArea()
         }
-        .task(id: (library.doc.favorites + library.favoriteShows).map { $0.poster?.absoluteString ?? $0.id }) { await refreshMesh() }
+        .task(id: library.allFavorites.map { $0.poster?.absoluteString ?? $0.id }) { await refreshMesh() }
         // Your character keeps learning from your watchlist and ratings.
         .task(id: Taste.signature(library)) {
             try? await Task.sleep(for: .seconds(1))
@@ -165,7 +164,7 @@ struct ProfileView: View {
     private func refreshMesh() async {
         // Up to four colours from every favourite poster (and its backdrop), so the card mixes all of them.
         var ui: [UIColor] = []
-        for f in library.doc.favorites + library.favoriteShows {
+        for f in library.allFavorites {
             for url in [f.largePoster ?? f.poster, f.backdrop] {
                 guard let p = await Palette.of(url) else { continue }
                 ui += p.uiColors.prefix(url == f.backdrop ? 2 : 4)
@@ -197,34 +196,19 @@ struct ProfileView: View {
         }
     }
 
-    private func favorites(shows: Bool) -> some View {
-        let list = library.favorites(shows: shows)
-        return VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(shows ? "Favourite shows" : "Favourite films", subtitle: "Your four. Long-press to change.")
-            HStack(spacing: 10) {
-                ForEach(0..<4, id: \.self) { i in
-                    if i < list.count {
-                        let f = list[i]
-                        NavigationLink(value: f) { PosterView(film: f, corner: 8) }
-                            .buttonStyle(.plain)
-                            .contextMenu {
-                                Button { router.sheet = .pickFavorite(i, shows: shows) } label: { Label("Replace", systemImage: "arrow.2.squarepath") }
-                                Button(role: .destructive) { library.removeFavorite(f) } label: { Label("Remove", systemImage: "minus.circle") }
-                            }
-                    } else {
-                        Button { router.sheet = .pickFavorite(i, shows: shows) } label: {
-                            RoundedRectangle(cornerRadius: 8)
-                                .strokeBorder(style: StrokeStyle(lineWidth: 1.2, dash: [5, 4]))
-                                .foregroundStyle(Color.white.opacity(0.25))
-                                .aspectRatio(2/3, contentMode: .fit)
-                                .overlay(Image(systemName: "plus").font(.title3).foregroundStyle(Theme.dim))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(shows ? "Add favourite show" : "Add favourite film")
-                    }
-                }
+    /// Up to eight films and shows in one grid that's only as big as it needs to be. Edit them in Settings.
+    @ViewBuilder private var favorites: some View {
+        let list = library.allFavorites
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(title: "Favourites") {
+                Button(list.isEmpty ? "Add" : "Edit") { router.sheet = .editFavorites }
             }
-            .padding(.horizontal, 16)
+            if list.isEmpty {
+                Text("Pick up to eight films and shows to show off on your profile.")
+                    .font(.subheadline).foregroundStyle(Theme.dim).padding(.horizontal, 20)
+            } else {
+                FavoritesRow(films: list)
+            }
         }
     }
 
@@ -343,41 +327,81 @@ struct ProfileEditor: View {
     }
 }
 
+/// Your favourite films and shows, up to eight: drag to reorder, remove, or add more. Opened from Settings or your profile.
+struct FavoritesEditor: View {
+    var asSheet = false
+    @Environment(Library.self) private var library
+    @Environment(\.dismiss) private var dismiss
+    @State private var adding = false
+
+    var body: some View {
+        let list = library.allFavorites
+        List {
+            Section {
+                ForEach(list) { f in
+                    HStack(spacing: 12) {
+                        PosterView(film: f, width: 40, corner: 4, glows: false)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(f.title).font(.body.weight(.semibold)).lineLimit(1)
+                            Text([f.isShow ? "Show" : "Film", f.yearText].filter { !$0.isEmpty }.joined(separator: " · "))
+                                .font(.caption).foregroundStyle(Theme.dim)
+                        }
+                    }
+                }
+                .onMove { library.moveFavorites(from: $0, to: $1) }
+                .onDelete { rows in rows.map { list[$0] }.forEach(library.removeFavorite) }
+                if !library.favoritesFull {
+                    Button { adding = true } label: { Label("Add a film or show", systemImage: "plus") }
+                }
+            } footer: {
+                Text(list.isEmpty ? "Pick up to \(LibraryDoc.maxFavorites) films and shows to show on your profile."
+                     : "\(list.count) of \(LibraryDoc.maxFavorites). Drag to reorder — they show on your profile in this order.")
+            }
+        }
+        .environment(\.editMode, .constant(.active))
+        .oledBackground()
+        .navigationTitle("Favourites")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if asSheet { ToolbarItem(placement: .confirmationAction) { Button("Done", systemImage: "checkmark") { dismiss() } } }
+        }
+        .sheet(isPresented: $adding) { FavoritePicker() }
+    }
+}
+
+/// Search for a film or show to add to your favourites.
 struct FavoritePicker: View {
-    let slot: Int
-    var shows = false
     @Environment(Library.self) private var library
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
     @State private var results: [FilmRef] = []
 
-    /// Before you search: shows you're watching or have finished, or the films you've seen.
+    /// Before you search: shows you're watching or have finished, and the films you've seen.
     private var yours: [FilmRef] {
-        guard shows else { return library.watchedFilms.filter { !$0.isShow } }
         var seen = Set<String>()
-        return (library.currentlyWatching + library.showsInProgress + library.watchedFilms.filter(\.isShow)).filter { seen.insert($0.id).inserted }
+        return (library.currentlyWatching + library.showsInProgress + library.watchedFilms).filter { seen.insert($0.id).inserted }
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                let pool = query.isEmpty ? yours : results.filter { $0.isShow == shows }
+                let pool = (query.isEmpty ? yours : results).filter { !library.isFavorite($0.id) }
                 if pool.isEmpty {
-                    EmptyState(symbol: "magnifyingglass", title: query.isEmpty ? "Search for a \(shows ? "show" : "film")" : "No matches",
-                               message: shows ? "Pick one of the shows you'd watch again and again." : "Pick one of the films that made you love film.")
+                    EmptyState(symbol: "magnifyingglass", title: query.isEmpty ? "Search for a film or show" : "No matches",
+                               message: "Pick the ones you'd watch again and again.")
                         .padding(.top, 40)
                 }
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
                     ForEach(pool) { f in
-                        Button { library.setFavorite(f, slot: slot); dismiss() } label: { PosterView(film: f, corner: 6) }.buttonStyle(.plain)
+                        Button { library.addFavorite(f); dismiss() } label: { PosterView(film: f, corner: 6) }.buttonStyle(.plain)
                     }
                 }
                 .padding(16)
             }
             .oledBackground()
-            .navigationTitle("Favourite \(shows ? "show" : "film") #\(slot + 1)")
+            .navigationTitle("Add a favourite")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: shows ? "Search all shows" : "Search all films")
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search films and shows")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel", systemImage: "xmark") { dismiss() } } }
             .task(id: query) {
                 guard !query.isEmpty else { results = []; return }
@@ -497,17 +521,13 @@ struct WatchingNowRow: View {
     }
 }
 
-/// Four posters in a row, as on a profile.
+/// Favourite posters, four to a row: only the ones picked, no empty slots.
 struct FavoritesRow: View {
     let films: [FilmRef]
     var body: some View {
-        HStack(spacing: 10) {
-            ForEach(0..<4, id: \.self) { i in
-                if i < films.count {
-                    NavigationLink(value: films[i]) { PosterView(film: films[i], corner: 8) }.buttonStyle(.plain)
-                } else {
-                    RoundedRectangle(cornerRadius: 8).fill(Theme.card).aspectRatio(2/3, contentMode: .fit)
-                }
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), alignment: .leading, spacing: 8) {
+            ForEach(films) { f in
+                NavigationLink(value: f) { PosterView(film: f, corner: 8) }.buttonStyle(.plain).filmContextMenu(f)
             }
         }
         .padding(.horizontal, 16)
@@ -539,19 +559,13 @@ struct PublicProfileView: View {
                             WatchingNowRow(items: p.currentlyWatching)
                         }
                     }
-                    if !p.favorites.isEmpty {
+                    if !p.allFavorites.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
-                            SectionHeader("Favourite films")
-                            FavoritesRow(films: p.favorites)
+                            SectionHeader("Favourites")
+                            FavoritesRow(films: p.allFavorites)
                         }
                     }
-                    if !p.favoriteShows.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            SectionHeader("Favourite shows")
-                            FavoritesRow(films: p.favoriteShows)
-                        }
-                    }
-                    if p.currentlyWatching.isEmpty && p.favorites.isEmpty && p.favoriteShows.isEmpty {
+                    if p.currentlyWatching.isEmpty && p.allFavorites.isEmpty {
                         EmptyState(symbol: "film", title: "Nothing here yet", message: "No favourites or shows picked yet.")
                     }
                 }
@@ -564,7 +578,7 @@ struct PublicProfileView: View {
                 ProgressView().padding(.top, 80)
             }
         }
-        .ambientBackground(Array(((profile?.favorites ?? []) + (profile?.favoriteShows ?? [])).prefix(3)))
+        .ambientBackground(Array((profile?.allFavorites ?? []).prefix(3)))
         .navigationTitle(profile?.handle.map { "@\($0)" } ?? "Profile")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

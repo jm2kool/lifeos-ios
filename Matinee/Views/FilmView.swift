@@ -75,14 +75,14 @@ struct FilmView: View {
                         }
                     }
                     Button { router.sheet = .addToList(ref) } label: { Label("Add to list…", systemImage: "text.badge.plus") }
-                    Menu {
-                        let favs = library.favorites(shows: ref.isShow)
-                        ForEach(0..<4) { i in
-                            Button("Slot \(i + 1)\(i < favs.count ? " — replaces \(favs[i].title)" : "")") {
-                                library.setFavorite(ref, slot: i)
-                            }
+                    if library.isFavorite(ref.id) {
+                        Button { library.removeFavorite(ref) } label: { Label("Remove from favourites", systemImage: "star.slash") }
+                    } else {
+                        Button { library.addFavorite(ref) } label: {
+                            Label(library.favoritesFull ? "Favourites are full — edit in Settings" : "Add to favourites", systemImage: "star")
                         }
-                    } label: { Label(ref.isShow ? "Set as a favourite show" : "Set as a favourite film", systemImage: "star") }
+                        .disabled(library.favoritesFull)
+                    }
                     if library.isWatched(ref.id) {
                         Button(role: .destructive) { library.toggleWatched(ref) } label: { Label("Remove from watched", systemImage: "eye.slash") }
                     }

@@ -487,36 +487,27 @@ struct CompactRatingInput: View {
     }
 }
 
-/// All / Movies / Shows as a glass capsule; the selection slides between them.
+/// All / Movies / Shows on the system's Liquid Glass segmented control: drag the thumb between them and it
+/// turns into a lens that bends the labels underneath, or just tap one.
 struct MediaFilterBar: View {
     @Binding var selection: MediaFilter
     var options: [MediaFilter] = MediaFilter.allCases
-    @Namespace private var pill
+    /// Icons for Movies and Shows, small enough to sit beside the greeting on Home.
+    var compact = false
 
     var body: some View {
-        HStack(spacing: 2) {
+        Picker("Show", selection: $selection.animation(.snappy)) {
             ForEach(options, id: \.self) { m in
-                let on = selection == m
-                Button {
-                    guard !on else { return }
-                    withAnimation(.snappy(duration: 0.3)) { selection = m }
-                    UISelectionFeedbackGenerator().selectionChanged()
-                } label: {
-                    Text(m.label)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(on ? Color.black : Color.white.opacity(0.85))
-                        .padding(.horizontal, 16).padding(.vertical, 8)
-                        .background {
-                            if on { Capsule().fill(.white).matchedGeometryEffect(id: "pill", in: pill) }
-                        }
-                        .contentShape(Capsule())
+                Group {
+                    if compact, let symbol = m.symbol { Image(systemName: symbol).accessibilityLabel(m.label) } else { Text(m.label) }
                 }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(on ? .isSelected : [])
+                .tag(m)
             }
         }
-        .padding(4)
-        .glassEffect(.regular, in: .capsule)
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
+        .controlSize(compact ? .regular : .large)
     }
 }
 

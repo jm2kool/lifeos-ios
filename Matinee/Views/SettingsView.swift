@@ -48,6 +48,16 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    NavigationLink { FavoritesEditor() } label: {
+                        LabeledContent { Text("\(library.allFavorites.count) of \(LibraryDoc.maxFavorites)") } label: {
+                            Label("Edit favourites", systemImage: "star")
+                        }
+                    }
+                } header: { Text("Profile") } footer: {
+                    Text("Up to eight films and shows on your profile. Reorder, add or remove them here.")
+                }
+
+                Section {
                     Picker("Rate with", selection: $filmStyle) {
                         Text("Score 1–100").tag(FilmRatingStyle.score)
                         Text("Stars 1–5").tag(FilmRatingStyle.stars)

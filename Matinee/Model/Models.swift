@@ -179,6 +179,20 @@ struct LibraryDoc: Codable {
     var currentlyWatching: [FilmRef]?         // shows pinned to the top of Home
     var comfort: [String]?                    // ids of comfort films and shows: watched, never rated
     var watching: [WatchSession]?             // films and episodes in progress, with their intermissions
+    var topFavorites: [FilmRef]?              // up to eight films and shows, in your order; nil in libraries from before
+
+    /// Favourite films and shows together, in your order. Older libraries kept them apart, films first.
+    var allFavorites: [FilmRef] { topFavorites ?? (favorites + (favoriteShows ?? [])) }
+
+    /// Sets the one favourites list, and keeps the films and shows halves (used for your character and by older versions) in step.
+    mutating func setFavorites(_ list: [FilmRef]) {
+        var seen = Set<String>()
+        let list = Array(list.filter { seen.insert($0.id).inserted }.prefix(LibraryDoc.maxFavorites))
+        topFavorites = list
+        favorites = list.filter { !$0.isShow }
+        favoriteShows = list.filter(\.isShow)
+    }
+    static let maxFavorites = 8
 
     /// Ratings used to be 0.5–5 stars: films first, then shows, seasons and episodes. They're all scores out of 100 now.
     mutating func migrate() {
@@ -209,6 +223,13 @@ enum MediaFilter: String, CaseIterable {
         case .all: return "All"
         case .movies: return "Movies"
         case .shows: return "Shows"
+        }
+    }
+    var symbol: String? {
+        switch self {
+        case .all: return nil
+        case .movies: return "film"
+        case .shows: return "tv"
         }
     }
     func includes(_ f: FilmRef) -> Bool { self == .all || (self == .shows) == f.isShow }

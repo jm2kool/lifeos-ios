@@ -191,7 +191,7 @@ struct SheetHost: View {
         case .addToList(let f): AddToListSheet(film: f)
         case .newList(let f): ListEditor(seed: f)
         case .editList(let l): ListEditor(editing: l)
-        case .pickFavorite(let slot, let shows): FavoritePicker(slot: slot, shows: shows)
+        case .editFavorites: NavigationStack { FavoritesEditor(asSheet: true) }
         case .editProfile: ProfileEditor()
         case .settings: SettingsView()
         case .signIn: SignInView(asSheet: true)

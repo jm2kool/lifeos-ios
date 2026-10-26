@@ -27,7 +27,7 @@ Matinee is not affiliated with Letterboxd.
 | — | **Comfort films and shows** | Mark a title as a comfort watch (on its page or when you log it) and Matinee logs it without ever asking for a rating. |
 | — | **Season and series wrap-up** | Finish a season or a whole show and you see the average of your episode ratings next to a rating you choose yourself. |
 | Lists | **Lists with progress** | Shows "you've seen 3 of 7". Lists can be ranked and reordered by dragging. |
-| Profile favourites | **Four favourite films, four favourite shows + ratings spread** | Tap any bar in your ratings chart to see those films. |
+| Profile favourites | **Up to eight favourite films and shows (Settings → Edit favourites) + ratings spread** | Tap any bar in your ratings chart to see those films. |
 | Tags | **Tag suggestions** | Your past tags come up as chips while you log. |
 | Import | **Letterboxd CSV import** | Bring your whole history across from Settings. |
 

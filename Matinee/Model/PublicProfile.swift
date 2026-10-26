@@ -69,8 +69,15 @@ struct PublicProfile: Codable, Hashable, Identifiable {
             WatchingNow(show: show, lastSeen: library.progress(show.id)?.lastSeen.map { EpisodeKey.code($0.season, $0.episode) })
         }
         return PublicProfile(userID: userID, handle: Handle.clean(p.handle), name: p.name, bio: p.bio, avatarURL: p.avatar,
-                             avatarData: p.avatarData, favorites: library.doc.favorites, favoriteShows: library.favoriteShows,
+                             avatarData: p.avatarData, favorites: library.allFavorites, favoriteShows: library.favoriteShows,
                              currentlyWatching: watching)
+    }
+
+    /// Favourite films and shows in one row. Newer versions publish them all, in order, under favorites
+    /// (keeping favorite_shows for older ones); older versions published films there and shows separately.
+    var allFavorites: [FilmRef] {
+        var seen = Set<String>()
+        return Array((favorites + favoriteShows).filter { seen.insert($0.id).inserted }.prefix(LibraryDoc.maxFavorites))
     }
 
     var asProfile: Profile { Profile(name: name, handle: handle ?? "", bio: bio, avatar: avatarURL, avatarData: avatarData) }
