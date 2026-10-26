@@ -645,6 +645,30 @@ struct ShowProgressRow: View {
 
 // MARK: - Currently watching
 
+/// An episode's still, 16:9. Until it loads (or when TMDB has none) the show's backdrop, then its poster.
+struct EpisodeStill: View {
+    let still: URL?
+    let show: FilmRef
+    var width: CGFloat = 112
+    var corner: CGFloat = 8
+
+    var body: some View {
+        Group {
+            if let url = still ?? show.backdrop {
+                RemoteImage(url: url)
+            } else {
+                PosterView(film: show, width: width * 9 / 16, corner: corner, glows: false)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Theme.card)
+            }
+        }
+        .frame(width: width, height: width * 9 / 16)
+        .clipShape(.rect(cornerRadius: corner))
+        .overlay(RoundedRectangle(cornerRadius: corner).strokeBorder(Color.white.opacity(0.1), lineWidth: 0.5))
+        .animation(.easeOut(duration: 0.25), value: still)
+    }
+}
+
 /// Shows you've pinned, at the top of Home: the next episode to tick off or start, and the last one to rate.
 struct CurrentlyWatchingSection: View {
     let shows: [FilmRef]
@@ -684,7 +708,7 @@ struct CurrentlyWatchingCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
-                NavigationLink(value: show) { PosterView(film: show, width: 62, corner: 7) }
+                NavigationLink(value: show) { EpisodeStill(still: next?.still, show: show, width: 112) }
                     .buttonStyle(.plain)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(show.title).font(.headline).lineLimit(1)

@@ -492,7 +492,29 @@ final class TiltMotion {
 
 // MARK: - Public profiles
 
-/// Posters of the shows someone has pinned, each with the furthest episode they've seen.
+/// The still of the episode in "Up to S2 E4", looked up from TMDB.
+private struct WatchingNowStill: View {
+    let item: PublicProfile.WatchingNow
+    @State private var still: URL?
+
+    var body: some View {
+        EpisodeStill(still: still, show: item.show, width: 176, corner: 10)
+            .task(id: item.lastSeen) {
+                guard let (season, number) = Self.parse(item.lastSeen),
+                      let eps = try? await Catalog.season(item.show.id, season) else { return }
+                still = eps.first { $0.number == number }?.still
+            }
+    }
+
+    /// "S2 E4" → (2, 4).
+    static func parse(_ code: String?) -> (Int, Int)? {
+        guard let code else { return nil }
+        let nums = code.split { !$0.isNumber }.compactMap { Int($0) }
+        return nums.count == 2 ? (nums[0], nums[1]) : nil
+    }
+}
+
+/// The shows someone has pinned, each with a still from the furthest episode they've seen.
 struct WatchingNowRow: View {
     let items: [PublicProfile.WatchingNow]
 
@@ -502,13 +524,13 @@ struct WatchingNowRow: View {
                 ForEach(items) { w in
                     NavigationLink(value: w.show) {
                         VStack(alignment: .leading, spacing: 6) {
-                            PosterView(film: w.show, width: 104)
+                            WatchingNowStill(item: w)
                             Text(w.show.title).font(.caption.weight(.semibold)).lineLimit(1)
                             if let last = w.lastSeen {
                                 Text("Up to \(last)").font(.caption2.weight(.semibold)).foregroundStyle(Theme.accent)
                             }
                         }
-                        .frame(width: 104, alignment: .leading)
+                        .frame(width: 176, alignment: .leading)
                     }
                     .buttonStyle(.plain)
                     .filmContextMenu(w.show)
