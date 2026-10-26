@@ -90,22 +90,30 @@ enum EpisodeKey {
 }
 
 /// How far you are through a show, and what you thought of each episode and season.
-/// Episodes and seasons are rated in stars (0.5–5); the show's own rating lives with the others in `ratings`.
+/// Episodes and seasons are scored 1–100 like everything else; the show's own rating lives with the others in `ratings`.
 struct ShowProgress: Codable, Hashable {
     var show: FilmRef
     var seen: [String: Date] = [:]                // "s1e3" → when you watched it
-    var episodeRatings: [String: Double] = [:]    // "s1e3" → stars
-    var seasonRatings: [String: Double] = [:]     // "1" → your own rating for the season
+    var episodeRatings: [String: Double] = [:]    // "s1e3" → score
+    var seasonRatings: [String: Double] = [:]     // "1" → your own score for the season
     var updatedAt = Date.now
 
     var isEmpty: Bool { seen.isEmpty && episodeRatings.isEmpty && seasonRatings.isEmpty }
     func seenCount(season: Int) -> Int { seen.keys.filter { EpisodeKey.season(of: $0) == season }.count }
 
     /// The average of your episode ratings — for one season, or the whole show when season is nil.
-    func average(season: Int? = nil) -> (stars: Double, count: Int)? {
+    func average(season: Int? = nil) -> (score: Double, count: Int)? {
         let r = episodeRatings.filter { season == nil ? (EpisodeKey.season(of: $0.key) ?? 0) > 0 : EpisodeKey.season(of: $0.key) == season }
             .map(\.value).filter { $0 > 0 }
         return r.isEmpty ? nil : (r.reduce(0, +) / Double(r.count), r.count)
+    }
+
+    /// The furthest episode you've ticked off in the regular seasons.
+    var lastSeen: (season: Int, episode: Int)? {
+        seen.keys.compactMap { k -> (Int, Int)? in
+            guard let s = EpisodeKey.season(of: k), let e = EpisodeKey.episode(of: k), s > 0 else { return nil }
+            return (s, e)
+        }.max { $0 < $1 }
     }
 }
 
@@ -114,7 +122,7 @@ struct LogEntry: Codable, Hashable, Identifiable {
     var id = UUID()
     var film: FilmRef
     var watchedOn: Date = .now
-    var rating: Double?               // 0.5 … 5.0 in half steps
+    var rating: Double?               // 1–100
     var liked = false
     var rewatch = false
     var review = ""
@@ -155,27 +163,57 @@ struct LibraryDoc: Codable {
     var entries: [LogEntry] = []
     var watchlist: [FilmRef] = []
     var liked: [FilmRef] = []
-    var ratings: [String: Double] = [:]      // latest rating per id: films 1–100, shows 0.5–5 stars
+    var ratings: [String: Double] = [:]      // latest rating per id, 1–100
     var watched: [FilmRef] = []               // films marked watched without a diary entry
     var lists: [FilmList] = []
-    var favorites: [FilmRef] = []             // up to four, shown on your profile
+    var favorites: [FilmRef] = []             // up to four films, shown on your profile
     var profile = Profile()
     var recentSearches: [String] = []
     var taste: TasteProfile?                  // your film character, so it follows you between devices
     var updatedAt = Date.now
     var shows: [String: ShowProgress]?        // episode tracking, by show id
-    var ratingScale: Int?                     // nil: film ratings saved before they moved from stars to 1–100
+    // A new library starts on today's scales; a missing key in a saved one decodes as nil, so it gets migrated.
+    var ratingScale: Int? = 100               // nil: film ratings saved before they moved from stars to 1–100
+    var showScale: Int? = 100                 // nil: show, season and episode ratings saved in stars
+    var favoriteShows: [FilmRef]?             // up to four shows, shown on your profile
+    var currentlyWatching: [FilmRef]?         // shows pinned to the top of Home
+    var comfort: [String]?                    // ids of comfort films and shows: watched, never rated
 
-    /// Film ratings used to be 0.5–5 stars; they're scores out of 100 now. Shows and episodes stay in stars.
+    /// Ratings used to be 0.5–5 stars: films first, then shows, seasons and episodes. They're all scores out of 100 now.
     mutating func migrate() {
-        guard ratingScale == nil else { return }
-        for (k, v) in ratings where !FilmRef.isShowID(k) { ratings[k] = Score.fromStars(v) }
-        for i in entries.indices where !entries[i].film.isShow { entries[i].rating = entries[i].rating.map(Score.fromStars) }
-        ratingScale = 100
+        if ratingScale == nil {
+            for (k, v) in ratings where !FilmRef.isShowID(k) { ratings[k] = Score.fromStars(v) }
+            for i in entries.indices where !entries[i].film.isShow { entries[i].rating = entries[i].rating.map(Score.fromStars) }
+            ratingScale = 100
+        }
+        if showScale == nil {
+            for (k, v) in ratings where FilmRef.isShowID(k) { ratings[k] = Score.fromStars(v) }
+            for i in entries.indices where entries[i].film.isShow { entries[i].rating = entries[i].rating.map(Score.fromStars) }
+            shows = shows?.mapValues { p in
+                var p = p
+                p.episodeRatings = p.episodeRatings.mapValues(Score.fromStars)
+                p.seasonRatings = p.seasonRatings.mapValues(Score.fromStars)
+                return p
+            }
+            showScale = 100
+        }
     }
 }
 
-/// How you like to rate films. Either way the library stores a score out of 100, so switching
+/// The All / Movies / Shows switch on Home, the watchlist and the random pick.
+enum MediaFilter: String, CaseIterable {
+    case all, movies, shows
+    var label: String {
+        switch self {
+        case .all: return "All"
+        case .movies: return "Movies"
+        case .shows: return "Shows"
+        }
+    }
+    func includes(_ f: FilmRef) -> Bool { self == .all || (self == .shows) == f.isShow }
+}
+
+/// How you like to rate films and shows. Either way the library stores a score out of 100, so switching
 /// back and forth never loses anything: stars show it in half steps (10 points each).
 enum FilmRatingStyle: String, CaseIterable {
     case score, stars
@@ -183,7 +221,7 @@ enum FilmRatingStyle: String, CaseIterable {
     static var current: FilmRatingStyle { UserDefaults.standard.string(forKey: key).flatMap(Self.init(rawValue:)) ?? .score }
 }
 
-/// Films are scored 1–100.
+/// Films, shows, seasons and episodes are all scored 1–100.
 enum Score {
     static func fromStars(_ s: Double) -> Double { min(100, max(1, (s * 20).rounded())) }
     static func toStars(_ s: Double) -> Double { s / 20 }
@@ -201,8 +239,14 @@ enum Score {
         }
     }
     static func text(_ s: Double?) -> String { s.map { $0 > 0 ? String(Int($0.rounded())) : "" } ?? "" }
-    /// Ratings as stars for anything: film scores are converted, show and episode stars pass through.
-    static func asStars(_ r: Double, id: String) -> Double { FilmRef.isShowID(id) ? r : toStars(r) }
+    /// An average in the scale you rate with: "4.2 ★" or "84".
+    static func describe(_ s: Double, style: FilmRatingStyle = .current) -> String {
+        style == .stars ? "\(toStars(s).formatted(.number.precision(.fractionLength(1)))) ★" : text(s)
+    }
+    /// A score you'd give yourself: whole points, or the nearest half star when you rate in stars.
+    static func rounded(_ s: Double, style: FilmRatingStyle = .current) -> Double {
+        style == .stars ? fromStars(starsShown(s)) : min(100, max(1, s.rounded()))
+    }
 }
 
 enum Stars {

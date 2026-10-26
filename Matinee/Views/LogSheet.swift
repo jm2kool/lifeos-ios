@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// Log a viewing: when, how much you liked it, and what you thought — all on one screen.
-/// Films are scored out of 100 on a dial; shows, seasons and episodes get stars.
+/// Everything is scored out of 100 on a dial, or in stars if that's what you picked in Settings.
+/// Comfort films and shows skip the rating altogether.
 struct LogSheet: View {
     let film: FilmRef
     let existing: LogEntry?
@@ -18,8 +19,10 @@ struct LogSheet: View {
     @State private var tags: [String] = []
     @State private var tagDraft = ""
     @State private var showCalendar = false
+    @State private var comfort = false
     @FocusState private var reviewFocused: Bool
     @State private var art: FilmArt?
+    @State private var artLoaded = false
     @State private var palette: PosterPalette?
 
     /// The sheet is painted in the film's accent colour, like its page.
@@ -29,7 +32,6 @@ struct LogSheet: View {
     @AppStorage(FilmRatingStyle.key) private var filmStyle: FilmRatingStyle = .score
     private var context: LogEntry? { existing ?? draft }
     private var isPart: Bool { context?.season != nil }
-    private var usesStars: Bool { film.isShow }
     private var earlier: [LogEntry] {
         library.entries(for: film.id).filter { $0.season == context?.season && $0.episode == context?.episode && $0.id != existing?.id }
     }
@@ -45,7 +47,8 @@ struct LogSheet: View {
                 VStack(alignment: .leading, spacing: 22) {
                     // The film's logo, big, as the heading.
                     VStack(spacing: 10) {
-                        TitleArt(title: film.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 280, maxHeight: 110, fontSize: 34)
+                        TitleArt(title: film.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 280, maxHeight: 110, fontSize: 34,
+                                 ready: artLoaded)
                             .frame(minHeight: 80)
                         if let label = context?.episodeLabel {
                             VStack(spacing: 2) {
@@ -90,28 +93,29 @@ struct LogSheet: View {
 
                     // Rating + like
                     VStack(alignment: .leading, spacing: 10) {
-                        label(usesStars || filmStyle == .stars ? "Rating" : "Score")
-                        if usesStars {
-                            HStack {
-                                StarRating(rating: rating, size: 34, spacing: 7) { rating = $0 }
+                        label(comfort ? "Comfort watch" : filmStyle == .stars ? "Rating" : "Score")
+                        if comfort {
+                            HStack(alignment: .top) {
+                                Text("No rating needed — it's a comfort \(film.isShow ? "show" : "film"). Just log that you watched it.")
+                                    .font(.subheadline).foregroundStyle(.white.opacity(0.7))
                                 Spacer()
                                 if !isPart { likeButton }
                             }
-                            Text(rating.map { "\(Stars.text($0))  ·  \(ratingWord($0))" } ?? "Slide across the stars — half stars work too")
-                                .font(.footnote).foregroundStyle(.white.opacity(0.65))
-                        } else {
-                            if filmStyle == .stars {
-                                HStack(alignment: .top) {
-                                    FilmRatingInput(score: rating, starSize: 34) { rating = $0 }
-                                    Spacer()
-                                    likeButton
-                                }
-                            } else {
-                                FilmRatingInput(score: rating, dialSize: 210) { rating = $0 }
-                                    .frame(maxWidth: .infinity)
-                                    .overlay(alignment: .topTrailing) { likeButton }
+                        } else if filmStyle == .stars {
+                            HStack(alignment: .top) {
+                                FilmRatingInput(score: rating, starSize: 34) { rating = $0 }
+                                Spacer()
+                                if !isPart { likeButton }
                             }
+                        } else {
+                            FilmRatingInput(score: rating, dialSize: 210) { rating = $0 }
+                                .frame(maxWidth: .infinity)
+                                .overlay(alignment: .topTrailing) { if !isPart { likeButton } }
                         }
+                        Toggle(isOn: $comfort.animation(.smooth)) {
+                            Label("Comfort \(film.isShow ? "show" : "film") — don't ask me to rate it", systemImage: comfort ? "sofa.fill" : "sofa")
+                        }
+                        .tint(Theme.star)
                     }
 
                     Toggle(isOn: $rewatch) {
@@ -188,6 +192,7 @@ struct LogSheet: View {
             let url = film.largePoster ?? film.poster
             if let hit = Palette.cached(url) { palette = hit }
             art = await a
+            withAnimation(.easeOut(duration: 0.3)) { artLoaded = true }
             if palette == nil, let p = await Palette.of((art?.poster) ?? url) { palette = p }
         }
         .onAppear(perform: prefill)
@@ -218,16 +223,6 @@ struct LogSheet: View {
             .overlay(Capsule().strokeBorder(on ? Theme.accent : .clear, lineWidth: 1.5).allowsHitTesting(false))
     }
 
-    private func ratingWord(_ r: Double) -> String {
-        switch r {
-        case ..<1.5: return "Not for me"
-        case ..<2.5: return "Meh"
-        case ..<3.5: return "Good"
-        case ..<4.5: return "Great"
-        default: return "Masterpiece"
-        }
-    }
-
     private func addTag() {
         let t = tagDraft.trimmingCharacters(in: .whitespaces).lowercased().replacingOccurrences(of: "#", with: "")
         if !t.isEmpty && !tags.contains(t) { tags.append(t) }
@@ -235,6 +230,7 @@ struct LogSheet: View {
     }
 
     private func prefill() {
+        comfort = library.isComfort(film.id)
         if let e = existing {
             date = e.watchedOn; rating = e.rating; liked = e.liked; rewatch = e.rewatch; review = e.review; tags = e.tags
         } else if let d = draft, let s = d.season {
@@ -251,7 +247,8 @@ struct LogSheet: View {
     private func save() {
         addTag()
         var e = existing ?? draft ?? LogEntry(film: film)
-        e.watchedOn = date; e.rating = rating; e.liked = liked; e.rewatch = rewatch
+        library.setComfort(film, comfort)
+        e.watchedOn = date; e.rating = comfort ? nil : rating; e.liked = liked; e.rewatch = rewatch
         e.review = review.trimmingCharacters(in: .whitespacesAndNewlines); e.tags = tags
         library.log(e)
         // Liking an episode is about the episode; only whole films and shows touch your likes.

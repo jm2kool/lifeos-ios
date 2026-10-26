@@ -5,6 +5,7 @@ struct NowWatchingBar: View {
     let session: WatchSession
     @Environment(Watching.self) private var watching
     @Environment(Router.self) private var router
+    @Environment(Library.self) private var library
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { tl in
@@ -58,9 +59,9 @@ struct NowWatchingBar: View {
     }
 
     private func finish() {
-        let route = session.logRoute
+        let route = session.finish(in: library)
         watching.end(session.id)
-        router.sheet = route
+        if let route { router.sheet = route }
     }
 
     private func iconButton(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
@@ -82,6 +83,7 @@ struct IntermissionSheet: View {
     let sessionID: UUID
     @Environment(Watching.self) private var watching
     @Environment(Router.self) private var router
+    @Environment(Library.self) private var library
     @Environment(\.dismiss) private var dismiss
     @State private var position: Double = 0
     @State private var mood = "🤔"
@@ -162,9 +164,9 @@ struct IntermissionSheet: View {
                             Button { pause() } label: { Label("Pause here", systemImage: "pause.fill").frame(maxWidth: .infinity) }
                                 .buttonStyle(.glassProminent).controlSize(.large)
                             Button {
-                                let route = s.logRoute
+                                let route = s.finish(in: library)
                                 watching.end(s.id)
-                                router.sheet = route
+                                if let route { router.sheet = route } else { dismiss() }
                             } label: { Label("I finished it — log it", systemImage: "checkmark").frame(maxWidth: .infinity) }
                                 .buttonStyle(.glass).controlSize(.large)
                             Button("Stop tracking this film", role: .destructive) { watching.end(s.id); dismiss() }
@@ -278,11 +280,12 @@ struct IntermissionRow: View {
 
 /// Home shelf of films you paused, each with your note so you remember where you were.
 struct IntermissionShelf: View {
+    var media: MediaFilter = .all
     @Environment(Watching.self) private var watching
     @Environment(Router.self) private var router
 
     var body: some View {
-        let paused = watching.paused
+        let paused = watching.paused.filter { media.includes($0.film) }
         if !paused.isEmpty {
             VStack(alignment: .leading, spacing: 14) {
                 SectionHeader("Intermission", subtitle: "Pick up where you left off")

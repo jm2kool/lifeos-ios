@@ -121,15 +121,12 @@ struct SeasonsSection: View {
                     .buttonStyle(.glass).controlSize(.small)
                 }
             }
-            if info.number > 0 && (avg != nil || allSeen || library.seasonRating(show.id, info.number) != nil) {
+            if info.number > 0 && !library.isComfort(show.id) && (avg != nil || allSeen || library.seasonRating(show.id, info.number) != nil) {
                 HStack(alignment: .top, spacing: 16) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("EPISODES AVG").font(.caption2.weight(.heavy)).tracking(1).foregroundStyle(.white.opacity(0.55))
                         if let avg {
-                            HStack(spacing: 4) {
-                                Text(avg.stars.formatted(.number.precision(.fractionLength(1)))).font(.title3.weight(.bold).monospacedDigit())
-                                Image(systemName: "star.fill").font(.caption).foregroundStyle(Theme.star)
-                            }
+                            RatingValue(score: avg.score)
                             Text("\(avg.count) rated").font(.caption2).foregroundStyle(.white.opacity(0.55))
                         } else {
                             Text("–").font(.title3.weight(.bold))
@@ -138,11 +135,11 @@ struct SeasonsSection: View {
                     Divider().frame(height: 46).overlay(Theme.line)
                     VStack(alignment: .leading, spacing: 6) {
                         Text("YOUR SEASON RATING").font(.caption2.weight(.heavy)).tracking(1).foregroundStyle(.white.opacity(0.55))
-                        StarRating(rating: library.seasonRating(show.id, info.number), size: 22, spacing: 4) {
+                        CompactRatingInput(score: library.seasonRating(show.id, info.number)) {
                             library.rateSeason(show, info.number, $0)
                         }
                     }
-                    Spacer(minLength: 0)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
@@ -190,6 +187,11 @@ struct SeasonsSection: View {
         guard !aired.isEmpty, old < aired.count, aired.allSatisfy({ library.isSeen(show.id, $0) }) else { return }
         Task {
             let series = await allSeasonsFinished()
+            // Comfort shows don't get asked for a rating; a finished one still joins your watched titles.
+            if library.isComfort(show.id) {
+                if series && detail.hasEnded { library.finishShow(show) }
+                return
+            }
             pendingWrap = WrapRequest(season: season, series: series)
             presentPendingWrap()
         }
@@ -285,7 +287,7 @@ struct EpisodeRow: View {
                                 } else if let m = episode.runtime ?? fallbackRuntime, m > 0 {
                                     Text(filmClock(TimeInterval(m * 60)))
                                 }
-                                SmallStars(rating: library.episodeRating(show.id, episode))
+                                SmallRating(rating: library.episodeRating(show.id, episode))
                             }
                             .font(.caption).foregroundStyle(.white.opacity(0.6))
                         }
@@ -368,10 +370,15 @@ struct EpisodeSheet: View {
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.glass).controlSize(.large)
-                            VStack(spacing: 8) {
-                                Text(rating == nil ? "Tap or slide to rate this episode" : "Your rating")
-                                    .font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.65))
-                                StarRating(rating: rating, size: 36, spacing: 8) { library.rateEpisode(show, episode, $0) }
+                            if library.isComfort(show.id) {
+                                Label("Comfort show — no ratings asked", systemImage: "sofa.fill")
+                                    .font(.subheadline.weight(.semibold)).foregroundStyle(.white.opacity(0.7))
+                            } else {
+                                VStack(spacing: 8) {
+                                    Text(rating == nil ? "Rate this episode" : "Your rating")
+                                        .font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.65))
+                                    FilmRatingInput(score: rating, dialSize: 180) { library.rateEpisode(show, episode, $0) }
+                                }
                             }
                             HStack(spacing: 10) {
                                 Button {
@@ -406,7 +413,7 @@ struct EpisodeSheet: View {
                                         HStack {
                                             Text(e.watchedOn.formatted(date: .abbreviated, time: .omitted)).font(.subheadline.weight(.semibold))
                                             Spacer()
-                                            SmallStars(rating: e.rating)
+                                            SmallRating(rating: e.rating)
                                         }
                                         if !e.review.isEmpty { Text(e.review).font(.subheadline).foregroundStyle(.white.opacity(0.8)).lineLimit(4) }
                                     }
@@ -517,7 +524,7 @@ struct SeasonWrapSheet: View {
         }
     }
 
-    private struct Bar: Identifiable { var id: String; var label: String; var stars: Double? }
+    private struct Bar: Identifiable { var id: String; var label: String; var score: Double? }
 
     /// One bar per episode you saw this season, tall as your rating.
     private func barData(season: Int) -> [Bar] {
@@ -525,26 +532,24 @@ struct SeasonWrapSheet: View {
         return p.seen.keys.filter { EpisodeKey.season(of: $0) == season }
             .compactMap { k in EpisodeKey.episode(of: k).map { (k, $0) } }
             .sorted { $0.1 < $1.1 }
-            .map { Bar(id: $0.0, label: "\($0.1)", stars: p.episodeRatings[$0.0]) }
+            .map { Bar(id: $0.0, label: "\($0.1)", score: p.episodeRatings[$0.0]) }
     }
 
     /// For the whole show: one bar per season, at the average of its episodes.
     private var seasonBars: [Bar] {
         guard let p = progress else { return [] }
         let numbers = Set(p.seen.keys.compactMap(EpisodeKey.season(of:))).filter { $0 > 0 }.sorted()
-        return numbers.map { Bar(id: "s\($0)", label: "S\($0)", stars: p.average(season: $0)?.stars) }
+        return numbers.map { Bar(id: "s\($0)", label: "S\($0)", score: p.average(season: $0)?.score) }
     }
 
-    private func card(label: String, average: (stars: Double, count: Int)?, bars: [Bar], ratingTitle: String,
+    private func card(label: String, average: (score: Double, count: Int)?, bars: [Bar], ratingTitle: String,
                       rating: Double?, onRate: @escaping (Double?) -> Void) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(label).font(.caption.weight(.heavy)).tracking(1.4).foregroundStyle(.white.opacity(0.6))
 
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 if let average {
-                    Text(average.stars.formatted(.number.precision(.fractionLength(1))))
-                        .font(.system(size: 48, weight: .bold, design: .rounded)).monospacedDigit()
-                    Image(systemName: "star.fill").font(.title2).foregroundStyle(Theme.star)
+                    RatingValue(score: average.score, font: .system(size: 48, weight: .bold, design: .rounded), symbolFont: .title2)
                     Spacer()
                     Text("average of the \(average.count) episode\(average.count == 1 ? "" : "s") you rated")
                         .font(.caption).foregroundStyle(.white.opacity(0.65)).multilineTextAlignment(.trailing)
@@ -554,13 +559,13 @@ struct SeasonWrapSheet: View {
                 }
             }
 
-            if bars.contains(where: { $0.stars != nil }) {
+            if bars.contains(where: { $0.score != nil }) {
                 HStack(alignment: .bottom, spacing: bars.count > 16 ? 2 : 4) {
                     ForEach(bars) { b in
                         VStack(spacing: 4) {
                             RoundedRectangle(cornerRadius: 3)
-                                .fill(b.stars == nil ? Color.white.opacity(0.12) : Theme.star.opacity(0.35 + 0.65 * (b.stars ?? 0) / 5))
-                                .frame(height: max(4, 64 * CGFloat((b.stars ?? 0) / 5)))
+                                .fill(b.score.map { Score.color($0).opacity(0.35 + 0.65 * $0 / 100) } ?? Color.white.opacity(0.12))
+                                .frame(height: max(4, 64 * CGFloat((b.score ?? 0) / 100)))
                             if bars.count <= 16 {
                                 Text(b.label).font(.system(size: 9, weight: .semibold)).foregroundStyle(.white.opacity(0.5))
                             }
@@ -575,16 +580,17 @@ struct SeasonWrapSheet: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 Text(ratingTitle).font(.subheadline.weight(.semibold))
-                StarRating(rating: rating, size: 34, spacing: 8, onChange: onRate)
+                FilmRatingInput(score: rating, dialSize: 180, onChange: onRate)
+                    .frame(maxWidth: .infinity)
                 if let average, rating == nil {
-                    let rounded = max(0.5, (average.stars * 2).rounded() / 2)
+                    let rounded = Score.rounded(average.score)
                     Button { onRate(rounded) } label: {
-                        Label("Use my average · \(Stars.text(rounded))", systemImage: "wand.and.stars").font(.footnote.weight(.semibold))
+                        Label("Use my average · \(Score.describe(rounded))", systemImage: "wand.and.stars").font(.footnote.weight(.semibold))
                     }
                     .buttonStyle(.glass).controlSize(.small)
                 } else if let rating, let average {
-                    let diff = rating - average.stars
-                    Text(abs(diff) < 0.25 ? "Right in line with your episodes."
+                    let diff = rating - average.score
+                    Text(abs(diff) < 5 ? "Right in line with your episodes."
                          : diff > 0 ? "Higher than your episodes — the whole was more than its parts."
                          : "Lower than your episodes added up to.")
                         .font(.caption).foregroundStyle(.white.opacity(0.6))
@@ -602,6 +608,7 @@ struct SeasonWrapSheet: View {
 struct ShowProgressRow: View {
     let shows: [FilmRef]
     @Environment(Library.self) private var library
+    @AppStorage(FilmRatingStyle.key) private var style: FilmRatingStyle = .score
 
     var body: some View {
         ScrollView(.horizontal) {
@@ -614,8 +621,8 @@ struct ShowProgressRow: View {
                                 Text("Last: \(last)").font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.75))
                             }
                             if let avg = library.progress(s.id)?.average() {
-                                Text("\(avg.stars.formatted(.number.precision(.fractionLength(1)))) ★ avg")
-                                    .font(.caption2.weight(.semibold)).foregroundStyle(Theme.star)
+                                Text("\(Score.describe(avg.score, style: style)) avg")
+                                    .font(.caption2.weight(.semibold)).foregroundStyle(style == .stars ? Theme.star : Score.color(avg.score))
                             }
                         }
                         .frame(width: 112, alignment: .leading)
@@ -632,11 +639,128 @@ struct ShowProgressRow: View {
 
     /// The furthest episode you've ticked off: "S2 E4".
     private func lastSeen(_ id: String) -> String? {
-        guard let p = library.progress(id) else { return nil }
-        let best = p.seen.keys.compactMap { k -> (Int, Int)? in
-            guard let s = EpisodeKey.season(of: k), let e = EpisodeKey.episode(of: k), s > 0 else { return nil }
-            return (s, e)
-        }.max { $0 < $1 }
-        return best.map { EpisodeKey.code($0.0, $0.1) }
+        library.progress(id)?.lastSeen.map { EpisodeKey.code($0.season, $0.episode) }
+    }
+}
+
+// MARK: - Currently watching
+
+/// Shows you've pinned, at the top of Home: the next episode to tick off or start, and the last one to rate.
+struct CurrentlyWatchingSection: View {
+    let shows: [FilmRef]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionHeader("Currently watching", subtitle: "Tick off the next episode, rate the last")
+            ScrollView(.horizontal) {
+                LazyHStack(alignment: .top, spacing: 12) {
+                    ForEach(shows) { s in
+                        CurrentlyWatchingCard(show: s)
+                            .containerRelativeFrame(.horizontal) { w, _ in shows.count == 1 ? w - 32 : min(340, w - 64) }
+                    }
+                }
+                .scrollTargetLayout()
+                .padding(.horizontal, 16)
+            }
+            .scrollTargetBehavior(.viewAligned)
+            .scrollIndicators(.hidden)
+            .scrollClipDisabled()
+        }
+    }
+}
+
+struct CurrentlyWatchingCard: View {
+    let show: FilmRef
+    @Environment(Library.self) private var library
+    @Environment(Router.self) private var router
+    @Environment(Watching.self) private var watching
+    @State private var detail: FilmDetail?
+    @State private var next: Episode?
+    @State private var caughtUp = false
+    @State private var loaded = false
+
+    private var last: (season: Int, episode: Int)? { library.progress(show.id)?.lastSeen }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                NavigationLink(value: show) { PosterView(film: show, width: 62, corner: 7) }
+                    .buttonStyle(.plain)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(show.title).font(.headline).lineLimit(1)
+                    if let next {
+                        Text("\(caughtUp ? "NEXT TO AIR" : "UP NEXT") · \(next.code)")
+                            .font(.caption2.weight(.heavy)).tracking(1).foregroundStyle(Theme.accent)
+                        Text(next.name).font(.subheadline.weight(.semibold)).lineLimit(2)
+                        if caughtUp, let d = next.airDate {
+                            Text("Airs \(d.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)))")
+                                .font(.caption).foregroundStyle(Theme.dim)
+                        } else if let m = next.runtime ?? detail?.runtimeMinutes, m > 0 {
+                            Text(filmClock(TimeInterval(m * 60))).font(.caption).foregroundStyle(Theme.dim)
+                        }
+                    } else if loaded {
+                        Text(detail?.hasEnded == true ? "You've seen every episode" : "All caught up")
+                            .font(.subheadline).foregroundStyle(Theme.dim)
+                    } else {
+                        ProgressView().controlSize(.small).padding(.top, 6)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .contentShape(.rect)
+            .onTapGesture { if let next { router.sheet = .episode(show, next) } else { router.open(show) } }
+
+            if let next, !caughtUp {
+                HStack(spacing: 8) {
+                    GlassChip(prominent: true, action: {
+                        library.setSeen(show, [next], true)
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    }) { Label("Watched", systemImage: "checkmark") }
+                    GlassChip(action: {
+                        watching.start(show, episode: next, runtime: detail?.runtimeMinutes)
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    }) { Label("Start", systemImage: "play.fill") }
+                }
+            }
+
+            if let last, !library.isComfort(show.id) {
+                let key = EpisodeKey.make(last.season, last.episode)
+                let rating = library.progress(show.id)?.episodeRatings[key]
+                Divider().overlay(Theme.line)
+                HStack(spacing: 12) {
+                    Text(rating == nil ? "Rate \(EpisodeKey.code(last.season, last.episode))" : EpisodeKey.code(last.season, last.episode))
+                        .font(.caption.weight(.bold)).foregroundStyle(.white.opacity(0.75))
+                        .fixedSize()
+                    CompactRatingInput(score: rating, starSize: 24) {
+                        library.rateEpisode(show, Episode(season: last.season, number: last.episode, name: ""), $0)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+            }
+        }
+        .padding(14)
+        .background(Theme.card, in: .rect(cornerRadius: 22))
+        .contextMenu {
+            Button { router.open(show) } label: { Label("Open show", systemImage: "tv") }
+            Button(role: .destructive) { library.toggleCurrentlyWatching(show) } label: { Label("Remove from Currently watching", systemImage: "pin.slash") }
+        }
+        .task(id: "\(show.id)|\(library.progress(show.id)?.seen.count ?? 0)") { await findNext() }
+    }
+
+    /// The first aired episode you haven't ticked off, season by season. When you're caught up,
+    /// the next one to air (if TMDB knows it).
+    private func findNext() async {
+        guard let d = try? await Catalog.detail(show.id) else { loaded = true; return }
+        detail = d
+        for s in d.regularSeasons where library.seenCount(show.id, season: s.number) < s.episodeCount {
+            guard let eps = try? await Catalog.season(show.id, s.number) else { break }
+            if let e = eps.first(where: { $0.aired && !library.isSeen(show.id, $0) }) {
+                withAnimation(.smooth) { next = e; caughtUp = false; loaded = true }
+                return
+            }
+            // The rest of this season hasn't aired, so neither has anything after it.
+            if eps.contains(where: { !$0.aired }) { break }
+        }
+        withAnimation(.smooth) { next = d.nextEpisode; caughtUp = true; loaded = true }
     }
 }

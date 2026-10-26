@@ -47,7 +47,7 @@ enum SheetRoute: Identifiable, Equatable {
     case addToList(FilmRef)
     case newList(FilmRef?)
     case editList(FilmList)
-    case pickFavorite(Int)
+    case pickFavorite(Int, shows: Bool)
     case editProfile
     case settings
     case signIn
@@ -63,7 +63,7 @@ enum SheetRoute: Identifiable, Equatable {
         case .addToList(let f): return "add-\(f.id)"
         case .newList(let f): return "new-\(f?.id ?? "")"
         case .editList(let l): return "edit-\(l.id)"
-        case .pickFavorite(let i): return "fav-\(i)"
+        case .pickFavorite(let i, let shows): return "fav-\(shows ? "show" : "film")-\(i)"
         case .editProfile: return "profile"
         case .settings: return "settings"
         case .signIn: return "signin"
@@ -85,48 +85,72 @@ final class Router {
     var libraryPath = NavigationPath()
     var profilePath = NavigationPath()
     var searchPath = NavigationPath()
-    /// The film card shown by shaking the phone, Random pick, or double-tapping Library.
-    var randomPick: FilmRef?
+    /// The swipe deck of random watchlist picks, opened by shaking the phone, Random pick, or double-tapping Library.
+    /// nil while it's closed.
+    var randomDeck: [FilmRef]?
+    /// Changes with every fresh shuffle, so the deck starts again from its first card.
+    var randomDeckID = UUID()
+    /// Movies or shows. Each time the deck opens it starts on movies.
+    var randomKind: MediaFilter = .movies
     var randomPickOpening = false
     @ObservationIgnored private var lastLibraryTap = Date.distantPast
+    @ObservationIgnored private var dealTask: Task<Void, Never>?
 
     /// "How long have you got?" — the longest film (in minutes) a random pick may be. nil = any length.
     var randomMaxMinutes: Int?
     var randomPickSearching = false
 
-    /// A random film from the watchlist, never the one already showing, that fits the time you have.
-    func pickRandom(from library: Library) {
+    /// Open the deck (or reshuffle it if it's already open). `kind` picks movies or shows; otherwise
+    /// it opens on movies, or on shows when the watchlist has no movies.
+    func pickRandom(from library: Library, kind: MediaFilter? = nil) {
         guard !randomPickOpening else { return }
         let list = library.doc.watchlist
         guard !list.isEmpty else {
             library.toast = Toast(text: "Add films to your watchlist first", symbol: "clock")
             return
         }
-        let pool = list.filter { $0.id != randomPick?.id }
-        guard let limit = randomMaxMinutes else {
-            show(pool.randomElement() ?? list[0])
+        if let kind, kind != .all { randomKind = kind }
+        else if randomDeck == nil { randomKind = list.contains { !$0.isShow } ? .movies : .shows }
+        deal(library)
+    }
+
+    /// Shuffle the watchlist into a fresh deck of the chosen kind. With a time limit, films are checked
+    /// against their runtimes (from TMDB) a handful at a time and join the deck as they pass.
+    func deal(_ library: Library) {
+        dealTask?.cancel()
+        let pool = library.doc.watchlist.filter(randomKind.includes).shuffled()
+        randomDeckID = UUID()
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        guard randomKind == .movies, let limit = randomMaxMinutes else {
+            randomPickSearching = false
+            withAnimation(.smooth) { randomDeck = pool }
             return
         }
-        // Check runtimes (from TMDB) a handful at a time until one fits.
+        withAnimation(.smooth) { randomDeck = [] }
         randomPickSearching = true
-        Task {
-            defer { randomPickSearching = false }
-            let shuffled = pool.shuffled()
-            for chunk in stride(from: 0, to: shuffled.count, by: 6).map({ Array(shuffled[$0..<min($0 + 6, shuffled.count)]) }) {
+        dealTask = Task {
+            for chunk in stride(from: 0, to: pool.count, by: 6).map({ Array(pool[$0..<min($0 + 6, pool.count)]) }) {
                 var fits: [FilmRef] = []
                 await withTaskGroup(of: (FilmRef, Int?).self) { g in
                     for f in chunk { g.addTask { (f, (try? await Catalog.detail(f.id))?.runtimeMinutes) } }
                     for await (f, m) in g { if let m, m > 0, m <= limit { fits.append(f) } }
                 }
-                if let f = fits.randomElement() { show(f); return }
+                guard !Task.isCancelled else { return }
+                if randomDeck != nil { randomDeck?.append(contentsOf: fits.shuffled()) }
             }
-            library.toast = Toast(text: "Nothing on your watchlist under \(limit / 60)h \(limit % 60)m", symbol: "clock")
+            guard !Task.isCancelled else { return }
+            randomPickSearching = false
+            if randomDeck?.isEmpty == true {
+                library.toast = Toast(text: "Nothing on your watchlist under \(limit / 60)h \(limit % 60)m", symbol: "clock")
+            }
         }
     }
 
-    private func show(_ f: FilmRef) {
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
-        withAnimation(.smooth) { randomPick = f }
+    func closeRandom() {
+        dealTask?.cancel()
+        randomDeck = nil
+        randomPickOpening = false
+        randomPickSearching = false
     }
 
     /// Tab selection that notices a quick double tap on Library.

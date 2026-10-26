@@ -13,17 +13,21 @@ Matinee is not affiliated with Letterboxd.
 | Diary | **Diary + year heatmap** | A "this year so far" card and a 6-month heatmap of film nights. Swipe right to log again, left to edit or delete, with undo. |
 | Log date picker | **Today / Yesterday / Pick date** chips | One tap for the common case. |
 | Film page | **Full-screen poster, page tinted by the poster's colour** | Scroll up from the poster and the page underneath is painted in the poster's main colour. |
-| Profile | **Apple Card-style background** | A slowly moving colour blend drawn from your four favourite posters. |
-| Watchlist | **Random pick** | Shake the phone, double-tap Library, or tap Random pick: a random watchlist film lands as a card that grows into its page. Filter by how much time you have. |
+| Profile | **Apple Card-style background** | A slowly moving colour blend drawn from your favourite posters. |
+| Watchlist | **Random pick deck** | Shake the phone, double-tap Library, or tap Random pick: your watchlist is shuffled into a swipe deck. Swipe left for another, right or tap and the card grows into its page, ↺ to go back. Pick movies (the default) or shows, and filter films by how much time you have. |
+| — | **All / Movies / Shows** | One switch at the top of Home and on the watchlist shows just films, just shows, or both. |
+| — | **Picked for you** | Recommendations for films and shows grow from your favourites first, then what you scored highly, your watchlist, and what you scored lower. |
 | — | **Widgets** | A home-screen and Lock Screen widget with a random watchlist film; tap to open it. |
 | — | **Now watching** | Start watching puts a live timer in the Dynamic Island and on the Lock Screen. Pause with an exact time, a mood and a note. |
 | Film page | **Trailer + where to watch** | Tap the poster for the trailer, full screen. See where it streams, rents or sells in India. |
 | — | **Story card** | Share any film as a story-sized image with your rating. |
-| Rating stars | **Score out of 100, or stars** | Films get a score from 1 to 100 on a dial: drag round it, nudge with − and +, tap the number to clear. Prefer stars? Switch in Settings → Film ratings; each half star is 10 points. Older star ratings convert automatically (★★★★ → 80). |
-| — | **TV shows** | Search finds shows as well as films. Tick off episodes, rate each one in stars, and see what's up next. |
+| Rating stars | **Score out of 100, or stars** | Films, shows, seasons and episodes get a score from 1 to 100 on a dial: drag round it, nudge with − and +, tap the number to clear. Prefer stars? Switch in Settings → Ratings; each half star is 10 points. Older star ratings convert automatically (★★★★ → 80). |
+| — | **TV shows** | Search finds shows as well as films. Tick off episodes, rate each one, and see what's up next. |
+| — | **Currently watching** | Pin a show from its page and it sits at the top of Home with the next episode to tick off or start, and the last one ready to rate. |
+| — | **Comfort films and shows** | Mark a title as a comfort watch (on its page or when you log it) and Matinee logs it without ever asking for a rating. |
 | — | **Season and series wrap-up** | Finish a season or a whole show and you see the average of your episode ratings next to a rating you choose yourself. |
 | Lists | **Lists with progress** | Shows "you've seen 3 of 7". Lists can be ranked and reordered by dragging. |
-| Profile favourites | **Four favourites + ratings spread** | Tap any bar in your ratings chart to see those films. |
+| Profile favourites | **Four favourite films, four favourite shows + ratings spread** | Tap any bar in your ratings chart to see those films. |
 | Tags | **Tag suggestions** | Your past tags come up as chips while you log. |
 | Import | **Letterboxd CSV import** | Bring your whole history across from Settings. |
 

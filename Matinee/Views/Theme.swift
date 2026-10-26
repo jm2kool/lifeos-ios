@@ -366,22 +366,161 @@ struct ScorePill: View {
     }
 }
 
-/// A rating in whichever scale its title uses: shows and episodes in stars, films as a score pill
-/// or in stars, whichever you picked in Settings.
+/// A rating as a score pill or in stars, whichever you picked in Settings.
 struct SmallRating: View {
     let rating: Double?
-    let id: String
     @AppStorage(FilmRatingStyle.key) private var style: FilmRatingStyle = .score
     var body: some View {
         if let r = rating, r > 0 {
-            if FilmRef.isShowID(id) { SmallStars(rating: r) }
-            else if style == .stars { SmallStars(rating: Score.starsShown(r)) }
+            if style == .stars { SmallStars(rating: Score.starsShown(r)) }
             else { ScorePill(score: r) }
         }
     }
 }
 
-/// Rate a film the way you prefer: the 1–100 dial, or stars (saved as a score, 10 points per half star).
+/// An average (or any worked-out rating) in your scale: "4.2 ★" or a coloured "84".
+struct RatingValue: View {
+    let score: Double
+    var font: Font = .title3.weight(.bold)
+    var symbolFont: Font = .caption
+    @AppStorage(FilmRatingStyle.key) private var style: FilmRatingStyle = .score
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            if style == .stars {
+                Text(Score.toStars(score).formatted(.number.precision(.fractionLength(1)))).font(font).monospacedDigit()
+                Image(systemName: "star.fill").font(symbolFont).foregroundStyle(Theme.star)
+            } else {
+                Text(Score.text(score)).font(font).monospacedDigit().foregroundStyle(Score.color(score))
+            }
+        }
+    }
+}
+
+/// A slim 1–100 slider for tight spots: drag along the bar, tap the number to clear it.
+struct ScoreBar: View {
+    let score: Double?
+    var onChange: ((Double?) -> Void)? = nil
+    @State private var dragValue: Double?
+
+    private var shown: Double? { dragValue ?? score }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            GeometryReader { g in
+                let w = g.size.width
+                let f = CGFloat(((shown ?? 1) - 1) / 99)
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.1)).frame(height: 8)
+                    if shown != nil {
+                        // The full gradient, uncovered up to your score, so the end colour matches it.
+                        Capsule().fill(LinearGradient(colors: Score.stops, startPoint: .leading, endPoint: .trailing))
+                            .frame(height: 8)
+                            .mask(alignment: .leading) { Capsule().frame(width: max(8, w * f), height: 8) }
+                        Circle().fill(.white)
+                            .frame(width: 20, height: 20)
+                            .shadow(color: .black.opacity(0.4), radius: 3, y: 1)
+                            .scaleEffect(dragValue != nil ? 1.2 : 1)
+                            .offset(x: min(max(0, w * f - 10), w - 20))
+                    }
+                }
+                .frame(width: w, height: g.size.height)
+                .contentShape(.rect)
+                .gesture(DragGesture(minimumDistance: 0)
+                    .onChanged { v in
+                        guard onChange != nil else { return }
+                        let n = value(v.location.x, w)
+                        if n != dragValue {
+                            if let old = dragValue, Int(old) / 10 != Int(n) / 10 { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
+                            else { UISelectionFeedbackGenerator().selectionChanged() }
+                            dragValue = n
+                        }
+                    }
+                    .onEnded { v in
+                        guard onChange != nil else { return }
+                        dragValue = nil
+                        onChange?(value(v.location.x, w))
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    })
+            }
+            .frame(height: 30)
+            Text(shown.map { Score.text($0) } ?? "–")
+                .font(.system(size: 17, weight: .bold, design: .rounded)).monospacedDigit()
+                .foregroundStyle(shown.map(Score.color) ?? .white.opacity(0.4))
+                .contentTransition(.numericText())
+                .frame(width: 34, alignment: .trailing)
+                .contentShape(.rect)
+                .onTapGesture {
+                    guard score != nil else { return }
+                    onChange?(nil)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+        }
+        .animation(dragValue == nil ? .snappy(duration: 0.25) : nil, value: shown)
+        .accessibilityElement()
+        .accessibilityLabel("Score out of 100")
+        .accessibilityValue(score.map { "\(Int($0))" } ?? "Not rated")
+        .accessibilityAdjustableAction { dir in
+            let r = score ?? 50
+            switch dir {
+            case .increment: onChange?(min(100, r + 1))
+            case .decrement: onChange?(max(1, r - 1))
+            @unknown default: break
+            }
+        }
+    }
+
+    private func value(_ x: CGFloat, _ w: CGFloat) -> Double { (1 + Double(min(max(x / max(w, 1), 0), 1)) * 99).rounded() }
+}
+
+/// Rating that fits in a row: small stars, or the slim score bar.
+struct CompactRatingInput: View {
+    let score: Double?
+    var starSize: CGFloat = 22
+    let onChange: (Double?) -> Void
+    @AppStorage(FilmRatingStyle.key) private var style: FilmRatingStyle = .score
+    var body: some View {
+        if style == .stars {
+            StarRating(rating: score.map(Score.starsShown), size: starSize, spacing: starSize * 0.2) { onChange($0.map(Score.fromStars)) }
+        } else {
+            ScoreBar(score: score, onChange: onChange)
+        }
+    }
+}
+
+/// All / Movies / Shows as a glass capsule; the selection slides between them.
+struct MediaFilterBar: View {
+    @Binding var selection: MediaFilter
+    var options: [MediaFilter] = MediaFilter.allCases
+    @Namespace private var pill
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(options, id: \.self) { m in
+                let on = selection == m
+                Button {
+                    guard !on else { return }
+                    withAnimation(.snappy(duration: 0.3)) { selection = m }
+                    UISelectionFeedbackGenerator().selectionChanged()
+                } label: {
+                    Text(m.label)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(on ? Color.black : Color.white.opacity(0.85))
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                        .background {
+                            if on { Capsule().fill(.white).matchedGeometryEffect(id: "pill", in: pill) }
+                        }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(on ? .isSelected : [])
+            }
+        }
+        .padding(4)
+        .glassEffect(.regular, in: .capsule)
+    }
+}
+
+/// Rate the way you prefer: the 1–100 dial, or stars (saved as a score, 10 points per half star).
 struct FilmRatingInput: View {
     let score: Double?
     var dialSize: CGFloat = 200
@@ -523,6 +662,8 @@ struct ToastView: View {
 }
 
 /// A film's title drawn as its official logo, always in colour, or as text when there's no logo.
+/// The text never flashes up first: it waits until `ready` says the logo lookup is done and found
+/// nothing, the logo fails to load, or five seconds pass with no logo on screen.
 struct TitleArt: View {
     let title: String
     let logo: URL?
@@ -530,9 +671,12 @@ struct TitleArt: View {
     var maxWidth: CGFloat = 270
     var maxHeight: CGFloat = 110
     var fontSize: CGFloat = 38
+    /// The artwork lookup has finished, so a nil logo means there isn't one.
+    var ready = true
     @State private var image: UIImage?
     @State private var ink: Palette.LogoInk = .colour
     @State private var failed = false
+    @State private var waitedTooLong = false
 
     /// Dark logos get a light halo instead of a dark shadow, so they read on dark pages.
     private var darkInk: Bool { ink == .dark || ink == .darkColour }
@@ -545,12 +689,13 @@ struct TitleArt: View {
                 Image(uiImage: image).resizable().aspectRatio(contentMode: .fit)
                     .frame(width: w, height: w / max(aspect, 0.1))
                     .transition(.opacity)
-            } else if logo == nil || failed {
+            } else if failed || waitedTooLong || (ready && logo == nil) {
                 Text(title.isEmpty ? " " : title)
                     .font(.system(size: fontSize, weight: .bold, design: .serif))
                     .multilineTextAlignment(.center)
                     .lineLimit(3).minimumScaleFactor(0.6)
                     .foregroundStyle(.white)
+                    .transition(.opacity)
             } else {
                 Color.clear.frame(width: 1, height: maxHeight * 0.7)
             }
@@ -570,6 +715,11 @@ struct TitleArt: View {
             } else {
                 withAnimation(.easeOut(duration: 0.3)) { ink = kind; image = img }
             }
+        }
+        .task {
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.3)) { waitedTooLong = true }
         }
     }
 }

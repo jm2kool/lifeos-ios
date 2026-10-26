@@ -111,6 +111,7 @@ struct DeckCard: View {
     var likeColor = Theme.heart
     var lean: CGFloat = 0
     @State private var art: FilmArt?
+    @State private var artLoaded = false
     @State private var detail: FilmDetail?
 
     var body: some View {
@@ -121,7 +122,8 @@ struct DeckCard: View {
             LinearGradient(stops: [.init(color: .clear, location: 0.45), .init(color: .black.opacity(0.75), location: 0.8),
                                    .init(color: .black.opacity(0.95), location: 1)], startPoint: .top, endPoint: .bottom)
             VStack(spacing: 8) {
-                TitleArt(title: film.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 240, maxHeight: 90, fontSize: 32)
+                TitleArt(title: film.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 240, maxHeight: 90, fontSize: 32,
+                         ready: artLoaded)
                 HStack(spacing: 6) {
                     Text(film.yearText)
                     if let g = detail?.genres.prefix(2), !g.isEmpty { Text("·"); Text(g.joined(separator: ", ")) }
@@ -142,7 +144,8 @@ struct DeckCard: View {
         .shadow(color: .black.opacity(0.5), radius: 20, y: 10)
         .contentShape(.rect(cornerRadius: 32))
         .task(id: film.id) {
-            art = await Catalog.art(film.id)
+            let a = await Catalog.art(film.id)
+            withAnimation(.easeOut(duration: 0.3)) { art = a; artLoaded = true }
             detail = try? await Catalog.detail(film.id)
         }
     }

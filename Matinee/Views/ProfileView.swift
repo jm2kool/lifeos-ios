@@ -63,7 +63,9 @@ struct ProfileView: View {
                 .glassEffect(.regular, in: .rect(cornerRadius: 24))
                 .padding(.horizontal, 16)
 
-                favorites
+                favorites(shows: false)
+
+                favorites(shows: true)
 
                 ratings
 
@@ -135,7 +137,7 @@ struct ProfileView: View {
             }
             .ignoresSafeArea()
         }
-        .task(id: library.doc.favorites.map { $0.poster?.absoluteString ?? $0.id }) { await refreshMesh() }
+        .task(id: (library.doc.favorites + library.favoriteShows).map { $0.poster?.absoluteString ?? $0.id }) { await refreshMesh() }
         // Your character keeps learning from your watchlist and ratings.
         .task(id: Taste.signature(library)) {
             try? await Task.sleep(for: .seconds(1))
@@ -151,7 +153,7 @@ struct ProfileView: View {
     private func refreshMesh() async {
         // Up to four colours from every favourite poster (and its backdrop), so the card mixes all of them.
         var ui: [UIColor] = []
-        for f in library.doc.favorites {
+        for f in library.doc.favorites + library.favoriteShows {
             for url in [f.largePoster ?? f.poster, f.backdrop] {
                 guard let p = await Palette.of(url) else { continue }
                 ui += p.uiColors.prefix(url == f.backdrop ? 2 : 4)
@@ -183,21 +185,22 @@ struct ProfileView: View {
         }
     }
 
-    private var favorites: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeader("Favourite films", subtitle: "Your four. Long-press to change.")
+    private func favorites(shows: Bool) -> some View {
+        let list = library.favorites(shows: shows)
+        return VStack(alignment: .leading, spacing: 12) {
+            SectionHeader(shows ? "Favourite shows" : "Favourite films", subtitle: "Your four. Long-press to change.")
             HStack(spacing: 10) {
                 ForEach(0..<4, id: \.self) { i in
-                    if i < library.doc.favorites.count {
-                        let f = library.doc.favorites[i]
+                    if i < list.count {
+                        let f = list[i]
                         NavigationLink(value: f) { PosterView(film: f, corner: 8) }
                             .buttonStyle(.plain)
                             .contextMenu {
-                                Button { router.sheet = .pickFavorite(i) } label: { Label("Replace", systemImage: "arrow.2.squarepath") }
+                                Button { router.sheet = .pickFavorite(i, shows: shows) } label: { Label("Replace", systemImage: "arrow.2.squarepath") }
                                 Button(role: .destructive) { library.removeFavorite(f) } label: { Label("Remove", systemImage: "minus.circle") }
                             }
                     } else {
-                        Button { router.sheet = .pickFavorite(i) } label: {
+                        Button { router.sheet = .pickFavorite(i, shows: shows) } label: {
                             RoundedRectangle(cornerRadius: 8)
                                 .strokeBorder(style: StrokeStyle(lineWidth: 1.2, dash: [5, 4]))
                                 .foregroundStyle(Color.white.opacity(0.25))
@@ -205,7 +208,7 @@ struct ProfileView: View {
                                 .overlay(Image(systemName: "plus").font(.title3).foregroundStyle(Theme.dim))
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Add favourite film")
+                        .accessibilityLabel(shows ? "Add favourite show" : "Add favourite film")
                     }
                 }
             }
@@ -323,17 +326,26 @@ struct ProfileEditor: View {
 
 struct FavoritePicker: View {
     let slot: Int
+    var shows = false
     @Environment(Library.self) private var library
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
     @State private var results: [FilmRef] = []
 
+    /// Before you search: shows you're watching or have finished, or the films you've seen.
+    private var yours: [FilmRef] {
+        guard shows else { return library.watchedFilms.filter { !$0.isShow } }
+        var seen = Set<String>()
+        return (library.currentlyWatching + library.showsInProgress + library.watchedFilms.filter(\.isShow)).filter { seen.insert($0.id).inserted }
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
-                let pool = query.isEmpty ? library.watchedFilms : results
+                let pool = query.isEmpty ? yours : results.filter { $0.isShow == shows }
                 if pool.isEmpty {
-                    EmptyState(symbol: "magnifyingglass", title: query.isEmpty ? "Search for a film" : "No matches", message: "Pick one of the films that made you love film.")
+                    EmptyState(symbol: "magnifyingglass", title: query.isEmpty ? "Search for a \(shows ? "show" : "film")" : "No matches",
+                               message: shows ? "Pick one of the shows you'd watch again and again." : "Pick one of the films that made you love film.")
                         .padding(.top, 40)
                 }
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
@@ -344,9 +356,9 @@ struct FavoritePicker: View {
                 .padding(16)
             }
             .oledBackground()
-            .navigationTitle("Favourite #\(slot + 1)")
+            .navigationTitle("Favourite \(shows ? "show" : "film") #\(slot + 1)")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search all films")
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: shows ? "Search all shows" : "Search all films")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel", systemImage: "xmark") { dismiss() } } }
             .task(id: query) {
                 guard !query.isEmpty else { results = []; return }

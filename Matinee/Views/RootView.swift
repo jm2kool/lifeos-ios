@@ -72,10 +72,9 @@ struct RootView: View {
         }
         .animation(.smooth(duration: 0.35), value: library.toast)
         .overlay {
-            // Shake for a random film from your watchlist.
-            if let f = router.randomPick {
-                ShakePickView(film: f) { withAnimation(.easeOut(duration: 0.3)) { router.randomPick = nil; router.randomPickOpening = false } }
-                    .id(f.id)
+            // Shake for a deck of random picks from your watchlist.
+            if let deck = router.randomDeck {
+                RandomPickDeck(films: deck) { withAnimation(.easeOut(duration: 0.3)) { router.closeRandom() } }
                     .transition(.opacity)
             }
         }
@@ -90,7 +89,7 @@ struct RootView: View {
             let film = library.doc.watchlist.first { $0.id == id } ?? library.watchedFilms.first { $0.id == id }
                 ?? FilmRef(id: id, title: v("title") ?? "", year: v("year").flatMap(Int.init), poster: v("poster").flatMap(URL.init(string:)))
             router.sheet = nil
-            router.randomPick = nil
+            router.closeRandom()
             router.tab = .films
             router.filmsPath = NavigationPath()
             router.open(film)
@@ -181,7 +180,7 @@ struct SheetHost: View {
         case .addToList(let f): AddToListSheet(film: f)
         case .newList(let f): ListEditor(seed: f)
         case .editList(let l): ListEditor(editing: l)
-        case .pickFavorite(let slot): FavoritePicker(slot: slot)
+        case .pickFavorite(let slot, let shows): FavoritePicker(slot: slot, shows: shows)
         case .editProfile: ProfileEditor()
         case .settings: SettingsView()
         case .signIn: SignInView(asSheet: true)

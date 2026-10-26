@@ -37,6 +37,16 @@ struct WatchSession: Codable, Hashable, Identifiable {
         return .logEpisode(LogEntry(film: film, season: s, episode: e, episodeTitle: episodeTitle))
     }
 
+    /// Finishing it. A comfort watch is logged straight away, with no rating asked; anything else
+    /// returns the log sheet to open.
+    @MainActor func finish(in library: Library) -> SheetRoute? {
+        guard library.isComfort(film.id) else { return logRoute }
+        var e = LogEntry(film: film, season: season, episode: episode, episodeTitle: episodeTitle)
+        e.rewatch = library.entries(for: film.id).contains { $0.season == season && $0.episode == episode }
+        library.log(e)
+        return nil
+    }
+
     var running: Bool { runStartedAt != nil }
     func elapsed(at now: Date = .now) -> TimeInterval { banked + (runStartedAt.map { max(0, now.timeIntervalSince($0)) } ?? 0) }
     var runtime: TimeInterval? { runtimeMinutes.flatMap { $0 > 0 ? TimeInterval($0 * 60) : nil } }

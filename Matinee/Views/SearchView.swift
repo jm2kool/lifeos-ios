@@ -95,7 +95,7 @@ struct SearchRow: View {
                             }
                             Text(film.yearText).foregroundStyle(Theme.dim)
                             if library.isWatched(film.id) { Image(systemName: "eye.fill").foregroundStyle(Theme.watch) }
-                            SmallRating(rating: library.rating(film.id), id: film.id)
+                            SmallRating(rating: library.rating(film.id))
                         }
                         .font(.subheadline)
                     }
@@ -215,6 +215,7 @@ struct CollectionView: View {
     @Environment(Library.self) private var library
     @Environment(Taste.self) private var taste
     @AppStorage("deckMode") private var deckMode = true
+    @AppStorage("homeMedia") private var homeMedia: MediaFilter = .all
     @State private var remote: [FilmRef] = []
 
     private var action: DeckAction {
@@ -233,7 +234,7 @@ struct CollectionView: View {
         case .watchlist: return "Watchlist"
         case .tag(let t): return "#\(t)"
         case .rated(let b): return FilmRatingStyle.current == .stars ? Stars.text(Double(b + 1) / 2) : "Scored \(b * 10 + 1)–\(b * 10 + 10)"
-        case .forYou: return "Films you'd like"
+        case .forYou: return homeMedia == .all ? "Picked for you" : homeMedia == .shows ? "Shows you'd like" : "Films you'd like"
         case .shows: return "Shows"
         }
     }
@@ -246,7 +247,7 @@ struct CollectionView: View {
         case .watchlist: return library.doc.watchlist
         case .tag(let t): return library.entries.filter { $0.tags.contains(t) }.map(\.film)
         case .rated(let b): return library.watchedFilms.filter { !$0.isShow && library.rating($0.id).map { Library.band($0) == b } == true }
-        case .forYou: return taste.picks
+        case .forYou: return taste.picks.filter(homeMedia.includes)
         case .shows: return library.showsInProgress + library.watchedFilms.filter(\.isShow)
         }
     }

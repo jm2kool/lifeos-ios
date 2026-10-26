@@ -48,13 +48,13 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Picker("Rate films with", selection: $filmStyle) {
+                    Picker("Rate with", selection: $filmStyle) {
                         Text("Score 1–100").tag(FilmRatingStyle.score)
                         Text("Stars 1–5").tag(FilmRatingStyle.stars)
                     }
                     .pickerStyle(.segmented)
-                } header: { Text("Film ratings") } footer: {
-                    Text("Ratings are kept as a score out of 100, so you can switch any time. In stars, each half star is 10 points (★★★★ = 80). Shows and episodes always use stars.")
+                } header: { Text("Ratings") } footer: {
+                    Text("Films, shows, seasons and episodes all use this. Ratings are kept as a score out of 100, so you can switch any time. In stars, each half star is 10 points (★★★★ = 80).")
                 }
 
                 Section {

@@ -28,13 +28,15 @@ struct TasteProfile: Codable {
     var libraryFilms: Int?
 }
 
-/// Your taste: built by the swipe quiz, refined by your ratings, and used for "Films you'd like".
+/// Your taste: built by the swipe quiz, refined by your ratings, and used for the films and shows picked for you.
 @Observable @MainActor
 final class Taste {
     static let shared = Taste()
     private(set) var profile = TasteProfile()
-    private(set) var picks: [FilmRef] = []
+    private(set) var picks: [FilmRef] = []           // films and shows, best match first
     private(set) var loadingPicks = false
+    private(set) var picksReady = false              // a refresh has finished at least once
+    @ObservationIgnored private var picksSignature: String?
     var showQuiz = false
 
     var done: Bool { profile.persona != nil }
@@ -116,9 +118,10 @@ final class Taste {
 
     // MARK: From your library
 
-    /// A fingerprint of the films that feed the character, so it's only rebuilt when they change.
+    /// A fingerprint of the titles that feed the character and the picks, so they're only rebuilt when these change.
     static func signature(_ library: Library) -> String {
-        let ids = library.doc.watchlist.map(\.id) + library.doc.liked.map(\.id)
+        let favs = (library.doc.favorites + library.favoriteShows).map { "fav:\($0.id)" }
+        let ids = favs + library.doc.watchlist.map(\.id) + library.doc.liked.map(\.id)
             + library.doc.ratings.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }
         var h = Hasher()
         ids.forEach { h.combine($0) }
@@ -131,10 +134,11 @@ final class Taste {
         let sig = Self.signature(library)
         guard force || profile.librarySignature != sig, Catalog.hasToken else { return }
         var weights: [String: Double] = [:]
+        for f in library.doc.favorites { weights[f.id, default: 0] += 2 }
         for f in library.doc.watchlist { weights[f.id, default: 0] += 1 }
         for f in library.doc.liked { weights[f.id, default: 0] += 1.2 }
         for (id, score) in library.doc.ratings {
-            let r = Score.asStars(score, id: id)
+            let r = Score.toStars(score)
             weights[id, default: 0] += r >= 4 ? 1.2 : r >= 3 ? 0.4 : r <= 2 ? -0.7 : 0
         }
         let ids = Array(weights.keys.filter { $0.hasPrefix("tmdb-") || $0.hasPrefix("tt") }.prefix(160))
@@ -240,37 +244,81 @@ final class Taste {
                        era: era, traits: traits)
     }
 
-    // MARK: Films you'd like
+    // MARK: Picked for you
+
+    /// A title recommendations grow from, and how much it counts.
+    struct Seed { var film: FilmRef; var weight: Double }
+
+    /// What you love counts most: your favourites, then titles you scored highly, then your watchlist,
+    /// then titles you scored lower. Anything under 50 isn't a seed at all.
+    static func seeds(_ library: Library, quizLikes: [FilmRef]) -> [Seed] {
+        let d = library.doc
+        var pool: [String: Seed] = [:]
+        func add(_ f: FilmRef, _ w: Double) {
+            guard TMDB.path(f.id) != nil, w > (pool[f.id]?.weight ?? 0) else { return }
+            pool[f.id] = Seed(film: f, weight: w)
+        }
+        // Ratings are kept by id; find a poster-ready ref for each from wherever the title appears.
+        var refs = library.watchedFilms + d.watchlist + d.liked
+        refs += (d.shows ?? [:]).values.map(\.show)
+        refs += library.currentlyWatching
+        var known: [String: FilmRef] = [:]
+        for f in refs where known[f.id] == nil { known[f.id] = f }
+        for (id, score) in d.ratings where score >= 50 && !library.isComfort(id) {
+            guard let f = known[id] else { continue }
+            add(f, score >= 80 ? 3 + (score - 80) / 20 : 0.6 + (score - 50) / 30 * 0.8)   // high: 3–4, lower: 0.6–1.4
+        }
+        for f in d.watchlist { add(f, 2) }
+        for f in quizLikes { add(f, 2) }
+        for f in d.liked + library.currentlyWatching { add(f, 2.5) }
+        for f in d.favorites + library.favoriteShows { add(f, 6) }
+
+        // A weighted draw, so favourites are almost always in and the rest rotate between refreshes.
+        func draw(_ s: [Seed], _ k: Int) -> [Seed] {
+            s.map { ($0, pow(Double.random(in: 0.0001..<1), 1 / $0.weight)) }.sorted { $0.1 > $1.1 }.prefix(k).map { $0.0 }
+        }
+        let all = Array(pool.values)
+        return draw(all.filter { !$0.film.isShow }, 9) + draw(all.filter(\.film.isShow), 6)
+    }
 
     func refreshPicks(library: Library, force: Bool = false) async {
-        if !force && !picks.isEmpty { return }
+        let sig = Self.signature(library)
+        if !force && !picks.isEmpty && sig == picksSignature { return }
         guard Catalog.hasToken else { return }
         loadingPicks = true
         defer { loadingPicks = false }
-        // Seeds: films you loved in the quiz, plus anything you've scored 80 or more.
-        let rated = library.watchedFilms.filter { (library.rating($0.id) ?? 0) >= 80 && $0.id.hasPrefix("tmdb-") }
-        let seeds = Array((Array(profile.liked.suffix(6)) + Array(rated.prefix(6))).shuffled().prefix(5))
-        var counts: [String: (film: FilmRef, n: Int, firstSeen: Int)] = [:]
+        let seeds = Self.seeds(library, quizLikes: Array(profile.liked.suffix(8)))
+        // Each recommendation scores the weight of every seed that suggested it, a little more near the top of TMDB's list.
+        var found: [String: (film: FilmRef, score: Double, firstSeen: Int)] = [:]
         var order = 0
-        await withTaskGroup(of: [FilmRef].self) { g in
-            for s in seeds { g.addTask { await TMDB.recommendations(s.id) } }
-            for await list in g {
-                for f in list {
+        await withTaskGroup(of: (Double, [FilmRef]).self) { g in
+            for s in seeds { g.addTask { (s.weight, await TMDB.recommendations(s.film.id)) } }
+            for await (w, list) in g {
+                for (rank, f) in list.enumerated() {
                     order += 1
-                    if let c = counts[f.id] { counts[f.id] = (c.film, c.n + 1, c.firstSeen) } else { counts[f.id] = (f, 1, order) }
+                    let add = w * (1 - 0.5 * Double(rank) / Double(max(list.count, 1)))
+                    if let c = found[f.id] { found[f.id] = (c.film, c.score + add, c.firstSeen) } else { found[f.id] = (f, add, order) }
                 }
             }
         }
-        let exclude = Set(profile.disliked + seeds.map(\.id) + profile.liked.map(\.id))
-        var result = counts.values
-            .filter { !exclude.contains($0.film.id) && !library.isWatched($0.film.id) }
-            .sorted { ($0.n, -$0.firstSeen) > ($1.n, -$1.firstSeen) }
-            .map(\.film)
-        if result.count < 10 {
-            let more = await TMDB.discover(genres: Array((profile.persona?.topGenres ?? []).prefix(2)))
-            result += more.filter { f in !exclude.contains(f.id) && !library.isWatched(f.id) && !result.contains { $0.id == f.id } }
+        let exclude = Set(profile.disliked + profile.liked.map(\.id) + seeds.map(\.film.id))
+        // Only things you haven't seen, saved or rated yet.
+        func isNew(_ f: FilmRef) -> Bool {
+            !exclude.contains(f.id) && !library.isWatched(f.id) && !library.inWatchlist(f.id)
+                && library.rating(f.id) == nil && library.progress(f.id) == nil && !library.isCurrentlyWatching(f.id)
         }
-        withAnimation(.smooth) { picks = Array(result.prefix(24)) }
+        var ranked = found.values.filter { isNew($0.film) }
+            .sorted { ($0.score, -$0.firstSeen) > ($1.score, -$1.firstSeen) }
+            .map(\.film)
+        if ranked.filter({ !$0.isShow }).count < 10 {
+            let more = await TMDB.discover(genres: Array((profile.persona?.topGenres ?? []).prefix(2)))
+            ranked += more.filter { f in isNew(f) && !ranked.contains { $0.id == f.id } }
+        }
+        let films = ranked.filter { !$0.isShow }.prefix(24), shows = ranked.filter(\.isShow).prefix(24)
+        let keep = Set((films + shows).map(\.id))
+        picksSignature = sig
+        picksReady = true
+        withAnimation(.smooth) { picks = ranked.filter { keep.contains($0.id) } }
     }
 
     func seedDemo() {

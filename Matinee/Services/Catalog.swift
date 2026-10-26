@@ -66,6 +66,7 @@ struct WatchProviders: Hashable {
 enum HomeShelf: String, CaseIterable, Identifiable {
     case trending, topRated, newReleases, trendingShows, topRatedShows
     var id: String { rawValue }
+    var isShows: Bool { self == .trendingShows || self == .topRatedShows }
     var title: String {
         switch self {
         case .trending: return "Popular this week"

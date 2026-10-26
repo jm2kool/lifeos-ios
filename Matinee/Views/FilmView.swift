@@ -15,6 +15,7 @@ struct FilmView: View {
     @State private var trailerKey: String?
     @State private var showTrailer = false
     @State private var shareImage: UIImage?
+    @AppStorage(FilmRatingStyle.key) private var ratingStyle: FilmRatingStyle = .score
 
     /// The page takes its colour from the poster: deep enough for white text, never washed out.
     private var bg: Color { palette?.background ?? .black }
@@ -75,12 +76,13 @@ struct FilmView: View {
                     }
                     Button { router.sheet = .addToList(ref) } label: { Label("Add to list…", systemImage: "text.badge.plus") }
                     Menu {
+                        let favs = library.favorites(shows: ref.isShow)
                         ForEach(0..<4) { i in
-                            Button("Slot \(i + 1)\(i < library.doc.favorites.count ? " — replaces \(library.doc.favorites[i].title)" : "")") {
+                            Button("Slot \(i + 1)\(i < favs.count ? " — replaces \(favs[i].title)" : "")") {
                                 library.setFavorite(ref, slot: i)
                             }
                         }
-                    } label: { Label("Set as a favourite", systemImage: "star") }
+                    } label: { Label(ref.isShow ? "Set as a favourite show" : "Set as a favourite film", systemImage: "star") }
                     if library.isWatched(ref.id) {
                         Button(role: .destructive) { library.toggleWatched(ref) } label: { Label("Remove from watched", systemImage: "eye.slash") }
                     }
@@ -147,10 +149,10 @@ struct FilmView: View {
                            startPoint: .top, endPoint: .bottom)
                 .allowsHitTesting(false)
             VStack(spacing: 10) {
-                TitleArt(title: ref.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 280, maxHeight: 110, fontSize: 40)
+                TitleArt(title: ref.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 280, maxHeight: 110, fontSize: 40,
+                         ready: artLoaded || failed)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: 300)
-                    .opacity(artLoaded || failed ? 1 : 0)
                     .visualEffect { content, geo in
                         // Shrink toward the nav bar as you scroll, then stay pinned there.
                         let f = geo.frame(in: .scrollView)
@@ -240,14 +242,23 @@ struct FilmView: View {
                 toggle(saved ? "In watchlist" : "Watchlist", saved ? "clock.fill" : "clock", saved, Theme.list) { library.toggleWatchlist(ref) }
             }
             watchControl
+            watchExtras
             Divider().overlay(Theme.line)
-            if ref.isShow {
+            if library.isComfort(ref.id) {
+                VStack(spacing: 6) {
+                    Image(systemName: "sofa.fill").font(.system(size: 30)).foregroundStyle(Theme.star)
+                    Text("A comfort \(ref.isShow ? "show" : "film")").font(.headline)
+                    Text("Watch it as often as you like — Matinee won't ask you to rate it.")
+                        .font(.caption).foregroundStyle(.white.opacity(0.65)).multilineTextAlignment(.center)
+                }
+                .padding(.vertical, 6)
+            } else if ref.isShow {
                 VStack(spacing: 8) {
-                    Text(library.rating(ref.id) == nil ? "Tap or slide to rate the show" : "Your rating for the show")
+                    Text(library.rating(ref.id) == nil ? "Rate the show" : "Your rating for the show")
                         .font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.65))
-                    StarRating(rating: library.rating(ref.id), size: 36, spacing: 8) { library.rate(ref, $0) }
+                    FilmRatingInput(score: library.rating(ref.id)) { library.rate(ref, $0) }
                     if let avg = library.progress(ref.id)?.average() {
-                        Text("Your episodes average \(avg.stars.formatted(.number.precision(.fractionLength(1)))) ★ across \(avg.count) rated")
+                        Text("Your episodes average \(Score.describe(avg.score, style: ratingStyle)) across \(avg.count) rated")
                             .font(.caption).foregroundStyle(.white.opacity(0.6))
                     }
                 }
@@ -310,6 +321,32 @@ struct FilmView: View {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             }) {
                 Label("Start watching", systemImage: "play.fill").frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    /// Pin a show to Currently watching on Home, and mark a comfort title so it's never asked for a rating.
+    private var watchExtras: some View {
+        let comfort = library.isComfort(ref.id)
+        return HStack(spacing: 8) {
+            if ref.isShow {
+                let pinned = library.isCurrentlyWatching(ref.id)
+                GlassChip(prominent: pinned, action: {
+                    library.toggleCurrentlyWatching(ref)
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                }) {
+                    Label("Currently watching", systemImage: pinned ? "checkmark" : "pin")
+                        .lineLimit(1).minimumScaleFactor(0.75)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            GlassChip(prominent: comfort, action: {
+                library.toggleComfort(ref)
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            }) {
+                Label(ref.isShow ? "Comfort show" : "Comfort film", systemImage: comfort ? "sofa.fill" : "sofa")
+                    .lineLimit(1).minimumScaleFactor(0.75)
+                    .frame(maxWidth: .infinity)
             }
         }
     }
@@ -461,7 +498,7 @@ struct FilmView: View {
                                     if let l = e.episodeLabel { Text(l).font(.caption.weight(.bold)).foregroundStyle(palette?.highlight ?? Theme.accent) }
                                     if e.rewatch { Image(systemName: "arrow.triangle.2.circlepath").foregroundStyle(Theme.watch) }
                                     Spacer()
-                                    SmallRating(rating: e.rating, id: e.film.id)
+                                    SmallRating(rating: e.rating)
                                     if e.liked { Image(systemName: "heart.fill").foregroundStyle(Theme.heart).font(.caption) }
                                 }
                                 if !e.review.isEmpty { Text(e.review).font(.subheadline).foregroundStyle(.white.opacity(0.8)).lineLimit(4).multilineTextAlignment(.leading) }

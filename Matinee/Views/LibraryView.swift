@@ -7,6 +7,7 @@ struct LibraryView: View {
     @Environment(Router.self) private var router
     @AppStorage("librarySection") private var section: Pane = .watchlist
     @AppStorage("watchlistSort") private var sortByTitle = false
+    @AppStorage("watchlistMedia") private var watchlistMedia: MediaFilter = .all
     @State private var importer = Importer()
     @State private var importingWatchlist = false
 
@@ -52,7 +53,7 @@ struct LibraryView: View {
                                 Text("Recently added").tag(false)
                                 Text("Title").tag(true)
                             }
-                            Button("Random pick", systemImage: "dice") { router.pickRandom(from: library) }
+                            Button("Random pick", systemImage: "dice") { router.pickRandom(from: library, kind: watchlistMedia) }
                         }
                     } label: { Image(systemName: "line.3.horizontal.decrease") }
                 }
@@ -62,7 +63,7 @@ struct LibraryView: View {
 
     private var glowFilms: [FilmRef] {
         switch section {
-        case .watchlist: return Array(library.doc.watchlist.prefix(3))
+        case .watchlist: return Array(library.doc.watchlist.filter(watchlistMedia.includes).prefix(3))
         case .films: return Array(library.watchedFilms.filter { !$0.isShow }.prefix(3))
         case .shows: return Array((library.showsInProgress + library.watchedFilms.filter(\.isShow)).prefix(3))
         case .likes: return Array(library.doc.liked.reversed().prefix(3))
@@ -71,9 +72,19 @@ struct LibraryView: View {
     }
 
     @ViewBuilder private var watchlist: some View {
-        let list = sortByTitle ? library.doc.watchlist.sorted { $0.title < $1.title } : library.doc.watchlist
+        let all = sortByTitle ? library.doc.watchlist.sorted { $0.title < $1.title } : library.doc.watchlist
+        let list = all.filter(watchlistMedia.includes)
         if importer.running || importer.summary != nil { importStatus }
-        if list.isEmpty {
+        if !all.isEmpty {
+            MediaFilterBar(selection: $watchlistMedia)
+                .frame(maxWidth: .infinity)
+        }
+        if list.isEmpty && !all.isEmpty {
+            EmptyState(symbol: watchlistMedia == .shows ? "tv" : "film",
+                       title: watchlistMedia == .shows ? "No shows saved" : "No films saved",
+                       message: "Tap the clock on any \(watchlistMedia == .shows ? "show" : "film") to save it for later.")
+                .padding(.top, 30)
+        } else if list.isEmpty {
             EmptyState(symbol: "clock", title: "Nothing saved yet", message: "Tap the clock on any film to save it for later.").padding(.top, 40)
             Button { importingWatchlist = true } label: {
                 Label("Import my Letterboxd watchlist", systemImage: "square.and.arrow.down").frame(maxWidth: .infinity)
@@ -83,9 +94,10 @@ struct LibraryView: View {
                 .font(.caption).foregroundStyle(Theme.dim).multilineTextAlignment(.center).padding(.horizontal, 40)
         } else {
             HStack {
-                Text("\(list.count) film\(list.count == 1 ? "" : "s") to watch").font(.subheadline).foregroundStyle(Theme.dim)
+                Text("\(list.count) \(watchlistMedia == .shows ? "show" : watchlistMedia == .movies ? "film" : "title")\(list.count == 1 ? "" : "s") to watch")
+                    .font(.subheadline).foregroundStyle(Theme.dim)
                 Spacer()
-                GlassChip(prominent: true, action: { router.pickRandom(from: library) }) {
+                GlassChip(prominent: true, action: { router.pickRandom(from: library, kind: watchlistMedia) }) {
                     Label("Random pick", systemImage: "dice.fill")
                 }
             }
@@ -144,7 +156,7 @@ struct LibraryView: View {
                         NavigationLink(value: f) {
                             VStack(spacing: 4) {
                                 PosterView(film: f, corner: 6)
-                                SmallRating(rating: library.rating(f.id), id: f.id).frame(height: 14)
+                                SmallRating(rating: library.rating(f.id)).frame(height: 14)
                             }
                         }
                         .buttonStyle(.plain)
@@ -168,7 +180,7 @@ struct LibraryView: View {
                         VStack(spacing: 4) {
                             PosterView(film: f, corner: 6)
                             HStack(spacing: 3) {
-                                SmallRating(rating: library.rating(f.id), id: f.id)
+                                SmallRating(rating: library.rating(f.id))
                                 if library.isLiked(f.id) { Image(systemName: "heart.fill").font(.system(size: 9)).foregroundStyle(Theme.heart) }
                             }
                             .frame(height: 14)
@@ -282,7 +294,7 @@ struct ListDetailView: View {
                                     HStack(spacing: 6) {
                                         Text(f.yearText).foregroundStyle(Theme.dim)
                                         if library.isWatched(f.id) { Image(systemName: "eye.fill").foregroundStyle(Theme.watch) }
-                                        SmallRating(rating: library.rating(f.id), id: f.id)
+                                        SmallRating(rating: library.rating(f.id))
                                     }.font(.subheadline)
                                 }
                             }

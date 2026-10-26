@@ -9,51 +9,78 @@ struct HomeView: View {
     @State private var heroPage = 0
     @State private var errorText: String?
     @AppStorage("tmdbToken") private var token = ""
+    @AppStorage("homeMedia") private var media: MediaFilter = .all
 
     private var connected: Bool { !token.isEmpty || Catalog.hasToken }
+    private var showsFilms: Bool { media != .shows }
+    private var showsShows: Bool { media != .movies }
 
     /// The page glow follows the hero film on screen, mixed with what's next for you.
     private var glowFilms: [FilmRef] {
         var out: [FilmRef] = []
         if hero.indices.contains(heroPage) { out.append(hero[heroPage]) }
-        out += taste.picks.prefix(1)
-        out += library.doc.watchlist.prefix(1)
-        out += (shelves[.topRated] ?? []).prefix(1)
+        out += picks.prefix(1)
+        out += watchlist.prefix(1)
+        out += (shelves[media == .shows ? .topRatedShows : .topRated] ?? []).prefix(1)
         return out
     }
 
-    private var hero: [FilmRef] { Array((shelves[.trending] ?? []).filter { $0.backdrop != nil }.prefix(8)) }
+    /// What's trending, in the kind you've picked: films, shows, or the two taking turns.
+    private var hero: [FilmRef] {
+        let films = (shelves[.trending] ?? []).filter { $0.backdrop != nil }
+        let shows = (shelves[.trendingShows] ?? []).filter { $0.backdrop != nil }
+        switch media {
+        case .movies: return Array(films.prefix(8))
+        case .shows: return Array(shows.prefix(8))
+        case .all:
+            var mixed: [FilmRef] = []
+            for i in 0..<5 {
+                if i < films.count { mixed.append(films[i]) }
+                if i < shows.count { mixed.append(shows[i]) }
+            }
+            return Array(mixed.prefix(8))
+        }
+    }
+
+    private var picks: [FilmRef] { taste.picks.filter(media.includes) }
+    private var watchlist: [FilmRef] { library.doc.watchlist.filter(media.includes) }
+    /// Shows you're partway through that aren't already pinned under Currently watching.
+    private var continueWatching: [FilmRef] { library.showsInProgress.filter { !library.isCurrentlyWatching($0.id) } }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 34) {
                 if connected { heroSection } else {
-                    greeting.padding(.top, Screen.safeTop + 8)
+                    header.padding(.top, Screen.safeTop + 8)
                     TMDBConnectCard()
                 }
-                IntermissionShelf()
-                if !library.showsInProgress.isEmpty {
+                if showsShows && !library.currentlyWatching.isEmpty {
+                    CurrentlyWatchingSection(shows: library.currentlyWatching)
+                }
+                IntermissionShelf(media: media)
+                if showsShows && !continueWatching.isEmpty {
                     VStack(alignment: .leading, spacing: 14) {
                         SectionHeader(title: "Continue watching", subtitle: "Shows you're partway through") {
                             NavigationLink("See all", value: CollectionRoute.shows)
                         }
-                        ShowProgressRow(shows: library.showsInProgress)
+                        ShowProgressRow(shows: continueWatching)
                     }
                 }
                 if connected { forYou }
-                if !library.doc.watchlist.isEmpty {
+                if !watchlist.isEmpty {
                     VStack(alignment: .leading, spacing: 14) {
                         SectionHeader(title: "Up next", subtitle: "From your watchlist") {
                             NavigationLink("See all", value: CollectionRoute.watchlist)
                         }
-                        PosterRow(films: Array(library.doc.watchlist.prefix(15)))
+                        PosterRow(films: Array(watchlist.prefix(15)))
                     }
                 }
-                ForEach(HomeShelf.allCases) { s in
+                ForEach(HomeShelf.allCases.filter { $0.isShows ? showsShows : showsFilms }) { s in
                     if let films = shelves[s], !films.isEmpty {
                         VStack(alignment: .leading, spacing: 14) {
                             SectionHeader(title: s.title) { NavigationLink("See all", value: CollectionRoute.shelf(s)) }
-                            PosterRow(films: s == .trending ? Array(films.dropFirst(min(3, films.count))) : films)
+                            // The hero already shows the first few trending films.
+                            PosterRow(films: s == .trending && media == .movies ? Array(films.dropFirst(min(3, films.count))) : films)
                         }
                     }
                 }
@@ -72,13 +99,14 @@ struct HomeView: View {
                     .background(Theme.card, in: .rect(cornerRadius: 22))
                     .padding(.horizontal, 16)
                 }
-                genres
-                if !library.entries.isEmpty {
+                if showsFilms { genres }
+                let recent = recentWatches
+                if !recent.isEmpty {
                     VStack(alignment: .leading, spacing: 14) {
                         SectionHeader(title: "Your recent watches") {
                             Button("Diary") { router.tab = .diary }
                         }
-                        PosterRow(films: Array(library.entries.prefix(12).map(\.film)), width: 96)
+                        PosterRow(films: recent, width: 96)
                     }
                 }
             }
@@ -89,22 +117,52 @@ struct HomeView: View {
         .toolbar(.hidden, for: .navigationBar)
         .refreshable { await load(force: true) }
         .task(id: token) { if connected { await load(force: true) } }
+        .onChange(of: media) { _, _ in heroPage = 0 }
     }
 
-    /// "Films you'd like", built from your swipe quiz and your highest ratings.
+    /// The latest titles in your diary, one entry per title.
+    private var recentWatches: [FilmRef] {
+        var seen = Set<String>()
+        return Array(library.entries.map(\.film).filter { media.includes($0) && seen.insert($0.id).inserted }.prefix(12))
+    }
+
+    /// Something to seed recommendations with, besides the swipe quiz.
+    private var hasLibrarySeeds: Bool {
+        let d = library.doc
+        return !d.favorites.isEmpty || !library.favoriteShows.isEmpty || !d.watchlist.isEmpty || !d.ratings.isEmpty
+    }
+
+    private var forYouTitle: String {
+        switch media {
+        case .all: return "Picked for you"
+        case .movies: return "Films you'd like"
+        case .shows: return "Shows you'd like"
+        }
+    }
+
+    /// Picked for you: grown from your favourites first, then your best-rated titles, your watchlist,
+    /// and the ones you rated lower (plus anything you loved in the swipe quiz).
     @ViewBuilder private var forYou: some View {
-        if let p = taste.profile.persona {
+        if taste.profile.persona != nil || hasLibrarySeeds {
             VStack(alignment: .leading, spacing: 14) {
-                SectionHeader(title: "Films you'd like", subtitle: "For \(p.name) \(p.emoji)") {
-                    if !taste.picks.isEmpty { NavigationLink("Swipe", value: CollectionRoute.forYou) }
+                SectionHeader(title: forYouTitle, subtitle: taste.profile.persona.map { "For \($0.name) \($0.emoji)" } ?? "From your favourites, ratings and watchlist") {
+                    if !picks.isEmpty { NavigationLink("Swipe", value: CollectionRoute.forYou) }
                 }
-                if taste.picks.isEmpty {
+                if picks.isEmpty && (taste.loadingPicks || !taste.picksReady) {
                     HStack { Spacer(); ProgressView(); Spacer() }.frame(height: 160)
+                } else if picks.isEmpty {
+                    Text(media == .shows ? "Rate or save a few shows and picks will show up here." : "Rate or save a few films and picks will show up here.")
+                        .font(.subheadline).foregroundStyle(Theme.dim).padding(.horizontal, 20)
                 } else {
-                    PosterRow(films: taste.picks, width: 124)
+                    PosterRow(films: picks, width: 124)
                 }
             }
-            .task(id: library.doc.ratings.count) { await taste.refreshPicks(library: library) }
+            .task(id: Taste.signature(library)) {
+                // Wait for a burst of rating or saving to settle before asking TMDB again.
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled else { return }
+                await taste.refreshPicks(library: library)
+            }
         } else {
             Button { taste.showQuiz = true } label: {
                 HStack(spacing: 14) {
@@ -123,6 +181,14 @@ struct HomeView: View {
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 16)
+        }
+    }
+
+    /// The greeting with the All / Movies / Shows switch under it.
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            greeting
+            MediaFilterBar(selection: $media).padding(.horizontal, 20)
         }
     }
 
@@ -162,7 +228,7 @@ struct HomeView: View {
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
             }
-            greeting
+            header
                 .shadow(color: .black.opacity(0.5), radius: 12)
                 .padding(.top, Screen.safeTop + 6)
         }
@@ -238,6 +304,7 @@ struct HeroPage: View {
     @Environment(Library.self) private var library
     @Environment(Router.self) private var router
     @State private var art: FilmArt?
+    @State private var artLoaded = false
 
     var body: some View {
         let saved = library.inWatchlist(film.id)
@@ -264,7 +331,8 @@ struct HeroPage: View {
             .accessibilityLabel(film.title)
 
             VStack(spacing: 12) {
-                TitleArt(title: film.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 260, maxHeight: 96, fontSize: 34)
+                TitleArt(title: film.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 260, maxHeight: 96, fontSize: 34,
+                         ready: artLoaded)
                     .shadow(color: .black.opacity(0.6), radius: 18, y: 4)
                     .allowsHitTesting(false)
                 Text(["Trending now", film.yearText].filter { !$0.isEmpty }.joined(separator: " · ").uppercased())
@@ -285,7 +353,10 @@ struct HeroPage: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 30)
         }
-        .task(id: film.id) { art = await Catalog.art(film.id) }
+        .task(id: film.id) {
+            let a = await Catalog.art(film.id)
+            withAnimation(.easeOut(duration: 0.3)) { art = a; artLoaded = true }
+        }
     }
 }
 

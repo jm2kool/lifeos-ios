@@ -93,7 +93,7 @@ struct DiaryRow: View {
                 }
                 if let t = entry.episodeTitle { Text(t).font(.caption).foregroundStyle(Theme.dim).lineLimit(1) }
                 HStack(spacing: 8) {
-                    SmallRating(rating: entry.rating, id: entry.film.id)
+                    SmallRating(rating: entry.rating)
                     if entry.liked { Image(systemName: "heart.fill").foregroundStyle(Theme.heart) }
                     if entry.rewatch { Image(systemName: "arrow.triangle.2.circlepath").foregroundStyle(Theme.watch) }
                     if !entry.review.isEmpty { Image(systemName: "text.alignleft").foregroundStyle(Theme.dim) }
