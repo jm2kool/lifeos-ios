@@ -64,13 +64,15 @@ struct WatchProviders: Hashable {
 }
 
 enum HomeShelf: String, CaseIterable, Identifiable {
-    case trending, topRated, newReleases
+    case trending, topRated, newReleases, trendingShows, topRatedShows
     var id: String { rawValue }
     var title: String {
         switch self {
         case .trending: return "Popular this week"
         case .topRated: return "All-time greats"
         case .newReleases: return "New & noteworthy"
+        case .trendingShows: return "Shows everyone's watching"
+        case .topRatedShows: return "Landmark TV"
         }
     }
 }
@@ -135,14 +137,26 @@ enum Catalog {
 
     static func cached(_ id: String) -> FilmDetail? { detailCache[id] }
 
+    private static var seasonCache: [String: [Episode]] = [:]
+
+    /// Every episode in one season of a show.
+    static func season(_ showID: String, _ number: Int) async throws -> [Episode] {
+        let key = "\(showID)|\(number)"
+        if let hit = seasonCache[key] { return hit }
+        let eps = try await TMDB.season(showID, number)
+        seasonCache[key] = eps
+        return eps
+    }
+
+    static func cachedSeason(_ showID: String, _ number: Int) -> [Episode]? { seasonCache["\(showID)|\(number)"] }
+
     private static var artCache: [String: FilmArt] = [:]
 
     /// Textless poster/backdrop and the film's title logo, for Apple Music–style pages.
     static func art(_ id: String) async -> FilmArt? {
-        guard id.hasPrefix("tmdb-") else { return nil }
+        guard let path = TMDB.path(id) else { return nil }
         if let hit = artCache[id] { return hit }
-        let num = id.replacingOccurrences(of: "tmdb-", with: "")
-        guard let j = try? await TMDB.call("/movie/\(num)/images", ["include_image_language": "en,null"]) else { return nil }
+        guard let j = try? await TMDB.call("\(path)/images", ["include_image_language": "en,null"]) else { return nil }
         func best(_ list: [J], lang: String?) -> J? {
             list.filter { $0["iso_639_1"].str == lang }
                 .sorted { ($0["vote_average"].double ?? 0, $0["vote_count"].double ?? 0) > ($1["vote_average"].double ?? 0, $1["vote_count"].double ?? 0) }
@@ -163,10 +177,9 @@ enum Catalog {
 
     /// The YouTube key of the film's best trailer, if TMDB has one.
     static func trailer(_ id: String) async -> String? {
-        guard id.hasPrefix("tmdb-") else { return nil }
+        guard let path = TMDB.path(id) else { return nil }
         if let hit = trailerCache[id] { return hit.isEmpty ? nil : hit }
-        let num = id.replacingOccurrences(of: "tmdb-", with: "")
-        guard let j = try? await TMDB.call("/movie/\(num)/videos") else { return nil }
+        guard let j = try? await TMDB.call("\(path)/videos") else { return nil }
         let vids = j["results"].array.filter { $0["site"].str == "YouTube" && $0["key"].str != nil }
         func rank(_ v: J) -> Int {
             (v["type"].str == "Trailer" ? 8 : v["type"].str == "Teaser" ? 4 : 0) + (v["official"].raw as? Bool == true ? 2 : 0)
@@ -181,11 +194,10 @@ enum Catalog {
 
     /// Where the film streams, rents or sells in a country (India by default). Data from JustWatch via TMDB.
     static func providers(_ id: String, region: String = "IN") async -> WatchProviders? {
-        guard id.hasPrefix("tmdb-") else { return nil }
+        guard let path = TMDB.path(id) else { return nil }
         let key = "\(id)|\(region)"
         if let hit = providerCache[key] { return hit }
-        let num = id.replacingOccurrences(of: "tmdb-", with: "")
-        guard let j = try? await TMDB.call("/movie/\(num)/watch/providers") else { return nil }
+        guard let j = try? await TMDB.call("\(path)/watch/providers") else { return nil }
         let r = j["results"][region]
         func list(_ k: String) -> [WatchProvider] {
             r[k].array.sorted { ($0["display_priority"].int ?? 99) < ($1["display_priority"].int ?? 99) }.compactMap { p in
@@ -274,11 +286,43 @@ enum TMDB {
         return try await Catalog.get(Catalog.url(base, path, q))
     }
 
+    /// The API path for a film or show id: "/movie/603" or "/tv/1399". nil for ids TMDB can't look up directly.
+    static func path(_ id: String) -> String? {
+        if FilmRef.isShowID(id) { return "/tv/" + String(id.dropFirst(FilmRef.showPrefix.count)) }
+        if id.hasPrefix("tmdb-") { return "/movie/" + String(id.dropFirst(5)) }
+        return nil
+    }
+
+    /// A film or a show from any TMDB list. Shows have a name and first air date instead of a title and release date.
     static func ref(_ m: J) -> FilmRef? {
-        guard let id = m["id"].int, let title = m["title"].str ?? m["original_title"].str else { return nil }
+        let type = m["media_type"].str
+        if type == "tv" || (type == nil && m["title"].isNull && !m["first_air_date"].isNull) { return showRef(m) }
+        guard type == nil || type == "movie", let id = m["id"].int, let title = m["title"].str ?? m["original_title"].str else { return nil }
         let year = m["release_date"].str.flatMap { Int($0.prefix(4)) }
         return FilmRef(id: "tmdb-\(id)", title: title, year: year,
                        poster: img(m["poster_path"].str, "w500"), backdrop: img(m["backdrop_path"].str, "w1280"))
+    }
+
+    static func showRef(_ m: J) -> FilmRef? {
+        guard let id = m["id"].int, let name = m["name"].str ?? m["original_name"].str else { return nil }
+        let year = m["first_air_date"].str.flatMap { Int($0.prefix(4)) }
+        return FilmRef(id: FilmRef.showPrefix + String(id), title: name, year: year,
+                       poster: img(m["poster_path"].str, "w500"), backdrop: img(m["backdrop_path"].str, "w1280"))
+    }
+
+    static let airDate: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
+    static func episode(_ e: J, season: Int) -> Episode? {
+        guard let n = e["episode_number"].int else { return nil }
+        return Episode(season: e["season_number"].int ?? season, number: n, name: e["name"].str ?? "Episode \(n)",
+                       overview: e["overview"].str, airDate: e["air_date"].str.flatMap { airDate.date(from: $0) },
+                       runtime: e["runtime"].int, still: img(e["still_path"].str, "w780"),
+                       communityRating: e["vote_average"].double)
     }
 
     static func list(_ path: String, _ q: [String: String] = [:]) async throws -> [FilmRef] {
@@ -331,9 +375,8 @@ enum TMDB {
     }
 
     static func recommendations(_ id: String) async -> [FilmRef] {
-        guard id.hasPrefix("tmdb-") else { return [] }
-        let num = id.replacingOccurrences(of: "tmdb-", with: "")
-        return (try? await list("/movie/\(num)/recommendations")) ?? []
+        guard let path = path(id) else { return [] }
+        return (try? await list("\(path)/recommendations")) ?? []
     }
 
     static func discover(genres: [String]) async -> [FilmRef] {
@@ -347,6 +390,8 @@ enum TMDB {
         case .trending: return try await list("/trending/movie/week")
         case .topRated: return try await list("/movie/top_rated")
         case .newReleases: return try await list("/movie/now_playing")
+        case .trendingShows: return try await list("/trending/tv/week")
+        case .topRatedShows: return try await list("/tv/top_rated")
         }
     }
 
@@ -354,11 +399,15 @@ enum TMDB {
         try await list("/discover/movie", ["with_genres": String(genreIDs[g] ?? 18), "sort_by": "popularity.desc", "vote_count.gte": "300"])
     }
 
+    /// Films and shows together, in TMDB's order of relevance (people are left out).
     static func search(_ q: String) async throws -> [FilmRef] {
-        try await call("/search/movie", ["query": q, "include_adult": "false"])["results"].array.compactMap(ref)
+        try await call("/search/multi", ["query": q, "include_adult": "false"])["results"].array
+            .filter { $0["media_type"].str == "movie" || $0["media_type"].str == "tv" }
+            .compactMap(ref)
     }
 
     static func detail(_ id: String) async throws -> FilmDetail {
+        if FilmRef.isShowID(id) { return try await showDetail(id) }
         var num = id.replacingOccurrences(of: "tmdb-", with: "")
         if id.hasPrefix("tt") {
             // Older entries saved with an IMDb id: look the film up on TMDB.
@@ -383,5 +432,45 @@ enum TMDB {
         d.countries = m["production_countries"].array.compactMap { $0["name"].str }
         d.similar = m["recommendations"]["results"].array.compactMap(ref).filter { $0.poster != nil }
         return d
+    }
+
+    static func showDetail(_ id: String) async throws -> FilmDetail {
+        let num = id.dropFirst(FilmRef.showPrefix.count)
+        // aggregate_credits covers every season; plain credits only lists the latest one.
+        let m = try await call("/tv/\(num)", ["append_to_response": "aggregate_credits,recommendations"])
+        guard let r = showRef(m) else { throw CatalogError.http(404) }
+        var d = FilmDetail(ref: r)
+        d.tagline = m["tagline"].str
+        d.overview = m["overview"].str
+        // Shows rarely give a single runtime; take the usual episode length, else the latest episode's.
+        d.runtimeMinutes = m["episode_run_time"].array.compactMap(\.int).first ?? m["last_episode_to_air"]["runtime"].int
+        d.genres = m["genres"].array.compactMap { $0["name"].str?.replacingOccurrences(of: "Sci-Fi & Fantasy", with: "Sci-Fi") }
+        d.creators = m["created_by"].array.compactMap { $0["name"].str }
+        d.networks = m["networks"].array.compactMap { $0["name"].str }
+        d.status = m["status"].str
+        d.lastYear = m["last_air_date"].str.flatMap { Int($0.prefix(4)) }
+        d.cast = m["aggregate_credits"]["cast"].array.prefix(30).compactMap { c in
+            guard let pid = c["id"].int, let name = c["name"].str else { return nil }
+            let role = c["roles"].array.first?["character"].str ?? ""
+            return Person(id: "tmdbp-\(pid)", name: name, role: role, photo: img(c["profile_path"].str, "w185"))
+        }
+        d.communityRating = m["vote_average"].double
+        d.voteCount = m["vote_count"].int
+        d.countries = m["origin_country"].array.compactMap { $0.str.flatMap { Locale.current.localizedString(forRegionCode: $0) } }
+        d.seasons = m["seasons"].array.compactMap { s in
+            guard let n = s["season_number"].int else { return nil }
+            return SeasonInfo(number: n, name: s["name"].str ?? "Season \(n)", episodeCount: s["episode_count"].int ?? 0,
+                              year: s["air_date"].str.flatMap { Int($0.prefix(4)) }, poster: img(s["poster_path"].str, "w500"),
+                              overview: s["overview"].str)
+        }
+        if !m["next_episode_to_air"].isNull { d.nextEpisode = episode(m["next_episode_to_air"], season: 0) }
+        d.similar = m["recommendations"]["results"].array.compactMap(showRef).filter { $0.poster != nil }
+        return d
+    }
+
+    static func season(_ showID: String, _ number: Int) async throws -> [Episode] {
+        let num = showID.dropFirst(FilmRef.showPrefix.count)
+        let j = try await call("/tv/\(num)/season/\(number)")
+        return j["episodes"].array.compactMap { episode($0, season: number) }
     }
 }

@@ -1,7 +1,8 @@
 import Foundation
 
-/// A lightweight reference to a film — enough to draw a poster and open its page.
-/// IDs are "tmdb-<id>". Older "tt…" (IMDb) ids still resolve through TMDB's find endpoint.
+/// A lightweight reference to a film or a show — enough to draw a poster and open its page.
+/// Film IDs are "tmdb-<id>", show IDs "tmdbtv-<id>" (TMDB numbers films and shows separately).
+/// Older "tt…" (IMDb) ids still resolve through TMDB's find endpoint.
 struct FilmRef: Codable, Hashable, Identifiable {
     var id: String
     var title: String
@@ -10,6 +11,10 @@ struct FilmRef: Codable, Hashable, Identifiable {
     var backdrop: URL?
 
     var yearText: String { year.map(String.init) ?? "" }
+    var isShow: Bool { Self.isShowID(id) }
+
+    static let showPrefix = "tmdbtv-"
+    static func isShowID(_ id: String) -> Bool { id.hasPrefix(showPrefix) }
 }
 
 struct Person: Codable, Hashable, Identifiable {
@@ -32,6 +37,76 @@ struct FilmDetail: Codable, Hashable {
     var voteCount: Int?
     var similar: [FilmRef] = []
     var countries: [String] = []
+    // Shows only
+    var creators: [String] = []
+    var networks: [String] = []
+    var status: String?               // "Returning Series", "Ended", "Canceled"…
+    var seasons: [SeasonInfo] = []    // season 0 (specials) included when TMDB has it
+    var lastYear: Int?
+    var nextEpisode: Episode?
+
+    /// Seasons that count towards finishing a show: everything except the specials.
+    var regularSeasons: [SeasonInfo] { seasons.filter { $0.number > 0 && $0.episodeCount > 0 } }
+    var hasEnded: Bool { status == "Ended" || status == "Canceled" }
+}
+
+struct SeasonInfo: Codable, Hashable, Identifiable {
+    var number: Int
+    var name: String
+    var episodeCount: Int
+    var year: Int?
+    var poster: URL?
+    var overview: String?
+    var id: Int { number }
+}
+
+struct Episode: Codable, Hashable, Identifiable {
+    var season: Int
+    var number: Int
+    var name: String
+    var overview: String?
+    var airDate: Date?
+    var runtime: Int?
+    var still: URL?
+    var communityRating: Double?      // 0–10
+
+    var id: String { EpisodeKey.make(season, number) }
+    var code: String { EpisodeKey.code(season, number) }
+    /// Episodes with no date yet haven't aired.
+    var aired: Bool { airDate.map { $0 <= .now } ?? false }
+}
+
+enum EpisodeKey {
+    static func make(_ season: Int, _ episode: Int) -> String { "s\(season)e\(episode)" }
+    static func code(_ season: Int, _ episode: Int) -> String { "S\(season) E\(episode)" }
+    static func season(of key: String) -> Int? {
+        guard key.hasPrefix("s"), let e = key.firstIndex(of: "e") else { return nil }
+        return Int(key[key.index(after: key.startIndex)..<e])
+    }
+    static func episode(of key: String) -> Int? {
+        guard let e = key.firstIndex(of: "e") else { return nil }
+        return Int(key[key.index(after: e)...])
+    }
+}
+
+/// How far you are through a show, and what you thought of each episode and season.
+/// Episodes and seasons are rated in stars (0.5–5); the show's own rating lives with the others in `ratings`.
+struct ShowProgress: Codable, Hashable {
+    var show: FilmRef
+    var seen: [String: Date] = [:]                // "s1e3" → when you watched it
+    var episodeRatings: [String: Double] = [:]    // "s1e3" → stars
+    var seasonRatings: [String: Double] = [:]     // "1" → your own rating for the season
+    var updatedAt = Date.now
+
+    var isEmpty: Bool { seen.isEmpty && episodeRatings.isEmpty && seasonRatings.isEmpty }
+    func seenCount(season: Int) -> Int { seen.keys.filter { EpisodeKey.season(of: $0) == season }.count }
+
+    /// The average of your episode ratings — for one season, or the whole show when season is nil.
+    func average(season: Int? = nil) -> (stars: Double, count: Int)? {
+        let r = episodeRatings.filter { season == nil ? (EpisodeKey.season(of: $0.key) ?? 0) > 0 : EpisodeKey.season(of: $0.key) == season }
+            .map(\.value).filter { $0 > 0 }
+        return r.isEmpty ? nil : (r.reduce(0, +) / Double(r.count), r.count)
+    }
 }
 
 /// One viewing in your diary.
@@ -45,6 +120,17 @@ struct LogEntry: Codable, Hashable, Identifiable {
     var review = ""
     var tags: [String] = []
     var createdAt = Date.now
+    // For shows: a season and episode, when the entry is about one rather than the whole show.
+    var season: Int?
+    var episode: Int?
+    var episodeTitle: String?
+
+    var isEpisode: Bool { season != nil && episode != nil }
+    /// "S1 E3", "Season 2", or nil for a film or a whole show.
+    var episodeLabel: String? {
+        guard let s = season else { return nil }
+        return episode.map { EpisodeKey.code(s, $0) } ?? "Season \(s)"
+    }
 }
 
 struct FilmList: Codable, Hashable, Identifiable {
@@ -69,7 +155,7 @@ struct LibraryDoc: Codable {
     var entries: [LogEntry] = []
     var watchlist: [FilmRef] = []
     var liked: [FilmRef] = []
-    var ratings: [String: Double] = [:]      // latest rating per film id
+    var ratings: [String: Double] = [:]      // latest rating per id: films 1–100, shows 0.5–5 stars
     var watched: [FilmRef] = []               // films marked watched without a diary entry
     var lists: [FilmList] = []
     var favorites: [FilmRef] = []             // up to four, shown on your profile
@@ -77,6 +163,36 @@ struct LibraryDoc: Codable {
     var recentSearches: [String] = []
     var taste: TasteProfile?                  // your film character, so it follows you between devices
     var updatedAt = Date.now
+    var shows: [String: ShowProgress]?        // episode tracking, by show id
+    var ratingScale: Int?                     // nil: film ratings saved before they moved from stars to 1–100
+
+    /// Film ratings used to be 0.5–5 stars; they're scores out of 100 now. Shows and episodes stay in stars.
+    mutating func migrate() {
+        guard ratingScale == nil else { return }
+        for (k, v) in ratings where !FilmRef.isShowID(k) { ratings[k] = Score.fromStars(v) }
+        for i in entries.indices where !entries[i].film.isShow { entries[i].rating = entries[i].rating.map(Score.fromStars) }
+        ratingScale = 100
+    }
+}
+
+/// Films are scored 1–100.
+enum Score {
+    static func fromStars(_ s: Double) -> Double { min(100, max(1, (s * 20).rounded())) }
+    static func toStars(_ s: Double) -> Double { s / 20 }
+    static func word(_ s: Double) -> String {
+        switch s {
+        case ..<20: return "Awful"
+        case ..<40: return "Not for me"
+        case ..<55: return "Meh"
+        case ..<70: return "Good"
+        case ..<85: return "Great"
+        case ..<95: return "Brilliant"
+        default: return "Masterpiece"
+        }
+    }
+    static func text(_ s: Double?) -> String { s.map { $0 > 0 ? String(Int($0.rounded())) : "" } ?? "" }
+    /// Ratings as stars for anything: film scores are converted, show and episode stars pass through.
+    static func asStars(_ r: Double, id: String) -> Double { FilmRef.isShowID(id) ? r : toStars(r) }
 }
 
 enum Stars {

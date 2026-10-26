@@ -48,7 +48,8 @@ final class Importer {
             await withTaskGroup(of: (String, FilmRef?).self) { g in
                 for r in chunk {
                     g.addTask {
-                        guard let hits = try? await Catalog.search(r.name) else { return (importKey(r), nil) }
+                        // Letterboxd is films only, so never match a show with the same name.
+                        guard let hits = try? await Catalog.search(r.name).filter({ !$0.isShow }) else { return (importKey(r), nil) }
                         let f = hits.first { $0.year == r.year } ?? hits.first { abs(($0.year ?? 0) - (r.year ?? 0)) <= 1 } ?? (r.year == nil ? hits.first : nil)
                         return (importKey(r), f)
                     }
@@ -68,7 +69,8 @@ final class Importer {
                 let watched = d.watched.contains { $0.id == f.id } || d.entries.contains { $0.film.id == f.id }
                 switch r.kind {
                 case .diary, .reviews:
-                    entries.append(LogEntry(film: f, watchedOn: r.date ?? .now, rating: r.rating, liked: false, rewatch: r.rewatch, review: r.review, tags: r.tags))
+                    // Letterboxd rates in stars; Matinee scores films out of 100.
+                    entries.append(LogEntry(film: f, watchedOn: r.date ?? .now, rating: r.rating.map(Score.fromStars), liked: false, rewatch: r.rewatch, review: r.review, tags: r.tags))
                 case .watched:
                     if !watched { d.watched.append(f) }
                     d.watchlist.removeAll { $0.id == f.id }
@@ -76,7 +78,7 @@ final class Importer {
                     if !watched && !d.watchlist.contains(where: { $0.id == f.id }) { d.watchlist.append(f) }
                 case .ratings:
                     // On Letterboxd a rating means you've seen it, so it lands in your films and ratings tracker.
-                    if let rt = r.rating, rt > 0 { d.ratings[f.id] = rt }
+                    if let rt = r.rating, rt > 0 { d.ratings[f.id] = Score.fromStars(rt) }
                     if !watched { d.watched.append(f) }
                     d.watchlist.removeAll { $0.id == f.id }
                 case .likes:

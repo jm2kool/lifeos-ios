@@ -29,7 +29,12 @@ final class Library {
     static let decoder: JSONDecoder = { let d = JSONDecoder(); d.dateDecodingStrategy = .iso8601; return d }()
 
     private init() {
-        if let data = try? Data(contentsOf: Self.fileURL), let d = try? Self.decoder.decode(LibraryDoc.self, from: data) { doc = d }
+        if let data = try? Data(contentsOf: Self.fileURL), var d = try? Self.decoder.decode(LibraryDoc.self, from: data) {
+            let old = d.ratingScale == nil
+            d.migrate()
+            doc = d
+            if old { persist(sync: false) }
+        }
         WatchlistWidget.publish(doc.watchlist)
     }
 
@@ -37,7 +42,8 @@ final class Library {
 
     var entries: [LogEntry] { doc.entries.sorted { ($0.watchedOn, $0.createdAt) > ($1.watchedOn, $1.createdAt) } }
     func entries(for id: String) -> [LogEntry] { entries.filter { $0.film.id == id } }
-    func isWatched(_ id: String) -> Bool { doc.watched.contains { $0.id == id } || doc.entries.contains { $0.film.id == id } }
+    /// Episode and season entries don't make a show watched — finishing it (or marking it) does.
+    func isWatched(_ id: String) -> Bool { doc.watched.contains { $0.id == id } || doc.entries.contains { $0.film.id == id && $0.season == nil } }
     func isLiked(_ id: String) -> Bool { doc.liked.contains { $0.id == id } }
     func inWatchlist(_ id: String) -> Bool { doc.watchlist.contains { $0.id == id } }
     func rating(_ id: String) -> Double? { doc.ratings[id] }
@@ -45,25 +51,27 @@ final class Library {
     /// Every distinct film you've seen, newest first.
     var watchedFilms: [FilmRef] {
         var seen = Set<String>(), out: [FilmRef] = []
-        for e in entries where seen.insert(e.film.id).inserted { out.append(e.film) }
+        for e in entries where e.season == nil && seen.insert(e.film.id).inserted { out.append(e.film) }
         for f in doc.watched.reversed() where seen.insert(f.id).inserted { out.append(f) }
         return out
     }
 
     var thisYearCount: Int { let y = Date.now.year; return doc.entries.filter { $0.watchedOn.year == y }.count }
 
-    /// How many films sit at each half-star (index 0 = ½ … 9 = 5★).
-    /// Ratings of films you've actually watched — the ones the ratings tracker can list.
+    /// Scores (1–100) of films you've actually watched — the ones the ratings tracker can list.
     var watchedRatings: [Double] {
         let ids = Set(doc.watched.map(\.id) + doc.entries.map(\.film.id))
-        return doc.ratings.filter { ids.contains($0.key) && $0.value > 0 }.map(\.value)
+        return doc.ratings.filter { !FilmRef.isShowID($0.key) && ids.contains($0.key) && $0.value > 0 }.map(\.value)
     }
 
+    /// How many films sit in each band of ten (index 0 = 1–10 … 9 = 91–100).
     var ratingHistogram: [Int] {
         var bins = Array(repeating: 0, count: 10)
-        for r in watchedRatings { let i = Int((r * 2).rounded()) - 1; if (0..<10).contains(i) { bins[i] += 1 } }
+        for r in watchedRatings { bins[Self.band(r)] += 1 }
         return bins
     }
+
+    static func band(_ score: Double) -> Int { min(9, max(0, Int((score.rounded() - 1) / 10))) }
 
     var averageRating: Double? {
         let v = watchedRatings
@@ -93,8 +101,25 @@ final class Library {
     }
 
     func log(_ e: LogEntry) {
-        mutate("Logged \(e.film.title)", symbol: "eye.fill") { d in
+        mutate("Logged \(e.film.title)\(e.episodeLabel.map { " · \($0)" } ?? "")", symbol: "eye.fill") { d in
             if let i = d.entries.firstIndex(where: { $0.id == e.id }) { d.entries[i] = e } else { d.entries.append(e) }
+            if let s = e.season {
+                // An episode or season of a show: it's seen, and the newest viewing sets its rating.
+                let newest = d.entries.filter { $0.film.id == e.film.id && $0.season == e.season && $0.episode == e.episode }
+                    .max { ($0.watchedOn, $0.createdAt) < ($1.watchedOn, $1.createdAt) }
+                let r = e.rating.flatMap { $0 > 0 ? $0 : nil }
+                Self.editShow(e.film, &d) { p in
+                    if let n = e.episode {
+                        let k = EpisodeKey.make(s, n)
+                        if p.seen[k] == nil { p.seen[k] = e.watchedOn }
+                        if newest?.id == e.id { p.episodeRatings[k] = r }
+                    } else if newest?.id == e.id {
+                        p.seasonRatings[String(s)] = r
+                    }
+                }
+                d.watchlist.removeAll { $0.id == e.film.id }
+                return
+            }
             // The newest viewing sets the film's rating, so clearing the stars there clears it everywhere.
             let newest = d.entries.filter { $0.film.id == e.film.id }.max { ($0.watchedOn, $0.createdAt) < ($1.watchedOn, $1.createdAt) }
             if newest?.id == e.id { d.ratings[e.film.id] = e.rating.flatMap { $0 > 0 ? $0 : nil } }
@@ -108,7 +133,7 @@ final class Library {
         mutate("Entry deleted", symbol: "trash", undoable: true) { d in
             d.entries.removeAll { $0.id == e.id }
             // Deleting a diary entry doesn't un-watch the film (use Remove from watched for that).
-            if !d.entries.contains(where: { $0.film.id == e.film.id }) && !d.watched.contains(where: { $0.id == e.film.id }) {
+            if e.season == nil, !d.entries.contains(where: { $0.film.id == e.film.id && $0.season == nil }) && !d.watched.contains(where: { $0.id == e.film.id }) {
                 d.watched.append(e.film)
             }
         }
@@ -119,7 +144,8 @@ final class Library {
             // Un-watching wipes everything that says you saw it: diary entries, the rating and the like.
             mutate("Removed from watched", symbol: "eye.slash", undoable: true) { d in
                 d.watched.removeAll { $0.id == f.id }
-                d.entries.removeAll { $0.film.id == f.id }
+                // For a show, episode logs and progress stay: you still saw those.
+                d.entries.removeAll { $0.film.id == f.id && $0.season == nil }
                 d.ratings[f.id] = nil
                 d.liked.removeAll { $0.id == f.id }
             }
@@ -187,6 +213,77 @@ final class Library {
         toast = Toast(text: added ? "Added to \(list.name)" : "Removed from \(list.name)", symbol: "list.bullet")
     }
 
+    // MARK: Shows
+
+    func progress(_ showID: String) -> ShowProgress? { doc.shows?[showID] }
+    func isSeen(_ showID: String, _ ep: Episode) -> Bool { doc.shows?[showID]?.seen[ep.id] != nil }
+    func episodeRating(_ showID: String, _ ep: Episode) -> Double? { doc.shows?[showID]?.episodeRatings[ep.id] }
+    func seasonRating(_ showID: String, _ season: Int) -> Double? { doc.shows?[showID]?.seasonRatings[String(season)] }
+    func seenCount(_ showID: String, season: Int) -> Int { doc.shows?[showID]?.seenCount(season: season) ?? 0 }
+
+    /// Shows you've started, most recently watched first. Finished shows drop off.
+    var showsInProgress: [FilmRef] {
+        let done = Set(doc.watched.map(\.id))
+        return (doc.shows ?? [:]).values
+            .filter { !$0.seen.isEmpty && !done.contains($0.show.id) }
+            .sorted { ($0.seen.values.max() ?? .distantPast) > ($1.seen.values.max() ?? .distantPast) }
+            .map(\.show)
+    }
+
+    func setSeen(_ show: FilmRef, _ eps: [Episode], _ on: Bool) {
+        guard !eps.isEmpty else { return }
+        let text = eps.count == 1 ? "\(on ? "Watched" : "Unwatched") \(eps[0].code)" : on ? "Marked \(eps.count) episodes watched" : "Unmarked \(eps.count) episodes"
+        // Unmarking clears the episode's rating too, so it's undoable.
+        mutate(text, symbol: on ? "checkmark.circle.fill" : "circle", undoable: !on) { d in
+            Self.editShow(show, &d) { p in
+                for e in eps {
+                    if on { if p.seen[e.id] == nil { p.seen[e.id] = .now } } else { p.seen[e.id] = nil; p.episodeRatings[e.id] = nil }
+                }
+            }
+            if on { d.watchlist.removeAll { $0.id == show.id } }
+        }
+    }
+
+    func toggleSeen(_ show: FilmRef, _ ep: Episode) { setSeen(show, [ep], !isSeen(show.id, ep)) }
+
+    /// Rating an episode counts as having watched it.
+    func rateEpisode(_ show: FilmRef, _ ep: Episode, _ r: Double?) {
+        mutate { d in
+            Self.editShow(show, &d) { p in
+                if let r, r > 0 {
+                    p.episodeRatings[ep.id] = r
+                    if p.seen[ep.id] == nil { p.seen[ep.id] = .now }
+                } else {
+                    p.episodeRatings[ep.id] = nil
+                }
+            }
+            if let r, r > 0 { d.watchlist.removeAll { $0.id == show.id } }
+        }
+    }
+
+    func rateSeason(_ show: FilmRef, _ season: Int, _ r: Double?) {
+        mutate { d in Self.editShow(show, &d) { p in p.seasonRatings[String(season)] = r.flatMap { $0 > 0 ? $0 : nil } } }
+    }
+
+    /// After the last episode of a show that has ended: it joins your watched titles.
+    func finishShow(_ show: FilmRef) {
+        guard !doc.watched.contains(where: { $0.id == show.id }) else { return }
+        mutate { d in
+            d.watched.append(show)
+            d.watchlist.removeAll { $0.id == show.id }
+        }
+    }
+
+    private static func editShow(_ show: FilmRef, _ d: inout LibraryDoc, _ change: (inout ShowProgress) -> Void) {
+        var all = d.shows ?? [:]
+        var p = all[show.id] ?? ShowProgress(show: show)
+        if p.show.poster == nil { p.show = show }
+        change(&p)
+        p.updatedAt = .now
+        all[show.id] = p.isEmpty ? nil : p
+        d.shows = all
+    }
+
     func setProfile(_ p: Profile) { mutate { d in d.profile = p } }
 
     /// Quiet batch changes (imports): no toast per film.
@@ -220,6 +317,7 @@ final class Library {
         for i in d.watched.indices { fix(&d.watched[i]) }
         for i in d.favorites.indices { fix(&d.favorites[i]) }
         for l in d.lists.indices { for i in d.lists[l].films.indices { fix(&d.lists[l].films[i]) } }
+        if var shows = d.shows, shows[r.id] != nil { fix(&shows[r.id]!.show); d.shows = shows }
         doc = d
         persist(sync: false)
     }
@@ -244,7 +342,8 @@ final class Library {
     /// After signing in: take whichever copy (phone or account) was changed most recently.
     func reconcileWithCloud() async {
         guard Auth.shared.signedIn else { return }
-        if let data = await Auth.shared.pullLibrary(), let remote = try? Self.decoder.decode(LibraryDoc.self, from: data) {
+        if let data = await Auth.shared.pullLibrary(), var remote = try? Self.decoder.decode(LibraryDoc.self, from: data) {
+            remote.migrate()
             if remote.updatedAt > doc.updatedAt || doc.entries.isEmpty && doc.watchlist.isEmpty {
                 var r = remote
                 if r.taste == nil { r.taste = doc.taste }
@@ -279,14 +378,24 @@ final class Library {
             ("tmdb-550", "Fight Club", 1999)]
         let refs = films.map { FilmRef(id: $0.0, title: $0.1, year: $0.2) }
         var d = LibraryDoc()
-        let ratings: [Double] = [5, 4.5, 5, 4, 4.5, 4, 5, 4.5, 3.5, 5]
+        let ratings: [Double] = [97, 91, 95, 82, 89, 78, 99, 88, 71, 94]
         for (i, f) in refs.prefix(10).enumerated() {
-            d.entries.append(LogEntry(film: f, watchedOn: day(i * 4 + 1), rating: ratings[i], liked: ratings[i] >= 4.5,
+            d.entries.append(LogEntry(film: f, watchedOn: day(i * 4 + 1), rating: ratings[i], liked: ratings[i] >= 88,
                                       rewatch: i == 3, review: i == 0 ? "Sand has never looked this good. Saw it in IMAX and my ears are still ringing." : "",
                                       tags: i % 3 == 0 ? ["imax"] : []))
             d.ratings[f.id] = ratings[i]
-            if ratings[i] >= 4.5 { d.liked.append(f) }
+            if ratings[i] >= 88 { d.liked.append(f) }
         }
+        d.ratingScale = 100
+        // A show partway through: all of season 1 rated, two episodes into season 2.
+        let show = FilmRef(id: "tmdbtv-1396", title: "Breaking Bad", year: 2008)
+        var p = ShowProgress(show: show)
+        let s1: [Double] = [4.5, 4, 4, 3.5, 4, 4.5, 5]
+        for (i, r) in s1.enumerated() { p.seen[EpisodeKey.make(1, i + 1)] = day(30 - i); p.episodeRatings[EpisodeKey.make(1, i + 1)] = r }
+        p.seasonRatings["1"] = 4.5
+        p.seen[EpisodeKey.make(2, 1)] = day(3); p.seen[EpisodeKey.make(2, 2)] = day(2)
+        p.episodeRatings[EpisodeKey.make(2, 1)] = 4
+        d.shows = [show.id: p]
         d.watchlist = [refs[10], refs[11]]
         d.favorites = [refs[2], refs[0], refs[6], refs[9]]
         d.lists = [FilmList(name: "Desert planets & big sound", note: "Films to feel in your chest.", ranked: true, films: [refs[0], refs[8], refs[4], refs[3]])]

@@ -48,7 +48,7 @@ struct SearchView: View {
                 } else if let error, results.isEmpty {
                     EmptyState(symbol: "wifi.exclamationmark", title: "Search failed", message: error).padding(.top, 40)
                 } else if results.isEmpty {
-                    EmptyState(symbol: "magnifyingglass", title: "No films found", message: "Try a different spelling or the original title.").padding(.top, 40)
+                    EmptyState(symbol: "magnifyingglass", title: "Nothing found", message: "Try a different spelling or the original title.").padding(.top, 40)
                 } else {
                     LazyVStack(spacing: 0) {
                         ForEach(results) { f in SearchRow(film: f) }
@@ -59,7 +59,7 @@ struct SearchView: View {
         }
         .ambientBackground(Array(results.prefix(3)))
         .navigationTitle("Search")
-        .searchable(text: $query, prompt: "Films, e.g. Past Lives")
+        .searchable(text: $query, prompt: "Films and shows, e.g. Past Lives")
         .onSubmit(of: .search) { library.rememberSearch(query) }
         .task(id: query) {
             let q = query
@@ -89,9 +89,13 @@ struct SearchRow: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(film.title).font(.body.weight(.semibold)).lineLimit(2).multilineTextAlignment(.leading)
                         HStack(spacing: 8) {
+                            if film.isShow {
+                                Text("TV").font(.caption2.weight(.heavy)).padding(.horizontal, 5).padding(.vertical, 1)
+                                    .background(Theme.list.opacity(0.25), in: .rect(cornerRadius: 4)).foregroundStyle(Theme.list)
+                            }
                             Text(film.yearText).foregroundStyle(Theme.dim)
                             if library.isWatched(film.id) { Image(systemName: "eye.fill").foregroundStyle(Theme.watch) }
-                            SmallStars(rating: library.rating(film.id))
+                            SmallRating(rating: library.rating(film.id), id: film.id)
                         }
                         .font(.subheadline)
                     }
@@ -172,7 +176,7 @@ struct QuickLogSheet: View {
             .oledBackground()
             .navigationTitle("What did you watch?")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search films")
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search films and shows")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close", systemImage: "xmark") { dismiss() } } }
             .task(id: query) {
                 guard !query.isEmpty else { results = []; return }
@@ -216,7 +220,7 @@ struct CollectionView: View {
     private var action: DeckAction {
         switch route {
         case .watchlist: return .tonight
-        case .watched, .liked, .rated, .tag: return .like
+        case .watched, .liked, .rated, .tag, .shows: return .like
         default: return .watchlist
         }
     }
@@ -228,8 +232,9 @@ struct CollectionView: View {
         case .liked: return "Likes"
         case .watchlist: return "Watchlist"
         case .tag(let t): return "#\(t)"
-        case .rated(let r): return Stars.text(r)
+        case .rated(let b): return "Scored \(b * 10 + 1)–\(b * 10 + 10)"
         case .forYou: return "Films you'd like"
+        case .shows: return "Shows"
         }
     }
 
@@ -240,8 +245,9 @@ struct CollectionView: View {
         case .liked: return library.doc.liked.reversed()
         case .watchlist: return library.doc.watchlist
         case .tag(let t): return library.entries.filter { $0.tags.contains(t) }.map(\.film)
-        case .rated(let r): return library.watchedFilms.filter { library.rating($0.id) == r }
+        case .rated(let b): return library.watchedFilms.filter { !$0.isShow && library.rating($0.id).map { Library.band($0) == b } == true }
         case .forYou: return taste.picks
+        case .shows: return library.showsInProgress + library.watchedFilms.filter(\.isShow)
         }
     }
 

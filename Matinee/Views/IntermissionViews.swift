@@ -15,7 +15,7 @@ struct NowWatchingBar: View {
                     HStack(spacing: 12) {
                         PosterView(film: session.film, width: 34, corner: 5, showTitleFallback: false)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(session.film.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                            Text(session.title).font(.subheadline.weight(.semibold)).lineLimit(1)
                             Text(subtitle(elapsed: elapsed, over: over))
                                 .font(.caption.monospacedDigit()).foregroundStyle(Theme.dim).lineLimit(1)
                         }
@@ -58,9 +58,9 @@ struct NowWatchingBar: View {
     }
 
     private func finish() {
-        let film = session.film
+        let route = session.logRoute
         watching.end(session.id)
-        router.sheet = .log(film, nil)
+        router.sheet = route
     }
 
     private func iconButton(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
@@ -99,7 +99,7 @@ struct IntermissionSheet: View {
                             PosterView(film: s.film, width: 64, corner: 6)
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("INTERMISSION").font(.caption.weight(.heavy)).tracking(1.4).foregroundStyle(Theme.accent)
-                                Text(s.film.title).font(.title3.weight(.bold)).lineLimit(2)
+                                Text(s.title).font(.title3.weight(.bold)).lineLimit(2)
                                 Text("Started \(s.started.formatted(.relative(presentation: .named)))").font(.caption).foregroundStyle(Theme.dim)
                             }
                         }
@@ -162,9 +162,9 @@ struct IntermissionSheet: View {
                             Button { pause() } label: { Label("Pause here", systemImage: "pause.fill").frame(maxWidth: .infinity) }
                                 .buttonStyle(.glassProminent).controlSize(.large)
                             Button {
-                                let film = s.film
+                                let route = s.logRoute
                                 watching.end(s.id)
-                                router.sheet = .log(film, nil)
+                                router.sheet = route
                             } label: { Label("I finished it — log it", systemImage: "checkmark").frame(maxWidth: .infinity) }
                                 .buttonStyle(.glass).controlSize(.large)
                             Button("Stop tracking this film", role: .destructive) { watching.end(s.id); dismiss() }
@@ -302,7 +302,7 @@ struct IntermissionShelf: View {
         HStack(alignment: .top, spacing: 12) {
             Button { router.open(s.film) } label: { PosterView(film: s.film, width: 74, corner: 8) }.buttonStyle(.plain)
             VStack(alignment: .leading, spacing: 6) {
-                Text(s.film.title).font(.headline).lineLimit(1)
+                Text(s.title).font(.headline).lineLimit(1)
                 Text("Stopped at \(filmClock(s.banked))\(s.runtime.map { " of \(filmClock($0))" } ?? "")")
                     .font(.caption.weight(.semibold)).foregroundStyle(Theme.dim)
                 if let stop = s.lastStop {

@@ -32,6 +32,14 @@ struct HomeView: View {
                     TMDBConnectCard()
                 }
                 IntermissionShelf()
+                if !library.showsInProgress.isEmpty {
+                    VStack(alignment: .leading, spacing: 14) {
+                        SectionHeader(title: "Continue watching", subtitle: "Shows you're partway through") {
+                            NavigationLink("See all", value: CollectionRoute.shows)
+                        }
+                        ShowProgressRow(shows: library.showsInProgress)
+                    }
+                }
                 if connected { forYou }
                 if !library.doc.watchlist.isEmpty {
                     VStack(alignment: .leading, spacing: 14) {

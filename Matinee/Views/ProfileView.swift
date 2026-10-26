@@ -216,25 +216,24 @@ struct ProfileView: View {
         let bins = library.ratingHistogram
         let peak = max(1, bins.max() ?? 1)
         return VStack(alignment: .leading, spacing: 12) {
-            SectionHeader("Ratings", subtitle: library.averageRating.map { "Average \($0.formatted(.number.precision(.fractionLength(1)))) ★ across \(library.watchedRatings.count) films" } ?? "Rate films to see your spread")
+            SectionHeader("Ratings", subtitle: library.averageRating.map { "Average score \(Int($0.rounded())) across \(library.watchedRatings.count) films" } ?? "Score films to see your spread")
             HStack(alignment: .bottom, spacing: 4) {
-                Image(systemName: "star.fill").font(.caption2).foregroundStyle(Theme.star)
                 ForEach(0..<10, id: \.self) { i in
-                    NavigationLink(value: CollectionRoute.rated(Double(i + 1) / 2)) {
+                    NavigationLink(value: CollectionRoute.rated(i)) {
                         VStack(spacing: 4) {
                             if bins[i] > 0 { Text("\(bins[i])").font(.system(size: 9, weight: .semibold)).foregroundStyle(Theme.dim) }
                             RoundedRectangle(cornerRadius: 3)
-                                .fill(bins[i] == peak && bins[i] > 0 ? Theme.star : Color.white.opacity(bins[i] > 0 ? 0.35 : 0.1))
+                                .fill(Score.color(Double(i * 10 + 5)).opacity(bins[i] == 0 ? 0.12 : bins[i] == peak ? 1 : 0.55))
                                 .frame(height: max(4, 80 * CGFloat(bins[i]) / CGFloat(peak)))
+                            Text("\(i * 10 + 10)").font(.system(size: 8, weight: .semibold, design: .rounded)).foregroundStyle(Theme.dim)
                         }
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.plain)
                     .disabled(bins[i] == 0)
                 }
-                Text("★★★★★").font(.caption2).foregroundStyle(Theme.star)
             }
-            .frame(height: 100, alignment: .bottom)
+            .frame(height: 112, alignment: .bottom)
             .padding(.horizontal, 20)
         }
     }

@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct LibraryView: View {
-    enum Pane: String, CaseIterable { case watchlist = "Watchlist", films = "Films", likes = "Likes", lists = "Lists" }
+    enum Pane: String, CaseIterable { case watchlist = "Watchlist", films = "Films", shows = "Shows", likes = "Likes", lists = "Lists" }
     @Environment(Library.self) private var library
     @Environment(Router.self) private var router
     @AppStorage("librarySection") private var section: Pane = .watchlist
@@ -22,6 +22,7 @@ struct LibraryView: View {
                 switch section {
                 case .watchlist: watchlist
                 case .films: films
+                case .shows: shows
                 case .likes: likes
                 case .lists: lists
                 }
@@ -62,7 +63,8 @@ struct LibraryView: View {
     private var glowFilms: [FilmRef] {
         switch section {
         case .watchlist: return Array(library.doc.watchlist.prefix(3))
-        case .films: return Array(library.watchedFilms.prefix(3))
+        case .films: return Array(library.watchedFilms.filter { !$0.isShow }.prefix(3))
+        case .shows: return Array((library.showsInProgress + library.watchedFilms.filter(\.isShow)).prefix(3))
         case .likes: return Array(library.doc.liked.reversed().prefix(3))
         case .lists: return library.doc.lists.compactMap(\.films.first)
         }
@@ -125,8 +127,37 @@ struct LibraryView: View {
         .padding(.horizontal, 16)
     }
 
+    @ViewBuilder private var shows: some View {
+        let watching = library.showsInProgress
+        let finished = library.watchedFilms.filter(\.isShow)
+        if watching.isEmpty && finished.isEmpty {
+            EmptyState(symbol: "tv", title: "No shows yet", message: "Tick off an episode on any show's page and it shows up here.").padding(.top, 40)
+        } else {
+            if !watching.isEmpty {
+                SectionHeader("Watching", subtitle: watching.count == 1 ? "1 show" : "\(watching.count) shows")
+                ShowProgressRow(shows: watching)
+            }
+            if !finished.isEmpty {
+                SectionHeader("Finished", subtitle: finished.count == 1 ? "1 show" : "\(finished.count) shows")
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 12) {
+                    ForEach(finished) { f in
+                        NavigationLink(value: f) {
+                            VStack(spacing: 4) {
+                                PosterView(film: f, corner: 6)
+                                SmallRating(rating: library.rating(f.id), id: f.id).frame(height: 14)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .filmContextMenu(f)
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+        }
+    }
+
     @ViewBuilder private var films: some View {
-        let list = library.watchedFilms
+        let list = library.watchedFilms.filter { !$0.isShow }
         if list.isEmpty {
             EmptyState(symbol: "eye", title: "No films yet", message: "Films you watch, rate or log appear here.").padding(.top, 40)
         } else {
@@ -137,7 +168,7 @@ struct LibraryView: View {
                         VStack(spacing: 4) {
                             PosterView(film: f, corner: 6)
                             HStack(spacing: 3) {
-                                SmallStars(rating: library.rating(f.id))
+                                SmallRating(rating: library.rating(f.id), id: f.id)
                                 if library.isLiked(f.id) { Image(systemName: "heart.fill").font(.system(size: 9)).foregroundStyle(Theme.heart) }
                             }
                             .frame(height: 14)
@@ -251,7 +282,7 @@ struct ListDetailView: View {
                                     HStack(spacing: 6) {
                                         Text(f.yearText).foregroundStyle(Theme.dim)
                                         if library.isWatched(f.id) { Image(systemName: "eye.fill").foregroundStyle(Theme.watch) }
-                                        SmallStars(rating: library.rating(f.id))
+                                        SmallRating(rating: library.rating(f.id), id: f.id)
                                     }.font(.subheadline)
                                 }
                             }

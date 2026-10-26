@@ -1,9 +1,12 @@
 import SwiftUI
 
 /// Log a viewing: when, how much you liked it, and what you thought — all on one screen.
+/// Films are scored out of 100 on a dial; shows, seasons and episodes get stars.
 struct LogSheet: View {
     let film: FilmRef
     let existing: LogEntry?
+    /// A new entry that's already filled in — an episode or season of a show.
+    var draft: LogEntry? = nil
     @Environment(Library.self) private var library
     @Environment(\.dismiss) private var dismiss
 
@@ -23,6 +26,18 @@ struct LogSheet: View {
     private var bg: Color { palette?.background ?? .black }
     private var surface: Color { palette?.surface ?? Theme.card }
 
+    private var context: LogEntry? { existing ?? draft }
+    private var isPart: Bool { context?.season != nil }
+    private var usesStars: Bool { film.isShow }
+    private var earlier: [LogEntry] {
+        library.entries(for: film.id).filter { $0.season == context?.season && $0.episode == context?.episode && $0.id != existing?.id }
+    }
+    private var title: String {
+        if existing != nil { return "Edit entry" }
+        if let c = context, c.season != nil { return c.episode == nil ? "Log season" : "Log episode" }
+        return film.isShow ? "Log show" : "Log film"
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -31,9 +46,15 @@ struct LogSheet: View {
                     VStack(spacing: 10) {
                         TitleArt(title: film.title, logo: art?.logo, aspect: art?.logoAspect ?? 3, maxWidth: 280, maxHeight: 110, fontSize: 34)
                             .frame(minHeight: 80)
+                        if let label = context?.episodeLabel {
+                            VStack(spacing: 2) {
+                                Text(label.uppercased()).font(.caption.weight(.heavy)).tracking(1.2).foregroundStyle(palette?.highlight ?? Theme.accent)
+                                if let t = context?.episodeTitle { Text(t).font(.title3.weight(.bold)).multilineTextAlignment(.center) }
+                            }
+                        }
                         HStack(spacing: 6) {
                             Text(film.yearText)
-                            if !library.entries(for: film.id).isEmpty && existing == nil {
+                            if !earlier.isEmpty && existing == nil {
                                 Text("·")
                                 Label("Seen before", systemImage: "arrow.triangle.2.circlepath").foregroundStyle(Theme.watch)
                             }
@@ -68,21 +89,20 @@ struct LogSheet: View {
 
                     // Rating + like
                     VStack(alignment: .leading, spacing: 10) {
-                        label("Rating")
-                        HStack {
-                            StarRating(rating: rating, size: 34, spacing: 7) { rating = $0 }
-                            Spacer()
-                            Button { liked.toggle(); UIImpactFeedbackGenerator(style: .medium).impactOccurred() } label: {
-                                Image(systemName: liked ? "heart.fill" : "heart")
-                                    .font(.system(size: 30))
-                                    .foregroundStyle(liked ? Theme.heart : .white.opacity(0.5))
-                                    .symbolEffect(.bounce, value: liked)
+                        label(usesStars ? "Rating" : "Score")
+                        if usesStars {
+                            HStack {
+                                StarRating(rating: rating, size: 34, spacing: 7) { rating = $0 }
+                                Spacer()
+                                if !isPart { likeButton }
                             }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(liked ? "Liked" : "Like")
+                            Text(rating.map { "\(Stars.text($0))  ·  \(ratingWord($0))" } ?? "Slide across the stars — half stars work too")
+                                .font(.footnote).foregroundStyle(.white.opacity(0.65))
+                        } else {
+                            ScoreDial(score: rating, size: 210) { rating = $0 }
+                                .frame(maxWidth: .infinity)
+                                .overlay(alignment: .topTrailing) { likeButton }
                         }
-                        Text(rating.map { "\(Stars.text($0))  ·  \(ratingWord($0))" } ?? "Slide across the stars — half stars work too")
-                            .font(.footnote).foregroundStyle(.white.opacity(0.65))
                     }
 
                     Toggle(isOn: $rewatch) {
@@ -142,7 +162,7 @@ struct LogSheet: View {
                 .ignoresSafeArea()
             }
             .scrollContentBackground(.hidden)
-            .navigationTitle(existing == nil ? "Log film" : "Edit entry")
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel", systemImage: "xmark") { dismiss() } }
@@ -165,6 +185,17 @@ struct LogSheet: View {
     }
 
     private var isCustomDate: Bool { !Calendar.current.isDateInToday(date) && !Calendar.current.isDateInYesterday(date) }
+
+    private var likeButton: some View {
+        Button { liked.toggle(); UIImpactFeedbackGenerator(style: .medium).impactOccurred() } label: {
+            Image(systemName: liked ? "heart.fill" : "heart")
+                .font(.system(size: 30))
+                .foregroundStyle(liked ? Theme.heart : .white.opacity(0.5))
+                .symbolEffect(.bounce, value: liked)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(liked ? "Liked" : "Like")
+    }
 
     private func label(_ t: String) -> some View {
         Text(t.uppercased()).font(.caption.weight(.heavy)).tracking(1.2).foregroundStyle(.white.opacity(0.65))
@@ -197,20 +228,25 @@ struct LogSheet: View {
     private func prefill() {
         if let e = existing {
             date = e.watchedOn; rating = e.rating; liked = e.liked; rewatch = e.rewatch; review = e.review; tags = e.tags
+        } else if let d = draft, let s = d.season {
+            if let n = d.episode { rating = d.rating ?? library.progress(film.id)?.episodeRatings[EpisodeKey.make(s, n)] }
+            else { rating = d.rating ?? library.seasonRating(film.id, s) }
+            rewatch = !earlier.isEmpty
         } else {
             rating = library.rating(film.id)
             liked = library.isLiked(film.id)
-            rewatch = !library.entries(for: film.id).isEmpty
+            rewatch = !earlier.isEmpty
         }
     }
 
     private func save() {
         addTag()
-        var e = existing ?? LogEntry(film: film)
+        var e = existing ?? draft ?? LogEntry(film: film)
         e.watchedOn = date; e.rating = rating; e.liked = liked; e.rewatch = rewatch
         e.review = review.trimmingCharacters(in: .whitespacesAndNewlines); e.tags = tags
         library.log(e)
-        if !liked && library.isLiked(film.id) { library.toggleLike(film) }
+        // Liking an episode is about the episode; only whole films and shows touch your likes.
+        if !isPart && !liked && library.isLiked(film.id) { library.toggleLike(film) }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         dismiss()
     }

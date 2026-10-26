@@ -53,6 +53,9 @@ enum SheetRoute: Identifiable, Equatable {
     case signIn
     case quickLog
     case intermission(UUID)
+    case logEpisode(LogEntry)                  // a new diary entry for an episode or season of a show
+    case episode(FilmRef, Episode)
+    case wrap(FilmRef, Int, Bool)               // show, season, and whether it finished the show
 
     var id: String {
         switch self {
@@ -66,6 +69,9 @@ enum SheetRoute: Identifiable, Equatable {
         case .signIn: return "signin"
         case .quickLog: return "quicklog"
         case .intermission(let id): return "intermission-\(id)"
+        case .logEpisode(let e): return "logep-\(e.film.id)-\(e.episodeLabel ?? "")"
+        case .episode(let f, let e): return "ep-\(f.id)-\(e.id)"
+        case .wrap(let f, let s, let series): return "wrap-\(f.id)-\(s)-\(series)"
         }
     }
 }

@@ -45,11 +45,11 @@ struct DiaryView: View {
                                     Button { router.sheet = .log(e.film, e) } label: { Label("Edit", systemImage: "pencil") }.tint(Theme.list)
                                 }
                                 .swipeActions(edge: .leading) {
-                                    Button { router.sheet = .log(e.film, nil) } label: { Label("Log again", systemImage: "arrow.triangle.2.circlepath") }.tint(Theme.watch)
+                                    Button { router.sheet = e.logAgainRoute } label: { Label("Log again", systemImage: "arrow.triangle.2.circlepath") }.tint(Theme.watch)
                                 }
                                 .contextMenu {
                                     Button { router.sheet = .log(e.film, e) } label: { Label("Edit entry", systemImage: "pencil") }
-                                    Button { router.sheet = .log(e.film, nil) } label: { Label("Log again", systemImage: "arrow.triangle.2.circlepath") }
+                                    Button { router.sheet = e.logAgainRoute } label: { Label("Log again", systemImage: "arrow.triangle.2.circlepath") }
                                     Button(role: .destructive) { library.delete(e) } label: { Label("Delete", systemImage: "trash") }
                                 }
                         }
@@ -88,10 +88,12 @@ struct DiaryRow: View {
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 6) {
                     Text(entry.film.title).font(.body.weight(.semibold)).lineLimit(1)
-                    Text(entry.film.yearText).font(.subheadline).foregroundStyle(Theme.dim)
+                    if let l = entry.episodeLabel { Text(l).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent) }
+                    else { Text(entry.film.yearText).font(.subheadline).foregroundStyle(Theme.dim) }
                 }
+                if let t = entry.episodeTitle { Text(t).font(.caption).foregroundStyle(Theme.dim).lineLimit(1) }
                 HStack(spacing: 8) {
-                    SmallStars(rating: entry.rating)
+                    SmallRating(rating: entry.rating, id: entry.film.id)
                     if entry.liked { Image(systemName: "heart.fill").foregroundStyle(Theme.heart) }
                     if entry.rewatch { Image(systemName: "arrow.triangle.2.circlepath").foregroundStyle(Theme.watch) }
                     if !entry.review.isEmpty { Image(systemName: "text.alignleft").foregroundStyle(Theme.dim) }
@@ -112,14 +114,17 @@ struct YearSummary: View {
     var body: some View {
         let year = Date.now.year
         let thisYear = library.doc.entries.filter { $0.watchedOn.year == year }
-        let rated = thisYear.compactMap(\.rating)
+        let films = thisYear.filter { !$0.film.isShow }
+        let rated = films.compactMap(\.rating)
+        // Episodes count when you ticked them off, diary entry or not.
+        let episodes = (library.doc.shows ?? [:]).values.reduce(0) { $0 + $1.seen.values.filter { $0.year == year }.count }
         VStack(alignment: .leading, spacing: 16) {
             Text("\(String(year)) SO FAR").font(.caption.weight(.heavy)).tracking(1.2).foregroundStyle(Theme.dim)
             HStack(spacing: 0) {
-                stat("\(thisYear.count)", "films")
+                stat("\(films.count)", "films")
+                stat("\(episodes)", "episodes")
                 stat("\(thisYear.filter(\.liked).count)", "liked")
-                stat("\(thisYear.filter(\.rewatch).count)", "rewatches")
-                stat(rated.isEmpty ? "–" : (rated.reduce(0, +) / Double(rated.count)).formatted(.number.precision(.fractionLength(1))), "avg ★")
+                stat(rated.isEmpty ? "–" : String(Int((rated.reduce(0, +) / Double(rated.count)).rounded())), "avg score")
             }
             Heatmap(dates: library.doc.entries.map(\.watchedOn))
         }
@@ -162,5 +167,12 @@ struct Heatmap: View {
         }
         .frame(height: 7 * 11 + 6 * 3)
         .accessibilityLabel("Films watched over the last six months")
+    }
+}
+
+extension LogEntry {
+    /// A fresh entry for the same thing: the film or show, or the same episode or season.
+    var logAgainRoute: SheetRoute {
+        season == nil ? .log(film, nil) : .logEpisode(LogEntry(film: film, season: season, episode: episode, episodeTitle: episodeTitle))
     }
 }

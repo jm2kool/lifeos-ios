@@ -39,8 +39,12 @@ struct FilmView: View {
                 header
                 VStack(alignment: .leading, spacing: 26) {
                     actionPanel.padding(.horizontal, 16)
+                    if let d = detail, ref.isShow {
+                        SeasonsSection(show: ref, detail: d, surface: surface, accent: palette?.highlight ?? Theme.accent)
+                    }
                     if let d = detail { info(d); WatchProvidersSection(film: ref, surface: surface) } else if failed {
-                        EmptyState(symbol: "film", title: "Couldn't load details", message: "You can still log, rate and save this film.")
+                        EmptyState(symbol: ref.isShow ? "tv" : "film", title: "Couldn't load details",
+                                   message: "You can still log, rate and save this \(ref.isShow ? "show" : "film").")
                     } else {
                         ProgressView().frame(maxWidth: .infinity).padding(.vertical, 30)
                     }
@@ -162,8 +166,9 @@ struct FilmView: View {
                 VStack(spacing: 8) {
                     HStack(spacing: 6) {
                         if let g = detail?.genres.first { Text(g.uppercased()).foregroundStyle(palette?.highlight ?? Theme.accent); Text("·") }
-                        if let y = ref.year { Text(String(y)) }
-                        if let m = detail?.runtimeMinutes, m > 0 { Text("·"); Text("\(m / 60)h \(m % 60)m") }
+                        if let y = ref.year { Text(yearSpan(y)) }
+                        if let n = detail?.regularSeasons.count, ref.isShow, n > 0 { Text("·"); Text(n == 1 ? "1 season" : "\(n) seasons") }
+                        else if let m = detail?.runtimeMinutes, m > 0 { Text("·"); Text("\(m / 60)h \(m % 60)m") }
                         if let r = detail?.communityRating, r > 0 {
                             Text("·")
                             Image(systemName: "star.fill").foregroundStyle(Theme.star)
@@ -173,6 +178,9 @@ struct FilmView: View {
                     .font(.subheadline.weight(.semibold)).foregroundStyle(.white.opacity(0.85))
                     if let dirs = detail?.directors, !dirs.isEmpty {
                         Text("Directed by **\(dirs.prefix(2).joined(separator: ", "))**")
+                            .font(.subheadline).foregroundStyle(.white.opacity(0.85))
+                    } else if let c = detail?.creators, !c.isEmpty {
+                        Text("Created by **\(c.prefix(2).joined(separator: ", "))**")
                             .font(.subheadline).foregroundStyle(.white.opacity(0.85))
                     }
                     if trailerKey != nil {
@@ -205,6 +213,13 @@ struct FilmView: View {
         .zIndex(1)   // keeps the pinned logo above the page as it scrolls
     }
 
+    /// "2008" for a film; "2008–2013" or "2019–" for a show.
+    private func yearSpan(_ y: Int) -> String {
+        guard ref.isShow, let d = detail else { return String(y) }
+        if d.hasEnded, let last = d.lastYear, last != y { return "\(y)–\(last)" }
+        return d.hasEnded ? String(y) : "\(y)–"
+    }
+
     private func playTrailer() {
         if trailerKey != nil {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -226,10 +241,18 @@ struct FilmView: View {
             }
             watchControl
             Divider().overlay(Theme.line)
-            VStack(spacing: 8) {
-                Text(library.rating(ref.id) == nil ? "Tap or slide to rate" : "Your rating")
-                    .font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.65))
-                StarRating(rating: library.rating(ref.id), size: 36, spacing: 8) { library.rate(ref, $0) }
+            if ref.isShow {
+                VStack(spacing: 8) {
+                    Text(library.rating(ref.id) == nil ? "Tap or slide to rate the show" : "Your rating for the show")
+                        .font(.caption.weight(.semibold)).foregroundStyle(.white.opacity(0.65))
+                    StarRating(rating: library.rating(ref.id), size: 36, spacing: 8) { library.rate(ref, $0) }
+                    if let avg = library.progress(ref.id)?.average() {
+                        Text("Your episodes average \(avg.stars.formatted(.number.precision(.fractionLength(1)))) ★ across \(avg.count) rated")
+                            .font(.caption).foregroundStyle(.white.opacity(0.6))
+                    }
+                }
+            } else {
+                ScoreDial(score: library.rating(ref.id), size: 200) { library.rate(ref, $0) }
             }
             GlassEffectContainer(spacing: 10) {
                 HStack(spacing: 10) {
@@ -253,12 +276,15 @@ struct FilmView: View {
 
     /// Intermission mode: start watching, pause with a note, pick up later.
     @ViewBuilder private var watchControl: some View {
-        if let s = watching.session(for: ref.id) {
+        if ref.isShow && watching.session(for: ref.id) == nil {
+            // Shows start from an episode, in the list below.
+            EmptyView()
+        } else if let s = watching.session(for: ref.id) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 10) {
                     if s.running {
                         TimelineView(.periodic(from: .now, by: 30)) { tl in
-                            Label("Watching · \(filmClock(s.elapsed(at: tl.date)))\(s.runtime.map { " of \(filmClock($0))" } ?? "")", systemImage: "play.circle.fill")
+                            Label("\(s.episodeCode ?? "Watching") · \(filmClock(s.elapsed(at: tl.date)))\(s.runtime.map { " of \(filmClock($0))" } ?? "")", systemImage: "play.circle.fill")
                                 .font(.subheadline.weight(.semibold))
                         }
                         Spacer()
@@ -321,8 +347,15 @@ struct FilmView: View {
                 ScrollView(.horizontal) {
                     HStack(spacing: 8) {
                         ForEach(d.genres, id: \.self) { g in
-                            NavigationLink(value: GenreRoute(name: g)) { Text(g).font(.footnote.weight(.semibold)) }
-                                .buttonStyle(.glass).controlSize(.small)
+                            // Film genres open their page; TV-only ones ("Reality", "Kids"…) are just labels.
+                            if Catalog.genres.contains(g) && !ref.isShow {
+                                NavigationLink(value: GenreRoute(name: g)) { Text(g).font(.footnote.weight(.semibold)) }
+                                    .buttonStyle(.glass).controlSize(.small)
+                            } else {
+                                Text(g).font(.footnote.weight(.semibold))
+                                    .padding(.horizontal, 12).padding(.vertical, 6)
+                                    .glassEffect(.regular, in: .capsule)
+                            }
                         }
                     }
                 }
@@ -374,11 +407,19 @@ struct FilmView: View {
             }
         }
 
-        if !d.countries.isEmpty || d.runtimeMinutes != nil {
+        if !d.countries.isEmpty || d.runtimeMinutes != nil || ref.isShow {
             VStack(alignment: .leading, spacing: 10) {
                 SectionHeader("Details")
                 VStack(spacing: 0) {
-                    if let m = d.runtimeMinutes, m > 0 { detailRow("Runtime", "\(m) minutes") }
+                    if ref.isShow {
+                        if let st = d.status { detailRow("Status", st == "Returning Series" ? "Still running" : st) }
+                        if !d.networks.isEmpty { detailRow(d.networks.count > 1 ? "Networks" : "Network", d.networks.prefix(3).joined(separator: ", ")) }
+                        if let n = d.nextEpisode, let date = n.airDate {
+                            detailRow("Next episode", "\(n.code) · \(date.formatted(.dateTime.day().month(.abbreviated)))")
+                        }
+                        if !d.creators.isEmpty { detailRow("Created by", d.creators.joined(separator: ", ")) }
+                    }
+                    if let m = d.runtimeMinutes, m > 0 { detailRow(ref.isShow ? "Episode length" : "Runtime", "\(m) minutes") }
                     if !d.countries.isEmpty { detailRow("Country", d.countries.prefix(3).joined(separator: ", ")) }
                     if !d.directors.isEmpty { detailRow(d.directors.count > 1 ? "Directors" : "Director", d.directors.joined(separator: ", ")) }
                 }
@@ -409,16 +450,18 @@ struct FilmView: View {
         let mine = library.entries(for: ref.id)
         if !mine.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                SectionHeader("Your diary", subtitle: mine.count == 1 ? "Watched once" : "Watched \(mine.count) times")
+                SectionHeader("Your diary", subtitle: ref.isShow ? (mine.count == 1 ? "1 entry" : "\(mine.count) entries")
+                              : mine.count == 1 ? "Watched once" : "Watched \(mine.count) times")
                 VStack(spacing: 8) {
                     ForEach(mine) { e in
                         Button { router.sheet = .log(e.film, e) } label: {
                             VStack(alignment: .leading, spacing: 6) {
                                 HStack {
                                     Text(e.watchedOn.formatted(date: .abbreviated, time: .omitted)).font(.subheadline.weight(.semibold))
+                                    if let l = e.episodeLabel { Text(l).font(.caption.weight(.bold)).foregroundStyle(palette?.highlight ?? Theme.accent) }
                                     if e.rewatch { Image(systemName: "arrow.triangle.2.circlepath").foregroundStyle(Theme.watch) }
                                     Spacer()
-                                    SmallStars(rating: e.rating)
+                                    SmallRating(rating: e.rating, id: e.film.id)
                                     if e.liked { Image(systemName: "heart.fill").foregroundStyle(Theme.heart).font(.caption) }
                                 }
                                 if !e.review.isEmpty { Text(e.review).font(.subheadline).foregroundStyle(.white.opacity(0.8)).lineLimit(4).multilineTextAlignment(.leading) }

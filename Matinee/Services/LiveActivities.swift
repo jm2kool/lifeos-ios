@@ -22,7 +22,7 @@ enum NowWatchingActivity {
         if let a = live.first(where: { $0.attributes.filmID == s.film.id }) {
             Task { await a.update(content) }
         } else {
-            let attrs = WatchActivityAttributes(filmID: s.film.id, title: s.film.title, year: s.film.year)
+            let attrs = WatchActivityAttributes(filmID: s.film.id, title: s.title, year: s.film.year)
             _ = try? Activity.request(attributes: attrs, content: content, pushType: nil)
         }
     }

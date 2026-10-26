@@ -19,6 +19,23 @@ struct WatchSession: Codable, Hashable, Identifiable {
     var banked: TimeInterval = 0          // position reached before the current run
     var stops: [Intermission] = []
     var started = Date.now
+    // When it's an episode of a show.
+    var season: Int?
+    var episode: Int?
+    var episodeTitle: String?
+
+    var episodeCode: String? {
+        guard let s = season, let e = episode else { return nil }
+        return EpisodeKey.code(s, e)
+    }
+    /// "Breaking Bad · S1 E3" for an episode, the film's title otherwise.
+    var title: String { episodeCode.map { "\(film.title) · \($0)" } ?? film.title }
+
+    /// What finishing it opens: the log sheet for the film, or for the episode.
+    var logRoute: SheetRoute {
+        guard let s = season, let e = episode else { return .log(film, nil) }
+        return .logEpisode(LogEntry(film: film, season: s, episode: e, episodeTitle: episodeTitle))
+    }
 
     var running: Bool { runStartedAt != nil }
     func elapsed(at now: Date = .now) -> TimeInterval { banked + (runStartedAt.map { max(0, now.timeIntervalSince($0)) } ?? 0) }
@@ -79,6 +96,20 @@ final class Watching {
         }
     }
 
+    /// Start an episode. A show has one session at a time, so a different episode replaces the old one.
+    func start(_ show: FilmRef, episode ep: Episode, runtime: Int?) {
+        update { s in
+            for i in s.indices where s[i].running { s[i].banked = s[i].elapsed(); s[i].runStartedAt = nil }
+            if let i = s.firstIndex(where: { $0.film.id == show.id }) {
+                if s[i].season == ep.season && s[i].episode == ep.number { s[i].runStartedAt = .now; return }
+                s.remove(at: i)
+            }
+            var session = WatchSession(film: show, runtimeMinutes: ep.runtime ?? runtime)
+            session.season = ep.season; session.episode = ep.number; session.episodeTitle = ep.name
+            s.append(session)
+        }
+    }
+
     func intermission(_ id: UUID, at position: TimeInterval, mood: String, note: String) {
         update { s in
             guard let i = s.firstIndex(where: { $0.id == id }) else { return }
@@ -90,7 +121,7 @@ final class Watching {
 
     func resume(_ id: UUID) {
         guard let film = sessions.first(where: { $0.id == id })?.film else { return }
-        start(film, runtime: nil)
+        start(film, runtime: nil)   // matches by id, so an episode session just carries on
     }
 
     @discardableResult

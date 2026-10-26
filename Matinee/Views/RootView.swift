@@ -170,7 +170,7 @@ extension View {
 struct GenreRoute: Hashable { let name: String }
 
 enum CollectionRoute: Hashable {
-    case shelf(HomeShelf), watched, liked, watchlist, tag(String), rated(Double), forYou
+    case shelf(HomeShelf), watched, liked, watchlist, tag(String), rated(Int), forYou, shows
 }
 
 struct SheetHost: View {
@@ -187,6 +187,9 @@ struct SheetHost: View {
         case .signIn: SignInView(asSheet: true)
         case .quickLog: QuickLogSheet()
         case .intermission(let id): IntermissionSheet(sessionID: id)
+        case .logEpisode(let e): LogSheet(film: e.film, existing: nil, draft: e)
+        case .episode(let f, let e): EpisodeSheet(show: f, episode: e)
+        case .wrap(let f, let s, let series): SeasonWrapSheet(show: f, season: s, series: series)
         }
     }
 }

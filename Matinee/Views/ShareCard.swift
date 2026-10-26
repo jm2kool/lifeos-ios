@@ -30,7 +30,15 @@ struct ShareCard: View {
                 }
                 HStack(spacing: 22) {
                     if let r = rating, r > 0 {
-                        Text(Stars.text(r)).font(.system(size: 84, weight: .semibold)).foregroundStyle(Theme.star)
+                        if film.isShow {
+                            Text(Stars.text(r)).font(.system(size: 84, weight: .semibold)).foregroundStyle(Theme.star)
+                        } else {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text(Score.text(r)).font(.system(size: 130, weight: .heavy, design: .rounded))
+                                Text("/100").font(.system(size: 44, weight: .bold, design: .rounded)).foregroundStyle(.white.opacity(0.6))
+                            }
+                            .foregroundStyle(Score.color(r))
+                        }
                     }
                     if liked { Image(systemName: "heart.fill").font(.system(size: 70)).foregroundStyle(Theme.heart) }
                 }

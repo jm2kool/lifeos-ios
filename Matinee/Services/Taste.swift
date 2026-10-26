@@ -133,7 +133,8 @@ final class Taste {
         var weights: [String: Double] = [:]
         for f in library.doc.watchlist { weights[f.id, default: 0] += 1 }
         for f in library.doc.liked { weights[f.id, default: 0] += 1.2 }
-        for (id, r) in library.doc.ratings {
+        for (id, score) in library.doc.ratings {
+            let r = Score.asStars(score, id: id)
             weights[id, default: 0] += r >= 4 ? 1.2 : r >= 3 ? 0.4 : r <= 2 ? -0.7 : 0
         }
         let ids = Array(weights.keys.filter { $0.hasPrefix("tmdb-") || $0.hasPrefix("tt") }.prefix(160))
@@ -229,7 +230,7 @@ final class Taste {
             let ratio = Double(likes) / Double(total)
             traits.append(ratio > 0.7 ? "Easy to please" : ratio < 0.35 ? "Tough crowd" : "Picky in the best way")
         } else if let avg = Library.shared.averageRating {
-            traits.append(avg >= 3.9 ? "Easy to please" : avg <= 2.9 ? "Tough crowd" : "Picky in the best way")
+            traits.append(avg >= 78 ? "Easy to please" : avg <= 58 ? "Tough crowd" : "Picky in the best way")
         }
         if ranked.count >= 5 { traits.append("Genre-hopper") } else { traits.append("Knows what they like") }
         if Library.shared.doc.watchlist.count >= 40 { traits.append("Watchlist hoarder") }
@@ -246,8 +247,8 @@ final class Taste {
         guard Catalog.hasToken else { return }
         loadingPicks = true
         defer { loadingPicks = false }
-        // Seeds: films you loved in the quiz, plus anything you've rated 4★ or more.
-        let rated = library.watchedFilms.filter { (library.rating($0.id) ?? 0) >= 4 && $0.id.hasPrefix("tmdb-") }
+        // Seeds: films you loved in the quiz, plus anything you've scored 80 or more.
+        let rated = library.watchedFilms.filter { (library.rating($0.id) ?? 0) >= 80 && $0.id.hasPrefix("tmdb-") }
         let seeds = Array((Array(profile.liked.suffix(6)) + Array(rated.prefix(6))).shuffled().prefix(5))
         var counts: [String: (film: FilmRef, n: Int, firstSeen: Int)] = [:]
         var order = 0

@@ -172,6 +172,211 @@ struct SmallStars: View {
     }
 }
 
+// MARK: - Scores (films, 1–100)
+
+extension Score {
+    /// Red for a miss, through marquee orange and amber, to green and mint for the best.
+    static let stops: [Color] = [Color(red: 0.95, green: 0.27, blue: 0.32), Theme.accent, Theme.star, Theme.watch,
+                                 Color(red: 0.36, green: 0.9, blue: 0.86)]
+
+    static func color(_ s: Double) -> Color {
+        switch s {
+        case ..<40: return stops[0]
+        case ..<60: return stops[1]
+        case ..<75: return stops[2]
+        case ..<90: return stops[3]
+        default: return stops[4]
+        }
+    }
+}
+
+/// Rate a film out of 100 by dragging round the dial. Every point ticks under your thumb, every ten
+/// clicks harder; − and + nudge by one. Tap the number to clear it.
+struct ScoreDial: View {
+    let score: Double?
+    var size: CGFloat = 200
+    var onChange: ((Double?) -> Void)? = nil
+    @State private var dragValue: Double?
+
+    private let sweep = 270.0
+    private let start = 135.0     // degrees, clockwise from 3 o'clock: the arc opens at the bottom
+    private var line: CGFloat { size * 0.075 }
+    private var shown: Double? { dragValue ?? score }
+    private var fraction: Double { ((shown ?? 1) - 1) / 99 }
+
+    var body: some View {
+        VStack(spacing: 6) {
+            ZStack {
+                ticks
+                Circle()
+                    .trim(from: 0, to: sweep / 360)
+                    .stroke(Color.white.opacity(0.1), style: StrokeStyle(lineWidth: line, lineCap: .round))
+                    .rotationEffect(.degrees(start))
+                if shown != nil {
+                    Circle()
+                        .trim(from: 0, to: max(0.004, fraction * sweep / 360))
+                        .stroke(AngularGradient(colors: Score.stops, center: .center, startAngle: .degrees(0), endAngle: .degrees(sweep)),
+                                style: StrokeStyle(lineWidth: line, lineCap: .round))
+                        .rotationEffect(.degrees(start))
+                        .shadow(color: Score.color(shown ?? 0).opacity(0.6), radius: 10)
+                    knob
+                }
+                centre
+            }
+            .padding(line * 1.9)
+            .frame(width: size, height: size)
+            .contentShape(Circle())
+            .gesture(drag)
+            .animation(dragValue == nil ? .snappy(duration: 0.3) : nil, value: shown)
+
+            if onChange != nil {
+                HStack(spacing: 18) {
+                    nudge("minus", -1)
+                    Text(shown.map(Score.word) ?? "Drag round to rate")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(shown.map(Score.color) ?? .white.opacity(0.6))
+                        .frame(minWidth: 120)
+                        .contentTransition(.opacity)
+                    nudge("plus", 1)
+                }
+                .padding(.top, -size * 0.16)
+            }
+        }
+        .accessibilityElement()
+        .accessibilityLabel("Score out of 100")
+        .accessibilityValue(score.map { "\(Int($0))" } ?? "Not rated")
+        .accessibilityAdjustableAction { dir in
+            let r = score ?? 50
+            switch dir {
+            case .increment: onChange?(min(100, r + 1))
+            case .decrement: onChange?(max(1, r - 1))
+            @unknown default: break
+            }
+        }
+    }
+
+    private var centre: some View {
+        VStack(spacing: 0) {
+            if let v = shown {
+                Text("\(Int(v))")
+                    .font(.system(size: size * 0.3, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .contentTransition(.numericText(value: v))
+                    .foregroundStyle(.white)
+                Text("/ 100").font(.system(size: size * 0.065, weight: .semibold, design: .rounded)).foregroundStyle(.white.opacity(0.5))
+            } else {
+                Image(systemName: "hand.draw").font(.system(size: size * 0.16)).foregroundStyle(.white.opacity(0.4))
+                Text("RATE").font(.system(size: size * 0.065, weight: .heavy)).tracking(1.5).foregroundStyle(.white.opacity(0.45)).padding(.top, 4)
+            }
+        }
+    }
+
+    private var ticks: some View {
+        GeometryReader { g in
+            let r = min(g.size.width, g.size.height) / 2
+            ForEach(0...10, id: \.self) { i in
+                let a = Angle.degrees(start + sweep * Double(i) / 10).radians
+                let lit = (shown ?? 0) >= Double(max(1, i * 10))
+                Capsule()
+                    .fill(lit ? Score.color(Double(i * 10)) : Color.white.opacity(0.18))
+                    .frame(width: 2, height: i % 5 == 0 ? line * 0.9 : line * 0.55)
+                    .rotationEffect(.radians(a + .pi / 2))
+                    .position(x: r + cos(a) * (r + line * 1.3), y: r + sin(a) * (r + line * 1.3))
+            }
+        }
+    }
+
+    private var knob: some View {
+        GeometryReader { g in
+            let r = min(g.size.width, g.size.height) / 2
+            let a = Angle.degrees(start + sweep * fraction).radians
+            Circle()
+                .fill(.white)
+                .frame(width: line * 1.5, height: line * 1.5)
+                .shadow(color: .black.opacity(0.4), radius: 4, y: 1)
+                .scaleEffect(dragValue != nil ? 1.25 : 1)
+                .position(x: r + cos(a) * r, y: r + sin(a) * r)
+        }
+    }
+
+    private var drag: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { g in
+                guard onChange != nil, !(dragValue == nil && isCentre(g.startLocation) && g.translation == .zero) else { return }
+                let v = value(at: g.location)
+                if v != dragValue {
+                    if let old = dragValue, Int(old) / 10 != Int(v) / 10 { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
+                    else { UISelectionFeedbackGenerator().selectionChanged() }
+                    dragValue = v
+                }
+            }
+            .onEnded { g in
+                guard onChange != nil else { return }
+                // A tap on the number clears the score; it never rates.
+                if g.translation.width.magnitude < 4 && g.translation.height.magnitude < 4 && isCentre(g.location) {
+                    dragValue = nil
+                    if score != nil { onChange?(nil); UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+                    return
+                }
+                let v = value(at: g.location)
+                dragValue = nil
+                onChange?(v)
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }
+    }
+
+    private func isCentre(_ p: CGPoint) -> Bool { hypot(p.x - size / 2, p.y - size / 2) < size * 0.28 }
+
+    /// Angle of the touch round the dial → 1…100. Touches in the gap at the bottom stick to the nearer end.
+    private func value(at p: CGPoint) -> Double {
+        let deg = Double(atan2(p.y - size / 2, p.x - size / 2)) * 180 / .pi
+        var rel = deg - start
+        while rel < 0 { rel += 360 }
+        while rel >= 360 { rel -= 360 }
+        let f = rel <= sweep ? rel / sweep : (rel < sweep + (360 - sweep) / 2 ? 1 : 0)
+        return (1 + f * 99).rounded()
+    }
+
+    private func nudge(_ symbol: String, _ step: Double) -> some View {
+        Button {
+            let v = min(100, max(1, (score ?? 50) + step))
+            onChange?(v)
+            UISelectionFeedbackGenerator().selectionChanged()
+        } label: {
+            Image(systemName: symbol).font(.system(size: 14, weight: .bold)).frame(width: 34, height: 34)
+                .contentShape(Circle())
+                .glassEffect(.regular.interactive(), in: .circle)
+        }
+        .buttonStyle(.plain)
+        .buttonRepeatBehavior(.enabled)
+        .accessibilityLabel(step > 0 ? "Up one" : "Down one")
+    }
+}
+
+/// A film's score as a small coloured pill: "87".
+struct ScorePill: View {
+    let score: Double
+    var fontSize: CGFloat = 11
+    var body: some View {
+        Text(Score.text(score))
+            .font(.system(size: fontSize, weight: .heavy, design: .rounded)).monospacedDigit()
+            .foregroundStyle(Score.color(score))
+            .padding(.horizontal, fontSize * 0.45).padding(.vertical, fontSize * 0.1)
+            .background(Score.color(score).opacity(0.18), in: .capsule)
+    }
+}
+
+/// A rating in whichever scale its title uses: a score pill for films, stars for shows and episodes.
+struct SmallRating: View {
+    let rating: Double?
+    let id: String
+    var body: some View {
+        if let r = rating, r > 0 {
+            if FilmRef.isShowID(id) { SmallStars(rating: r) } else { ScorePill(score: r) }
+        }
+    }
+}
+
 // MARK: - Layout helpers
 
 struct SectionHeader<Trailing: View>: View {
