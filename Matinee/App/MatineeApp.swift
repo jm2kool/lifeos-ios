@@ -33,7 +33,12 @@ struct MatineeApp: App {
                 .background(Color.black)
         }
         .onChange(of: phase) { _, p in
-            if p == .active { Task { await auth.refreshIfNeeded() } }
+            if p == .active {
+                Task {
+                    await auth.refreshIfNeeded()
+                    await library.reconcileWithCloud()
+                }
+            }
         }
     }
 }

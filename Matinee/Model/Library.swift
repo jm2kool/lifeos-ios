@@ -373,14 +373,33 @@ final class Library {
             try? await Task.sleep(for: .seconds(2))
             guard !Task.isCancelled else { return }
             await Auth.shared.pushLibrary(data)
+            await publishProfile()
         }
     }
 
-    /// After signing in: take whichever copy (phone or account) was changed most recently.
+    /// Your public profile (name, photo, favourites, Currently watching) for everyone to see.
+    /// Sent only when one of those changed.
+    func publishProfile() async {
+        guard let id = Auth.shared.session?.userID else { return }
+        if await Auth.shared.pushProfile(PublicProfile.mine(self, userID: id)) == .handleTaken {
+            toast = Toast(text: "@\(Handle.clean(doc.profile.handle) ?? "") is taken — pick another username", symbol: "at")
+        }
+    }
+
+    @ObservationIgnored private var reconciling = false
+
+    /// Take whichever copy (phone or account) was changed most recently. Runs after signing in, at launch
+    /// and whenever the app comes back, so changes from another phone arrive and a push that failed
+    /// (offline, app closed too soon) gets another go.
     func reconcileWithCloud() async {
-        guard Auth.shared.signedIn else { return }
+        guard Auth.shared.signedIn, !reconciling else { return }
+        reconciling = true
+        defer { reconciling = false }
+        defer { Task { await publishProfile() } }
         if let data = await Auth.shared.pullLibrary(), var remote = try? Self.decoder.decode(LibraryDoc.self, from: data) {
             remote.migrate()
+            // Saved dates keep whole seconds only, so a copy within a second of this one is the same copy.
+            if abs(remote.updatedAt.timeIntervalSince(doc.updatedAt)) < 1 { return }
             if remote.updatedAt > doc.updatedAt || doc.entries.isEmpty && doc.watchlist.isEmpty {
                 var r = remote
                 if r.taste == nil { r.taste = doc.taste }

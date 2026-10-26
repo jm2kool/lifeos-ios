@@ -44,10 +44,15 @@ struct ProfileView: View {
                             Button("Edit profile", systemImage: "pencil") { router.sheet = .editProfile }.buttonStyle(.glass)
                             if !auth.signedIn {
                                 Button("Sign in to sync", systemImage: "icloud") { router.sheet = .signIn }.buttonStyle(.glassProminent)
+                            } else if let h = Handle.clean(p.handle), let url = URL(string: "matinee://u/\(h)") {
+                                ShareLink(item: url) { Label("Share profile", systemImage: "square.and.arrow.up") }.buttonStyle(.glass)
                             }
                         }
                     }
                     .padding(.top, 4)
+                    Text(auth.signedIn ? "Everyone can see your name, photo, favourites and Currently watching. Your diary, watchlist and ratings stay private."
+                         : "Sign in to share your profile. Until then it stays on this iPhone.")
+                        .font(.caption).foregroundStyle(Theme.dim).multilineTextAlignment(.center).padding(.horizontal, 30)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.top, 10)
@@ -62,6 +67,13 @@ struct ProfileView: View {
                 .padding(.vertical, 16)
                 .glassEffect(.regular, in: .rect(cornerRadius: 24))
                 .padding(.horizontal, 16)
+
+                if !library.currentlyWatching.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        SectionHeader("Currently watching", subtitle: "On your public profile")
+                        WatchingNowRow(items: PublicProfile.mine(library, userID: "").currentlyWatching)
+                    }
+                }
 
                 favorites(shows: false)
 
@@ -282,8 +294,10 @@ struct ProfileEditor: View {
                 }
                 .listRowBackground(Color.clear)
                 Section("Name") { TextField("Your name", text: $p.name) }
-                Section("Username") {
+                Section {
                     TextField("username", text: $p.handle).textInputAutocapitalization(.never).autocorrectionDisabled()
+                } header: { Text("Username") } footer: {
+                    Text("People find you by this. Letters, numbers, dots, dashes and underscores.")
                 }
                 Section("Bio") { TextField("A line about your taste", text: $p.bio, axis: .vertical).lineLimit(2...5) }
             }
@@ -293,7 +307,12 @@ struct ProfileEditor: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel", systemImage: "xmark") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save", systemImage: "checkmark") { library.setProfile(p); dismiss() }.buttonStyle(.glassProminent)
+                    Button("Save", systemImage: "checkmark") {
+                        p.handle = Handle.clean(p.handle) ?? ""
+                        library.setProfile(p)
+                        dismiss()
+                    }
+                    .buttonStyle(.glassProminent)
                 }
             }
             .onAppear { p = library.doc.profile }
@@ -445,4 +464,118 @@ final class TiltMotion {
     }
 
     func stop() { manager.stopDeviceMotionUpdates() }
+}
+
+// MARK: - Public profiles
+
+/// Posters of the shows someone has pinned, each with the furthest episode they've seen.
+struct WatchingNowRow: View {
+    let items: [PublicProfile.WatchingNow]
+
+    var body: some View {
+        ScrollView(.horizontal) {
+            LazyHStack(alignment: .top, spacing: 12) {
+                ForEach(items) { w in
+                    NavigationLink(value: w.show) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            PosterView(film: w.show, width: 104)
+                            Text(w.show.title).font(.caption.weight(.semibold)).lineLimit(1)
+                            if let last = w.lastSeen {
+                                Text("Up to \(last)").font(.caption2.weight(.semibold)).foregroundStyle(Theme.accent)
+                            }
+                        }
+                        .frame(width: 104, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .filmContextMenu(w.show)
+                }
+            }
+            .padding(.horizontal, 20)
+        }
+        .scrollIndicators(.hidden)
+        .scrollClipDisabled()
+    }
+}
+
+/// Four posters in a row, as on a profile.
+struct FavoritesRow: View {
+    let films: [FilmRef]
+    var body: some View {
+        HStack(spacing: 10) {
+            ForEach(0..<4, id: \.self) { i in
+                if i < films.count {
+                    NavigationLink(value: films[i]) { PosterView(film: films[i], corner: 8) }.buttonStyle(.plain)
+                } else {
+                    RoundedRectangle(cornerRadius: 8).fill(Theme.card).aspectRatio(2/3, contentMode: .fit)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+}
+
+/// Someone else's profile: who they are, what they're watching and their favourites.
+struct PublicProfileView: View {
+    let handle: String
+    @Environment(Auth.self) private var auth
+    @State private var profile: PublicProfile?
+    @State private var loaded = false
+
+    var body: some View {
+        ScrollView {
+            if let p = profile {
+                VStack(alignment: .leading, spacing: 28) {
+                    VStack(spacing: 10) {
+                        Avatar(profile: p.asProfile, size: 92)
+                        Text(p.name.isEmpty ? "Film fan" : p.name).font(.title.weight(.bold))
+                        if let h = p.handle { Text("@\(h)").font(.subheadline).foregroundStyle(Theme.dim) }
+                        if !p.bio.isEmpty { Text(p.bio).multilineTextAlignment(.center).foregroundStyle(.white.opacity(0.85)).padding(.horizontal, 30) }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 10)
+                    if !p.currentlyWatching.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            SectionHeader("Currently watching")
+                            WatchingNowRow(items: p.currentlyWatching)
+                        }
+                    }
+                    if !p.favorites.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            SectionHeader("Favourite films")
+                            FavoritesRow(films: p.favorites)
+                        }
+                    }
+                    if !p.favoriteShows.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            SectionHeader("Favourite shows")
+                            FavoritesRow(films: p.favoriteShows)
+                        }
+                    }
+                    if p.currentlyWatching.isEmpty && p.favorites.isEmpty && p.favoriteShows.isEmpty {
+                        EmptyState(symbol: "film", title: "Nothing here yet", message: "No favourites or shows picked yet.")
+                    }
+                }
+                .padding(.bottom, 40)
+            } else if loaded {
+                EmptyState(symbol: "person.crop.circle.badge.questionmark", title: "No one called @\(handle)",
+                           message: auth.configured ? "Check the username and try again." : "Add your account server in Settings to see profiles.")
+                    .padding(.top, 60)
+            } else {
+                ProgressView().padding(.top, 80)
+            }
+        }
+        .ambientBackground(Array(((profile?.favorites ?? []) + (profile?.favoriteShows ?? [])).prefix(3)))
+        .navigationTitle(profile?.handle.map { "@\($0)" } ?? "Profile")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let h = profile?.handle, let url = URL(string: "matinee://u/\(h)") {
+                ToolbarItem(placement: .topBarTrailing) { ShareLink(item: url) { Image(systemName: "square.and.arrow.up") } }
+            }
+        }
+        .refreshable { profile = await auth.profile(handle: handle) }
+        .task {
+            profile = await auth.profile(handle: handle)
+            loaded = true
+        }
+    }
 }

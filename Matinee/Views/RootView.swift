@@ -79,8 +79,18 @@ struct RootView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in pickFromWatchlist() }
-        // Widgets and the Live Activity open films with matinee://film/<id>?title=…
+        // Widgets and the Live Activity open films with matinee://film/<id>?title=…; shared profiles are matinee://u/<username>.
         .onOpenURL { url in
+            if url.scheme == "matinee", url.host == "u" {
+                let handle = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                guard !handle.isEmpty else { return }
+                router.sheet = nil
+                router.closeRandom()
+                router.tab = .search
+                router.searchPath = NavigationPath()
+                router.searchPath.append(ProfileRoute(handle: handle))
+                return
+            }
             guard url.scheme == "matinee", url.host == "film" else { return }
             let id = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             guard !id.isEmpty else { return }
@@ -163,6 +173,7 @@ extension View {
             .navigationDestination(for: FilmList.self) { ListDetailView(listID: $0.id) }
             .navigationDestination(for: GenreRoute.self) { GenreView(genre: $0.name) }
             .navigationDestination(for: CollectionRoute.self) { CollectionView(route: $0) }
+            .navigationDestination(for: ProfileRoute.self) { PublicProfileView(handle: $0.handle) }
     }
 }
 

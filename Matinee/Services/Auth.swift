@@ -237,6 +237,56 @@ final class Auth {
         return try? JSONSerialization.data(withJSONObject: doc)
     }
 
+    // MARK: Public profiles (the profiles table, see README)
+
+    enum ProfilePush { case ok, handleTaken, failed }
+
+    /// Publish how you appear to others. Only sent when it changed since the last successful push.
+    @discardableResult
+    func pushProfile(_ profile: PublicProfile) async -> ProfilePush {
+        guard let body = try? JSONEncoder().encode(profile) else { return .failed }
+        if body == lastProfilePush { return .ok }
+        await refreshIfNeeded()
+        guard let s = session, configured, profile.userID == s.userID else { return .failed }
+        var req = URLRequest(url: URL(string: base + "/rest/v1/profiles?on_conflict=user_id")!)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(anonKey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(s.accessToken)", forHTTPHeaderField: "Authorization")
+        req.setValue("resolution=merge-duplicates,return=minimal", forHTTPHeaderField: "Prefer")
+        req.httpBody = body
+        guard let (_, resp) = try? await URLSession.shared.data(for: req), let code = (resp as? HTTPURLResponse)?.statusCode else { return .failed }
+        if (200..<300).contains(code) { lastProfilePush = body; return .ok }
+        return code == 409 ? .handleTaken : .failed
+    }
+    @ObservationIgnored private var lastProfilePush: Data?
+
+    /// People by username or name. Readable without signing in.
+    func searchProfiles(_ q: String) async -> [PublicProfile] {
+        let term = q.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "@", with: "")
+            .filter { $0.isLetter || $0.isNumber || " _.-".contains($0) }
+        guard !term.isEmpty else { return [] }
+        let pattern = "*\(term)*"
+        return await profiles(["or": "(handle.ilike.\(pattern),name.ilike.\(pattern))", "limit": "20",
+                               "select": "user_id,handle,name,bio,avatar_url,avatar_data"])
+    }
+
+    func profile(handle: String) async -> PublicProfile? {
+        guard let h = Handle.clean(handle) else { return nil }
+        return await profiles(["handle": "eq.\(h)", "limit": "1"]).first
+    }
+
+    private func profiles(_ query: [String: String]) async -> [PublicProfile] {
+        guard configured, var c = URLComponents(string: base + "/rest/v1/profiles") else { return [] }
+        c.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
+        guard let url = c.url else { return [] }
+        var req = URLRequest(url: url)
+        req.setValue(anonKey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(session?.accessToken ?? anonKey)", forHTTPHeaderField: "Authorization")
+        guard let (data, resp) = try? await URLSession.shared.data(for: req), (resp as? HTTPURLResponse)?.statusCode == 200 else { return [] }
+        return (try? JSONDecoder().decode([PublicProfile].self, from: data)) ?? []
+    }
+
     static func randomString(_ n: Int) -> String {
         let chars = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
         var bytes = [UInt8](repeating: 0, count: n)

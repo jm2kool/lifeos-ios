@@ -2,8 +2,10 @@ import SwiftUI
 
 struct SearchView: View {
     @Environment(Library.self) private var library
+    @Environment(Auth.self) private var auth
     @State private var query = ""
     @State private var results: [FilmRef] = []
+    @State private var people: [PublicProfile] = []
     @State private var loading = false
     @State private var error: String?
     @AppStorage("tmdbToken") private var token = ""
@@ -43,13 +45,19 @@ struct SearchView: View {
                         }
                         .padding(.horizontal, 16)
                     }
-                } else if loading && results.isEmpty {
+                } else if loading && results.isEmpty && people.isEmpty {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
-                } else if let error, results.isEmpty {
+                } else if let error, results.isEmpty && people.isEmpty {
                     EmptyState(symbol: "wifi.exclamationmark", title: "Search failed", message: error).padding(.top, 40)
-                } else if results.isEmpty {
+                } else if results.isEmpty && people.isEmpty {
                     EmptyState(symbol: "magnifyingglass", title: "Nothing found", message: "Try a different spelling or the original title.").padding(.top, 40)
                 } else {
+                    if !people.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            SectionHeader("People")
+                            ForEach(people) { PersonRow(person: $0) }
+                        }
+                    }
                     LazyVStack(spacing: 0) {
                         ForEach(results) { f in SearchRow(film: f) }
                     }
@@ -59,20 +67,46 @@ struct SearchView: View {
         }
         .ambientBackground(Array(results.prefix(3)))
         .navigationTitle("Search")
-        .searchable(text: $query, prompt: "Films and shows, e.g. Past Lives")
+        .searchable(text: $query, prompt: "Films, shows and @people")
         .onSubmit(of: .search) { library.rememberSearch(query) }
         .task(id: query) {
             let q = query
-            guard !q.trimmingCharacters(in: .whitespaces).isEmpty else { results = []; return }
+            guard !q.trimmingCharacters(in: .whitespaces).isEmpty else { results = []; people = []; return }
             try? await Task.sleep(for: .milliseconds(350))
             guard !Task.isCancelled else { return }
             loading = true; defer { loading = false }
+            let found = await auth.searchProfiles(q)
+            guard !Task.isCancelled else { return }
+            withAnimation(.smooth) { people = found }
+            // "@name" looks for people only.
+            if q.hasPrefix("@") { results = []; error = nil; return }
             do {
                 let r = try await Catalog.search(q)
                 guard !Task.isCancelled else { return }
                 withAnimation(.smooth) { results = r; error = nil }
             } catch { self.error = error.localizedDescription }
         }
+    }
+}
+
+struct PersonRow: View {
+    let person: PublicProfile
+    var body: some View {
+        NavigationLink(value: ProfileRoute(handle: person.handle ?? "")) {
+            HStack(spacing: 14) {
+                Avatar(profile: person.asProfile, size: 46)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(person.name.isEmpty ? "Film fan" : person.name).font(.body.weight(.semibold))
+                    if let h = person.handle { Text("@\(h)").font(.subheadline).foregroundStyle(Theme.dim) }
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(Theme.dim)
+            }
+            .padding(.horizontal, 20).padding(.vertical, 8)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .disabled(person.handle == nil)
     }
 }
 

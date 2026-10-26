@@ -72,6 +72,32 @@ create policy "own library" on public.libraries
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 ```
 
+### Optional: public profiles
+
+Your name, photo, favourite films and shows, and Currently watching go into a `profiles` table that anyone can read, so people can find you in Search (type `@username`) or open a `matinee://u/username` link. Your diary, watchlist and ratings stay in the private `libraries` row.
+
+```sql
+create table if not exists public.profiles (
+  user_id uuid primary key references auth.users on delete cascade,
+  handle text check (handle is null or handle ~ '^[a-z0-9_.-]{1,30}$'),
+  name text not null default '',
+  bio text not null default '',
+  avatar_url text,
+  avatar_data text,
+  favorites jsonb not null default '[]'::jsonb,
+  favorite_shows jsonb not null default '[]'::jsonb,
+  currently_watching jsonb not null default '[]'::jsonb,
+  updated_at timestamptz not null default now()
+);
+create unique index if not exists profiles_handle_key on public.profiles (handle);
+alter table public.profiles enable row level security;
+create policy "profiles are public" on public.profiles for select to anon, authenticated using (true);
+create policy "insert own profile" on public.profiles for insert to authenticated with check ((select auth.uid()) = user_id);
+create policy "update own profile" on public.profiles for update to authenticated
+  using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+create policy "delete own profile" on public.profiles for delete to authenticated using ((select auth.uid()) = user_id);
+```
+
 ## Project layout
 
 ```
