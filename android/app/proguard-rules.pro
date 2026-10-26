@@ -1,0 +1,9 @@
+-keepattributes *Annotation*, InnerClasses
+-dontnote kotlinx.serialization.**
+-keep,includedescriptorclasses class com.jm2kool.matinee.**$$serializer { *; }
+-keepclassmembers class com.jm2kool.matinee.** { *** Companion; }
+-keepclasseswithmembers class com.jm2kool.matinee.** { kotlinx.serialization.KSerializer serializer(...); }
+-dontwarn okhttp3.internal.platform.**
+-dontwarn org.conscrypt.**
+-dontwarn org.bouncycastle.**
+-dontwarn org.openjsse.**

@@ -6,3 +6,8 @@ DerivedData/
 .DS_Store
 Payload/
 *.ipa
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.kotlin/

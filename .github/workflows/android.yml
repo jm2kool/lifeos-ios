@@ -1,0 +1,95 @@
+name: Build APK
+
+on:
+  push:
+    branches: [matinee-android]
+    paths: ['android/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build the release APK
+        env:
+          TMDB_TOKEN: ${{ secrets.TMDB_TOKEN }}
+        run: |
+          if [ -n "$TMDB_TOKEN" ]; then echo "TMDB_TOKEN: set"; else echo "TMDB_TOKEN: not set"; fi
+          ./gradlew --no-daemon assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk ../Matinee.apk
+          ls -lh ../Matinee.apk
+
+      - name: Upload .apk
+        uses: actions/upload-artifact@v4
+        with:
+          name: Matinee-apk
+          path: Matinee.apk
+
+      - name: Publish the release
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLIC_REPO: ${{ !github.event.repository.private }}
+        run: |
+          TAG=matinee-android-latest; NAME="Matinee for Android (latest build)"
+          NOTES="Android build of ${GITHUB_SHA::7}: K-dramas, C-dramas, Thai and Japanese dramas. Download Matinee.apk on the phone and open it to install."
+          # The .apk carries your TMDB token, so in a public repo it goes into a draft release only you can see.
+          for id in $(gh api repos/$GITHUB_REPOSITORY/releases --jq ".[] | select(.name==\"$NAME\") | .id"); do
+            gh api -X DELETE repos/$GITHUB_REPOSITORY/releases/$id >/dev/null || true
+          done
+          git push origin ":refs/tags/$TAG" 2>/dev/null || true
+          if [ "$PUBLIC_REPO" = "true" ]; then FLAGS="--draft"; else FLAGS="--latest=false"; fi
+          gh release create $TAG Matinee.apk --title "$NAME" --target $GITHUB_SHA --notes "$NOTES" $FLAGS
+
+      # Screenshots of the release build on an emulator, with sample data.
+      - name: Enable KVM
+        continue-on-error: true
+        working-directory: .
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Screenshots
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          working-directory: android
+          script: bash ci/screens.sh ../Matinee.apk
+
+      - name: Publish the preview
+        continue-on-error: true
+        working-directory: android
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=matinee-android-preview
+          gh release delete $TAG --yes --cleanup-tag 2>/dev/null || true
+          gh release create $TAG out/* --target $GITHUB_SHA --title "Matinee for Android preview (emulator)" \
+            --notes "Screenshots from an Android emulator, using sample data." --prerelease --latest=false
