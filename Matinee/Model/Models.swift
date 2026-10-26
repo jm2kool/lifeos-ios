@@ -178,6 +178,7 @@ struct LibraryDoc: Codable {
     var favoriteShows: [FilmRef]?             // up to four shows, shown on your profile
     var currentlyWatching: [FilmRef]?         // shows pinned to the top of Home
     var comfort: [String]?                    // ids of comfort films and shows: watched, never rated
+    var watching: [WatchSession]?             // films and episodes in progress, with their intermissions
 
     /// Ratings used to be 0.5–5 stars: films first, then shows, seasons and episodes. They're all scores out of 100 now.
     mutating func migrate() {

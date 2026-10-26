@@ -324,6 +324,17 @@ final class Library {
     /// Quiet batch changes (imports): no toast per film.
     func apply(_ change: (inout LibraryDoc) -> Void) { mutate(nil, change) }
 
+    /// Films in progress ride along with the library so they sync to your account. Quiet: no toast,
+    /// no undo, and the shared timestamp moves so the newest phone wins.
+    func storeWatching(_ sessions: [WatchSession]) {
+        guard sessions != (doc.watching ?? []) else { return }
+        var d = doc
+        d.watching = sessions
+        d.updatedAt = .now
+        doc = d
+        persist()
+    }
+
     /// Your film character rides along with the library so it syncs to your account.
     func storeTaste(_ t: TasteProfile) {
         var d = doc
@@ -406,6 +417,7 @@ final class Library {
                 doc = r
                 persist(sync: false)
                 if let t = r.taste { Taste.shared.adopt(t) }
+                if let w = r.watching { Watching.shared.adopt(w) }
                 return
             }
         }

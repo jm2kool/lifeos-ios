@@ -68,7 +68,7 @@ func filmClock(_ t: TimeInterval) -> String {
     return h > 0 ? "\(h)h \(m % 60)m" : "\(m)m"
 }
 
-/// Films you're in the middle of. Kept on the phone in their own file.
+/// Films you're in the middle of. Kept on the phone in their own file, and synced with your library.
 @Observable @MainActor
 final class Watching {
     static let shared = Watching()
@@ -82,6 +82,22 @@ final class Watching {
 
     private init() {
         if let data = try? Data(contentsOf: Self.fileURL), let s = try? Library.decoder.decode([WatchSession].self, from: data) { sessions = s }
+        else if let s = Library.shared.doc.watching { sessions = s }
+        // Sessions saved before they synced: send them up once.
+        if Library.shared.doc.watching == nil && !sessions.isEmpty { Library.shared.storeWatching(sessions) }
+    }
+
+    /// Sessions from your account (another phone was used more recently). Running timers carry on,
+    /// since they count from when they started.
+    func adopt(_ s: [WatchSession]) {
+        guard s != sessions else { return }
+        withAnimation(.smooth) { sessions = s }
+        save()
+        NowWatchingActivity.sync(sessions)
+    }
+
+    private func save() {
+        if let data = try? Library.encoder.encode(sessions) { try? data.write(to: Self.fileURL, options: .atomic) }
     }
 
     /// The session to show in the Now Watching bar: the running one, else the most recent intermission.
@@ -145,8 +161,9 @@ final class Watching {
         var s = sessions
         change(&s)
         withAnimation(.smooth) { sessions = s }
-        if let data = try? Library.encoder.encode(sessions) { try? data.write(to: Self.fileURL, options: .atomic) }
+        save()
         NowWatchingActivity.sync(sessions)
+        Library.shared.storeWatching(sessions)
     }
 
     func seedDemo(_ film: FilmRef) {
