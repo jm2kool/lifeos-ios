@@ -60,36 +60,3 @@ jobs:
           git push origin ":refs/tags/$TAG" 2>/dev/null || true
           if [ "$PUBLIC_REPO" = "true" ]; then FLAGS="--draft"; else FLAGS="--latest=false"; fi
           gh release create $TAG Matinee.apk --title "$NAME" --target $GITHUB_SHA --notes "$NOTES" $FLAGS
-
-      # Screenshots of the release build on an emulator, with sample data.
-      - name: Enable KVM
-        continue-on-error: true
-        working-directory: .
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: Screenshots
-        continue-on-error: true
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          target: google_apis
-          arch: x86_64
-          profile: pixel_6
-          disable-animations: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          working-directory: android
-          script: bash ci/screens.sh ../Matinee.apk
-
-      - name: Publish the preview
-        continue-on-error: true
-        working-directory: android
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          TAG=matinee-android-preview
-          gh release delete $TAG --yes --cleanup-tag 2>/dev/null || true
-          gh release create $TAG out/* --target $GITHUB_SHA --title "Matinee for Android preview (emulator)" \
-            --notes "Screenshots from an Android emulator, using sample data." --prerelease --latest=false
