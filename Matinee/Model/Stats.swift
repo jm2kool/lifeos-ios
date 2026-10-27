@@ -38,13 +38,14 @@ struct LibraryStats {
     var showsFinished: Int
 
     @MainActor init(_ library: Library, facts: FactStore) {
-        films = library.watchedFilms.filter { !$0.isShow }
+        let films = library.watchedFilms.filter { !$0.isShow }
+        self.films = films
         let f = films.compactMap { facts[$0.id] }
         known = f.count
         // Each viewing counts toward time watched, rewatches included.
         let viewings = library.doc.entries.filter { !$0.film.isShow }
         let viewed = Set(viewings.map(\.film.id))
-        minutes = viewings.reduce(0) { $0 + (facts[$1.film.id]?.runtime ?? 0) }
+        var minutes = viewings.reduce(0) { $0 + (facts[$1.film.id]?.runtime ?? 0) }
             + films.filter { !viewed.contains($0.id) }.reduce(0) { $0 + (facts[$1.id]?.runtime ?? 0) }
         genres = tally(f.flatMap(\.genres), top: 10)
         decades = tally(films.compactMap { ($0.year ?? facts[$0.id]?.year).map { "\($0 / 10 * 10)s" } }, top: 12)
@@ -56,6 +57,7 @@ struct LibraryStats {
         episodes = shows.reduce(0) { $0 + $1.seen.count }
         showsFinished = library.watchedFilms.filter(\.isShow).count
         minutes += shows.reduce(0) { $0 + $1.seen.count * (facts[$1.show.id]?.runtime ?? 0) }
+        self.minutes = minutes
     }
 }
 
@@ -88,8 +90,10 @@ struct YearReview {
     @MainActor init(year: Int, library: Library, facts: FactStore) {
         self.year = year
         let cal = Calendar.current
-        entries = library.doc.entries.filter { $0.watchedOn.year == year && !$0.film.isShow }
+        // A local copy, so the closures below don't capture self before it's fully set up.
+        let entries = library.doc.entries.filter { $0.watchedOn.year == year && !$0.film.isShow }
             .sorted { ($0.watchedOn, $0.createdAt) < ($1.watchedOn, $1.createdAt) }
+        self.entries = entries
         filmCount = Set(entries.map(\.film.id)).count
         var best: [String: (FilmRef, Double)] = [:]
         for e in entries { if let r = e.rating, r > (best[e.film.id]?.1 ?? 0) { best[e.film.id] = (e.film, r) } }

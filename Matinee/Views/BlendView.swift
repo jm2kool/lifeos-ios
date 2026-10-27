@@ -166,12 +166,13 @@ struct TasteMatch {
         let na = sqrt(a.values.reduce(0.0) { $0 + $1 * $1 }), nb = sqrt(b.values.reduce(0.0) { $0 + $1 * $1 })
         let cosine = na > 0 && nb > 0 ? dot / (na * nb) : 0.5
         let theirIDs = Set(theirs.map(\.id))
-        sharedFavorites = mine.filter { theirIDs.contains($0.id) }
         var seen = Set<String>()
-        sharedFavorites = sharedFavorites.filter { seen.insert($0.id).inserted }
-        myGenres = a.sorted { $0.value > $1.value }.map(\.key)
-        theirGenres = b.sorted { $0.value > $1.value }.map(\.key)
-        sharedGenres = Array(myGenres.prefix(5).filter { theirGenres.prefix(5).contains($0) }.prefix(3))
+        sharedFavorites = mine.filter { theirIDs.contains($0.id) && seen.insert($0.id).inserted }
+        let mineSorted = a.sorted { $0.value > $1.value }.map(\.key)
+        let theirsSorted = b.sorted { $0.value > $1.value }.map(\.key)
+        myGenres = mineSorted
+        theirGenres = theirsSorted
+        sharedGenres = Array(mineSorted.prefix(5).filter { theirsSorted.prefix(5).contains($0) }.prefix(3))
         let score = 25 + 65 * cosine + Double(sharedFavorites.count) * 6 + Double(min(bothWant, 5)) * 2
         percent = Int(min(99, max(1, score)).rounded())
     }

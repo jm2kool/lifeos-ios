@@ -30,6 +30,18 @@ Matinee is not affiliated with Letterboxd.
 | Profile favourites | **Up to eight favourite films and shows (Settings → Edit favourites) + ratings spread** | Tap any bar in your ratings chart to see those films. |
 | Tags | **Tag suggestions** | Your past tags come up as chips while you log. |
 | Import | **Letterboxd CSV import** | Bring your whole history across from Settings. |
+| Year in Review | **Year in Review, any time** | Your top films, hours watched, busiest month, genres, director of the year, habits and shows, a card at a time, with a story-sized image to share. It sits on Home through December and early January. |
+| Stats | **Stats page** | Genres, decades, countries, and the directors and actors you watch most. Facts are cached on the phone. |
+| Director/actor pages | **Filmography progress** | Tap anyone in the cast & crew: "You've seen 9 of 13 Nolan films", with the ones you haven't seen dimmed. |
+| — | **Rewatch chart** | When you've rated a film more than once, see how your score changed. |
+| — | **Reminders** | A notification on the day the next episode of a show you're watching airs, and the day a watchlist film (or one you tapped **Remind me** on) comes out. |
+| — | **Siri and Shortcuts** | "Ask Matinee what to watch", "Pick a film in Matinee", "Log a film in Matinee", "What's next on my show in Matinee", "Show my year in Matinee", "Scan a ticket in Matinee". They work from the Action button too. |
+| — | **Apple Intelligence, on device** | **Ask Matinee** picks from your watchlist to suit a mood ("something short and funny"). **Write it up** turns your notes into a review. It also reads film titles off tickets, writes your Year in Review summary, and describes taste matches. It all runs on the iPhone; without Apple Intelligence a simpler matcher takes over. |
+| Activity / following | **Friends** | Follow people, see what they've logged on Home and in the Friends feed. Your diary is shared only if you switch it on. |
+| — | **Blend** | On anyone's profile: a taste-match score, films you both want to see, films you'd both like, and a swipe deck where saving one they saved too is a match. |
+| — | **Watch parties** | Start one from a film you're watching and share the link. Play and pause stay in step for everyone, Live Activity included. |
+| — | **Scan a ticket** | Photograph a cinema ticket (Diary → 🎟). Matinee reads the film and the date and opens the log sheet. |
+| — | **Spotlight** | Your films, shows and watchlist show up in iPhone search. |
 
 ## Install
 
@@ -103,10 +115,23 @@ create policy "delete own profile" on public.profiles for delete to authenticate
 ```
 Matinee/App        App entry, tabs, routes
 Matinee/Model      FilmRef, LogEntry, FilmList, and the Library store (JSON on disk + cloud sync)
-Matinee/Services   Catalog (TMDB), Auth (Supabase + PKCE), Letterboxd importer
+Matinee/Services   Catalog (TMDB), Auth (Supabase + PKCE), Letterboxd importer, Social and Party (friends, watch
+                   parties), Reminders, Spotlight, FilmFacts (stats cache), Intelligence (on-device Foundation Models)
+Matinee/App        Also Intents.swift: Siri and Shortcuts
 Matinee/Views      Home, Film, Log sheet, Diary, Library, Lists, Profile, Search, Sign-in, Settings
 project.yml        XcodeGen spec. CI runs `xcodegen generate` and then builds.
 ```
+
+### Optional: friends, the feed, Blend and watch parties
+
+Following, the friends feed, a shared watchlist for Blend and watch parties need a few more tables. Copy the SQL from **Settings → Friends → Copy setup SQL** and run it in Supabase's SQL editor (it's safe to run again). It adds:
+
+- `follows`: who follows whom (public, and you can only change your own follows)
+- `activity`: diary entries you choose to share (off until you switch on **Share my diary with followers**)
+- `parties`: watch-party timers, found by their six-character code
+- `watchlist` and `persona` columns on `profiles`: your watchlist is published only if you switch on **Show my watchlist for Blend**
+
+Older servers without these columns keep working: the app falls back to publishing the profile without them.
 
 ### Optional: the watchlist widget on sideloaded builds
 
