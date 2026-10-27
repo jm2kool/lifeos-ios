@@ -257,7 +257,11 @@ enum Finder {
             }
         }
         // Several clues pointing at the same title make it likelier.
-        for (id, n) in votes where n > 1 { scored[id]?.confidence = min(1, (scored[id]?.confidence ?? 0) + 0.1 * Double(n - 1)) }
+        for (id, n) in votes where n > 1 {
+            guard var m = scored[id] else { continue }
+            m.confidence = min(1, m.confidence + 0.1 * Double(n - 1))
+            scored[id] = m
+        }
         return scored.values.sorted { $0.confidence > $1.confidence }.prefix(6).map { $0 }
     }
 
