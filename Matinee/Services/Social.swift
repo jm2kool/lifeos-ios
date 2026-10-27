@@ -22,8 +22,9 @@ enum Supa {
 
     /// The server answered "no such table", so the SQL in Settings hasn't been run yet.
     static func missingTable(_ status: Int, _ data: Data) -> Bool {
-        status == 404 || (status == 400 && String(decoding: data, as: UTF8.self).contains("PGRST205"))
-            || String(decoding: data, as: UTF8.self).contains("42P01")
+        guard !(200..<300).contains(status) else { return false }
+        let body = String(decoding: data, as: UTF8.self)
+        return status == 404 || body.contains("PGRST205") || body.contains("42P01")
     }
 }
 
@@ -68,7 +69,8 @@ final class Social {
     // MARK: Following
 
     func refreshFollowing() async {
-        guard let me, let r = await Auth.shared.rest("GET", "follows", query: ["follower": "eq.\(me)", "select": "followee"]) else { return }
+        guard let me else { following = []; feed = []; loadedFollowing = false; return }
+        guard let r = await Auth.shared.rest("GET", "follows", query: ["follower": "eq.\(me)", "select": "followee"]) else { return }
         if Supa.missingTable(r.status, r.data) { needsSetup = true; return }
         guard r.status == 200, let rows = try? JSONSerialization.jsonObject(with: r.data) as? [[String: Any]] else { return }
         needsSetup = false
@@ -130,7 +132,7 @@ final class Social {
     // MARK: Feed
 
     func loadFeed() async {
-        guard Auth.shared.signedIn else { return }
+        guard Auth.shared.signedIn else { following = []; feed = []; loadedFollowing = false; return }
         if !loadedFollowing { await refreshFollowing() }
         guard !following.isEmpty else { feed = []; return }
         loadingFeed = true

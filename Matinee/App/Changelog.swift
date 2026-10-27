@@ -53,6 +53,15 @@ struct Release: Identifiable, Hashable {
 enum Changelog {
     /// Newest first.
     static let releases: [Release] = [
+        Release(version: "1.2.1", date: "27 October 2026", headline: "A sharper finder, and a round of fixes", items: [
+            ChangeItem(symbol: "link", title: "The finder follows short links",
+                       detail: "vm.tiktok.com, t.co, bit.ly and other short links are opened first, so more posts can be read. When several clues point to the same title it ranks higher, and every guess is checked at once, so results come back faster.",
+                       action: .finder),
+            ChangeItem(symbol: "person.3.fill", title: "Watch parties stay in step",
+                       detail: "Starting or resuming a party film from anywhere — the Home shelf, the Now Watching bar, an episode — now plays it for everyone. Stopping tracking a film leaves its party, and a host stopping ends it."),
+            ChangeItem(symbol: "wrench.and.screwdriver.fill", title: "Fixes",
+                       detail: "The Lock Screen timer now shows the right episode when you move on to the next one. Signing out clears your friends feed. No more doubled posters behind the sign-in screen."),
+        ]),
         Release(version: "1.2", date: "27 October 2026", headline: "Find anything, and everyone who made it", items: [
             ChangeItem(symbol: "sparkle.magnifyingglass", title: "What's this from?",
                        detail: "Paste a YouTube Short, X post, TikTok, Reel or Reddit link — or describe a scene, or pick a screenshot. Matinee reads the post and the text in the video frame, Apple Intelligence works out the film or show on your iPhone, and TMDB confirms it.",

@@ -11,7 +11,8 @@ enum NowWatchingActivity {
         let current = sessions.first(where: \.running)
             ?? sessions.max { ($0.lastStop?.when ?? $0.started) < ($1.lastStop?.when ?? $1.started) }
         let live = Activity<WatchActivityAttributes>.activities
-        for a in live where a.attributes.filmID != current?.film.id {
+        // A different film, or the next episode of the same show (its title is fixed once started): end it.
+        for a in live where a.attributes.filmID != current?.film.id || a.attributes.title != current?.title {
             Task { await a.end(nil, dismissalPolicy: .immediate) }
         }
         guard let s = current else { return }
@@ -19,7 +20,7 @@ enum NowWatchingActivity {
                                                          mood: s.lastStop?.mood, note: s.lastStop?.note)
         // A paused film fades from the Lock Screen after a few hours.
         let content = ActivityContent(state: state, staleDate: s.running ? nil : Date.now.addingTimeInterval(4 * 3600))
-        if let a = live.first(where: { $0.attributes.filmID == s.film.id }) {
+        if let a = live.first(where: { $0.attributes.filmID == s.film.id && $0.attributes.title == s.title }) {
             Task { await a.update(content) }
         } else {
             let attrs = WatchActivityAttributes(filmID: s.film.id, title: s.title, year: s.film.year)

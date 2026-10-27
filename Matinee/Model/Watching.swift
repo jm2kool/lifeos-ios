@@ -122,6 +122,7 @@ final class Watching {
                 s.append(WatchSession(film: film, runtimeMinutes: runtime))
             }
         }
+        if let id = sessions.first(where: { $0.film.id == film.id })?.id { tellParty(id) }
     }
 
     /// Start an episode. A show has one session at a time, so a different episode replaces the old one.
@@ -136,6 +137,7 @@ final class Watching {
             session.season = ep.season; session.episode = ep.number; session.episodeTitle = ep.name
             s.append(session)
         }
+        if let id = sessions.first(where: { $0.film.id == show.id && $0.party != nil })?.id { tellParty(id) }
     }
 
     func intermission(_ id: UUID, at position: TimeInterval, mood: String, note: String) {
@@ -184,14 +186,15 @@ final class Watching {
 
     func resume(_ id: UUID) {
         guard let film = sessions.first(where: { $0.id == id })?.film else { return }
-        start(film, runtime: nil)   // matches by id, so an episode session just carries on
-        tellParty(id)
+        start(film, runtime: nil)   // matches by id, so an episode session just carries on (and tells any party)
     }
 
     @discardableResult
     func end(_ id: UUID) -> WatchSession? {
         let s = sessions.first { $0.id == id }
         update { $0.removeAll { $0.id == id } }
+        // Done with the film: leave its watch party (the host's ends it for everyone).
+        if let code = s?.party { Task { await Party.shared.leave(code) } }
         return s
     }
 

@@ -83,7 +83,8 @@ enum Finder {
     }
 
     /// Read a link: titles, captions, hashtags and the thumbnail's text.
-    static func read(_ url: URL, step: (Step) -> Void) async -> ClipInfo {
+    static func read(_ link: URL, step: (Step) -> Void) async -> ClipInfo {
+        let url = await resolve(link)
         var info = ClipInfo(url: url, platform: platform(url))
         step(.reading(info.platform))
         switch info.platform {
@@ -102,6 +103,16 @@ enum Finder {
             }
         }
         return info
+    }
+
+    /// Short links (vm.tiktok.com, t.co, bit.ly…) point somewhere else; follow them first.
+    private static func resolve(_ url: URL) async -> URL {
+        let shorteners = ["vm.tiktok.com", "vt.tiktok.com", "t.co", "bit.ly", "tinyurl.com", "fb.watch", "redd.it", "on.soundcloud.com"]
+        guard let host = url.host?.lowercased(), shorteners.contains(host) || (host.hasSuffix("tiktok.com") && url.path.hasPrefix("/t/")) else { return url }
+        var req = URLRequest(url: url, timeoutInterval: 10)
+        req.setValue(browser, forHTTPHeaderField: "User-Agent")
+        guard let (_, resp) = try? await URLSession.shared.data(for: req), let final = resp.url else { return url }
+        return final
     }
 
     private static func youTubeID(_ url: URL) -> String? {
@@ -219,10 +230,21 @@ enum Finder {
 
         step(.checking)
         var scored: [String: FinderMatch] = [:]
+        var votes: [String: Int] = [:]
         let lowerEvidence = evidence.lowercased()
-        for g in guesses {
-            guard let found = try? await Catalog.search(g.title), !found.isEmpty else { continue }
+        // Look every guess up at once.
+        var results: [Int: [FilmRef]] = [:]
+        await withTaskGroup(of: (Int, [FilmRef]).self) { group in
+            for (i, g) in guesses.enumerated() {
+                let title = g.title
+                group.addTask { (i, (try? await Catalog.search(title)) ?? []) }
+            }
+            for await (i, found) in group { results[i] = found }
+        }
+        for (i, g) in guesses.enumerated() {
+            guard let found = results[i], !found.isEmpty else { continue }
             for (rank, f) in found.prefix(3).enumerated() {
+                if rank == 0 { votes[f.id, default: 0] += 1 }
                 var c = g.weight - Double(rank) * 0.2
                 if let y = g.year, let fy = f.year { c += abs(y - fy) <= 1 ? 0.15 : -0.2 }
                 if let show = g.show { c += show == f.isShow ? 0.05 : -0.1 }
@@ -234,6 +256,8 @@ enum Finder {
                 }
             }
         }
+        // Several clues pointing at the same title make it likelier.
+        for (id, n) in votes where n > 1 { scored[id]?.confidence = min(1, (scored[id]?.confidence ?? 0) + 0.1 * Double(n - 1)) }
         return scored.values.sorted { $0.confidence > $1.confidence }.prefix(6).map { $0 }
     }
 
@@ -253,10 +277,11 @@ enum Finder {
         for m in matches(#"([A-Z][\w'’:&\-. ]{1,50}?)\s*\((19|20)\d{2}\)"#, in: text) { add(m) }
         // "Quoted titles"
         for m in matches(#"[“"‘']([^“”"‘’']{2,50})[”"’']"#, in: text) { add(m) }
-        // Lines like "Title: Scene | Movie | Clip"
-        for line in text.split(separator: "\n") {
+        // Lines like "Title: Scene | Movie | Clip" — not who posted it, or what you typed.
+        for line in text.split(separator: "\n")
+        where !line.hasPrefix("Posted by:") && !line.hasPrefix("What the person says") && !line.hasPrefix("Hashtags:") {
             let body = line.split(separator: ":", maxSplits: 1).last.map(String.init) ?? String(line)
-            for part in body.split(whereSeparator: { "|–—•".contains($0) }) where part.split(separator: " ").count <= 7 { add(String(part)) }
+            for part in body.split(whereSeparator: { "|–—•/".contains($0) }) where part.split(separator: " ").count <= 7 { add(String(part)) }
         }
         // #BreakingBad → Breaking Bad
         for tag in hashtags(in: text) { add(splitCamel(tag)) }

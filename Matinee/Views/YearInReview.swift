@@ -368,7 +368,7 @@ struct YearShareCard: View {
     static func render(_ r: YearReview) async -> UIImage? {
         var imgs: [UIImage] = []
         for t in r.topRated.prefix(5) {
-            if let url = t.film.largePoster ?? t.film.poster, let img = await ImageStore.shared.load(url) { imgs.append(img) }
+            if let url = t.film.poster, let img = await ImageStore.shared.load(url) { imgs.append(img) }
         }
         let renderer = ImageRenderer(content: YearShareCard(review: r, posters: imgs))
         renderer.scale = 1

@@ -101,7 +101,8 @@ struct SearchView: View {
             // "@name" looks for people only.
             if q.hasPrefix("@") { results = []; crew = []; error = nil; return }
             // A pasted link goes to the AI finder.
-            if let url = URL(string: q.trimmingCharacters(in: .whitespaces)), url.scheme?.hasPrefix("http") == true {
+            if let url = URL(string: q.trimmingCharacters(in: .whitespaces)), url.scheme?.hasPrefix("http") == true,
+               url.host?.contains(".") == true, q.count > 16 {
                 query = ""
                 router.sheet = .finder(url.absoluteString)
                 return

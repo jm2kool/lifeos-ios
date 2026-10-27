@@ -63,7 +63,8 @@ struct SignInView: View {
         .task {
             async let a = try? Catalog.shelf(.trending)
             async let b = try? Catalog.shelf(.topRated)
-            let all = ((await a) ?? []) + ((await b) ?? [])
+            var seen = Set<String>()
+            let all = (((await a) ?? []) + ((await b) ?? [])).filter { seen.insert($0.id).inserted }
             withAnimation(.easeIn(duration: 0.8)) { posters = all }
         }
         .onChange(of: auth.signedIn) { _, v in if v && asSheet { dismiss() } }

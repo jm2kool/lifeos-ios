@@ -133,6 +133,7 @@ struct RootView: View {
         .onChange(of: showSplash) { _, on in if !on { afterSplash() } }
         .onChange(of: auth.needsOnboarding) { _, v in showSignIn = v }
         .onChange(of: auth.session?.userID) { _, id in
+            Task { await Social.shared.refreshFollowing() }
             guard id != nil else { return }
             library.adoptAccountProfile()
             Task { await library.reconcileWithCloud() }
