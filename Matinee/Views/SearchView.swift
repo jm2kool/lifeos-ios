@@ -6,6 +6,8 @@ struct SearchView: View {
     @State private var query = ""
     @State private var results: [FilmRef] = []
     @State private var people: [PublicProfile] = []
+    @State private var crew: [Person] = []
+    @Environment(Router.self) private var router
     @State private var loading = false
     @State private var error: String?
     @AppStorage("tmdbToken") private var token = ""
@@ -16,6 +18,7 @@ struct SearchView: View {
                 if token.isEmpty && !Catalog.hasToken {
                     TMDBConnectCard()
                 } else if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                    FinderCard()
                     if !library.doc.recentSearches.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
                             SectionHeader(title: "Recent") { Button("Clear") { library.clearSearches() } }
@@ -45,12 +48,16 @@ struct SearchView: View {
                         }
                         .padding(.horizontal, 16)
                     }
-                } else if loading && results.isEmpty && people.isEmpty {
+                } else if loading && results.isEmpty && people.isEmpty && crew.isEmpty {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 60)
-                } else if let error, results.isEmpty && people.isEmpty {
+                } else if let error, results.isEmpty && people.isEmpty && crew.isEmpty {
                     EmptyState(symbol: "wifi.exclamationmark", title: "Search failed", message: error).padding(.top, 40)
-                } else if results.isEmpty && people.isEmpty {
+                } else if results.isEmpty && people.isEmpty && crew.isEmpty {
                     EmptyState(symbol: "magnifyingglass", title: "Nothing found", message: "Try a different spelling or the original title.").padding(.top, 40)
+                    Button { router.sheet = .finder(query) } label: {
+                        Label("Ask the AI finder instead", systemImage: "sparkle.magnifyingglass").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.glass).padding(.horizontal, 40)
                 } else {
                     if !people.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
@@ -58,8 +65,21 @@ struct SearchView: View {
                             ForEach(people) { PersonRow(person: $0) }
                         }
                     }
+                    // People who make films: when the search is a name, they come first.
+                    if !crew.isEmpty && (results.isEmpty || crew[0].name.localizedCaseInsensitiveContains(query.trimmingCharacters(in: .whitespaces))) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            SectionHeader("Cast & crew")
+                            PeopleRow(people: crew)
+                        }
+                    }
                     LazyVStack(spacing: 0) {
                         ForEach(results) { f in SearchRow(film: f) }
+                    }
+                    if !crew.isEmpty && !(results.isEmpty || crew[0].name.localizedCaseInsensitiveContains(query.trimmingCharacters(in: .whitespaces))) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            SectionHeader("Cast & crew")
+                            PeopleRow(people: crew)
+                        }
                     }
                 }
             }
@@ -67,11 +87,11 @@ struct SearchView: View {
         }
         .ambientBackground(Array(results.prefix(3)))
         .navigationTitle("Search")
-        .searchable(text: $query, prompt: "Films, shows and @people")
+        .searchable(text: $query, prompt: "Films, shows, people, @friends or a link")
         .onSubmit(of: .search) { library.rememberSearch(query) }
         .task(id: query) {
             let q = query
-            guard !q.trimmingCharacters(in: .whitespaces).isEmpty else { results = []; people = []; return }
+            guard !q.trimmingCharacters(in: .whitespaces).isEmpty else { results = []; people = []; crew = []; return }
             try? await Task.sleep(for: .milliseconds(350))
             guard !Task.isCancelled else { return }
             loading = true; defer { loading = false }
@@ -79,11 +99,17 @@ struct SearchView: View {
             guard !Task.isCancelled else { return }
             withAnimation(.smooth) { people = found }
             // "@name" looks for people only.
-            if q.hasPrefix("@") { results = []; error = nil; return }
+            if q.hasPrefix("@") { results = []; crew = []; error = nil; return }
+            // A pasted link goes to the AI finder.
+            if let url = URL(string: q.trimmingCharacters(in: .whitespaces)), url.scheme?.hasPrefix("http") == true {
+                query = ""
+                router.sheet = .finder(url.absoluteString)
+                return
+            }
             do {
-                let r = try await Catalog.search(q)
+                let r = try await Catalog.searchAll(q)
                 guard !Task.isCancelled else { return }
-                withAnimation(.smooth) { results = r; error = nil }
+                withAnimation(.smooth) { results = r.films; crew = r.people; error = nil }
             } catch { self.error = error.localizedDescription }
         }
     }

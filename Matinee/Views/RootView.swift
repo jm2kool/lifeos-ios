@@ -45,10 +45,13 @@ struct RootView: View {
         .fullScreenCover(isPresented: Bindable(taste).showQuiz) {
             TasteQuizView().environment(library).environment(taste).environment(router)
         }
+        .fullScreenCover(item: $router.tour) { mode in
+            TourView(mode: mode) { action in finishTour(action) }
+        }
         .onChange(of: showSignIn) { _, open in
-            // Right after sign-in (or choosing no account), offer the swipe quiz once.
-            if !open && taste.shouldOffer {
-                Task { try? await Task.sleep(for: .seconds(0.6)); taste.showQuiz = true }
+            // Right after sign-in (or choosing no account): the tour, then the swipe quiz.
+            if !open {
+                Task { try? await Task.sleep(for: .seconds(0.6)); afterSignIn() }
             }
         }
         .overlay(alignment: .bottom) {
@@ -82,6 +85,13 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in pickFromWatchlist() }
         // Widgets and the Live Activity open films with matinee://film/<id>?title=…; shared profiles are matinee://u/<username>.
         .onOpenURL { url in
+            // matinee://find?url=<link> — from a Shortcut in the share sheet.
+            if url.scheme == "matinee", url.host == "find" {
+                let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "url" || $0.name == "q" }?.value
+                router.closeRandom()
+                router.sheet = .finder(q)
+                return
+            }
             if url.scheme == "matinee", url.host == "party" {
                 let code = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).uppercased()
                 guard !code.isEmpty else { return }
@@ -145,15 +155,31 @@ struct RootView: View {
         .task { await previewMode() }
     }
 
-    /// Sign-in (first launch) and the taste quiz wait until the opening titles finish.
+    /// Sign-in (first launch), the tour and the taste quiz wait until the opening titles finish.
     private func afterSplash() {
+        Tour.prepare()
         showSignIn = auth.needsOnboarding
-        if !showSignIn && taste.shouldOffer { taste.showQuiz = true }
+        if !showSignIn { afterSignIn() }
+    }
+
+    /// The welcome tour (or What's New after an update), then the swipe quiz once.
+    private func afterSignIn() {
+        guard router.tour == nil, !taste.showQuiz else { return }
+        if let t = Tour.pending { router.tour = t } else if taste.shouldOffer { taste.showQuiz = true }
+    }
+
+    private func finishTour(_ action: TourAction?) {
+        Tour.markSeen()
+        router.tour = nil
+        Task {
+            try? await Task.sleep(for: .seconds(0.5))
+            if let action { action.perform() } else if taste.shouldOffer { taste.showQuiz = true }
+        }
     }
 
     /// Shaking works anywhere except over sign-in, the quiz and sheets.
     private func pickFromWatchlist() {
-        guard !showSplash, !showSignIn, !taste.showQuiz, router.sheet == nil else { return }
+        guard !showSplash, !showSignIn, !taste.showQuiz, router.tour == nil, router.sheet == nil else { return }
         router.pickRandom(from: library)
     }
 
@@ -237,6 +263,7 @@ struct SheetHost: View {
         case .scanTicket: TicketScanSheet()
         case .ask: AskMatineeSheet()
         case .party(let c): PartySheet(code: c)
+        case .finder(let t): FinderView(initial: t)
         }
     }
 }

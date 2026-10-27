@@ -63,12 +63,33 @@ struct WatchProviders: Hashable {
     var isEmpty: Bool { stream.isEmpty && free.isEmpty && rent.isEmpty && buy.isEmpty }
 }
 
-/// Someone's filmography from TMDB.
+/// One title in someone's filmography, with every job they did on it ("Director, Writer").
+struct Credit: Hashable, Identifiable {
+    var film: FilmRef
+    var roles: [String]
+    var popularity: Double
+    var released: Bool
+    var id: String { film.id }
+}
+
+/// A slice of someone's work: Acting, Directing, Writing, Producing…
+struct CreditGroup: Hashable, Identifiable {
+    var name: String
+    var credits: [Credit]
+    var id: String { name }
+}
+
+/// Someone's films and shows from TMDB, in front of and behind the camera.
 struct PersonCredits: Hashable {
     var person: Person
     var biography: String?
-    var directed: [FilmRef]
-    var acted: [FilmRef]
+    var knownFor: String
+    var birthday: String?
+    var birthplace: String?
+    var groups: [CreditGroup]
+
+    /// The first group to show: what they're known for.
+    var mainGroup: CreditGroup? { groups.first }
 }
 
 enum HomeShelf: String, CaseIterable, Identifiable {
@@ -127,6 +148,13 @@ enum Catalog {
         let q = q.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return [] }
         return try await TMDB.search(q)
+    }
+
+    /// Films, shows and people in one search.
+    static func searchAll(_ q: String) async throws -> (films: [FilmRef], people: [Person]) {
+        let q = q.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return ([], []) }
+        return try await TMDB.searchAll(q)
     }
 
     static func genre(_ g: String) async throws -> [FilmRef] {
@@ -421,10 +449,45 @@ enum TMDB {
 
     /// Films and shows together, in TMDB's order of relevance (people are left out).
     static func search(_ q: String) async throws -> [FilmRef] {
-        try await call("/search/multi", ["query": q, "include_adult": "false"])["results"].array
-            .filter { $0["media_type"].str == "movie" || $0["media_type"].str == "tv" }
-            .compactMap(ref)
+        try await searchAll(q).films
     }
+
+    /// Films, shows and people, in TMDB's order of relevance.
+    static func searchAll(_ q: String) async throws -> (films: [FilmRef], people: [Person]) {
+        let results = try await call("/search/multi", ["query": q, "include_adult": "false"])["results"].array
+        let films = results.filter { $0["media_type"].str == "movie" || $0["media_type"].str == "tv" }.compactMap(ref)
+        let people = results.filter { $0["media_type"].str == "person" }.compactMap(personRef)
+        return (films, people)
+    }
+
+    /// A person from a search result or credit list: "Actor · Inception, Interstellar".
+    static func personRef(_ m: J) -> Person? {
+        guard let id = m["id"].int, let name = m["name"].str else { return nil }
+        let dept = m["known_for_department"].str.map(departmentName) ?? ""
+        let known = m["known_for"].array.compactMap { $0["title"].str ?? $0["name"].str }.prefix(2).joined(separator: ", ")
+        return Person(id: "tmdbp-\(id)", name: name, role: [dept, known].filter { !$0.isEmpty }.joined(separator: " · "),
+                      photo: img(m["profile_path"].str, "w185"))
+    }
+
+    /// TMDB's department names, as people say them.
+    static func departmentName(_ d: String) -> String {
+        switch d {
+        case "Acting": return "Actor"
+        case "Directing": return "Director"
+        case "Writing": return "Writer"
+        case "Production": return "Producer"
+        case "Sound": return "Music & sound"
+        case "Camera": return "Cinematography"
+        case "Editing": return "Editor"
+        case "Art": return "Production design"
+        case "Costume & Make-Up": return "Costume & make-up"
+        case "Visual Effects": return "Visual effects"
+        default: return d
+        }
+    }
+
+    /// The jobs worth showing on a film's page, in the order they appear.
+    static let keyJobs = ["Screenplay", "Writer", "Story", "Novel", "Producer", "Original Music Composer", "Director of Photography", "Editor"]
 
     static func detail(_ id: String) async throws -> FilmDetail {
         if FilmRef.isShowID(id) { return try await showDetail(id) }
@@ -448,6 +511,7 @@ enum TMDB {
             return Person(id: "tmdbp-\(pid)", name: name, role: "Director", photo: img(c["profile_path"].str, "w185"))
         }
         d.releaseDate = m["release_date"].str.flatMap { airDate.date(from: $0) }
+        d.crew = crew(m["credits"]["crew"].array)
         d.cast = m["credits"]["cast"].array.prefix(30).compactMap { c in
             guard let pid = c["id"].int, let name = c["name"].str else { return nil }
             return Person(id: "tmdbp-\(pid)", name: name, role: c["character"].str ?? "", photo: img(c["profile_path"].str, "w185"))
@@ -471,6 +535,17 @@ enum TMDB {
         d.runtimeMinutes = m["episode_run_time"].array.compactMap(\.int).first ?? m["last_episode_to_air"]["runtime"].int
         d.genres = m["genres"].array.compactMap { $0["name"].str?.replacingOccurrences(of: "Sci-Fi & Fantasy", with: "Sci-Fi") }
         d.creators = m["created_by"].array.compactMap { $0["name"].str }
+        d.directorPeople = m["created_by"].array.compactMap { c in
+            guard let pid = c["id"].int, let name = c["name"].str else { return nil }
+            return Person(id: "tmdbp-\(pid)", name: name, role: "Creator", photo: img(c["profile_path"].str, "w185"))
+        }
+        // Shows list each person's jobs together.
+        d.crew = Array(m["aggregate_credits"]["crew"].array.compactMap { c -> Person? in
+            guard let pid = c["id"].int, let name = c["name"].str else { return nil }
+            let jobs = c["jobs"].array.compactMap { $0["job"].str }.filter { keyJobs.contains($0) || $0 == "Director" }
+            guard !jobs.isEmpty, (c["total_episode_count"].int ?? 0) >= 3 else { return nil }
+            return Person(id: "tmdbp-\(pid)", name: name, role: jobs.prefix(2).joined(separator: ", "), photo: img(c["profile_path"].str, "w185"))
+        }.prefix(12))
         d.networks = m["networks"].array.compactMap { $0["name"].str }
         d.status = m["status"].str
         d.lastYear = m["last_air_date"].str.flatMap { Int($0.prefix(4)) }
@@ -493,26 +568,68 @@ enum TMDB {
         return d
     }
 
-    /// A person's films: the ones they directed and the ones they acted in. Released films only, and
-    /// for acting, ones enough people have rated (so a filmography isn't padded with cameos nobody saw).
+    /// Key crew on a film, one entry per person with all their key jobs: "Screenplay, Producer".
+    static func crew(_ list: [J]) -> [Person] {
+        var order: [String] = [], jobs: [String: [String]] = [:], people: [String: Person] = [:]
+        for c in list {
+            guard let pid = c["id"].int, let name = c["name"].str, let job = c["job"].str, keyJobs.contains(job) else { continue }
+            let id = "tmdbp-\(pid)"
+            if people[id] == nil { order.append(id); people[id] = Person(id: id, name: name, role: "", photo: img(c["profile_path"].str, "w185")) }
+            if !(jobs[id] ?? []).contains(job) { jobs[id, default: []].append(job) }
+        }
+        let rank = { (id: String) in jobs[id]?.compactMap { keyJobs.firstIndex(of: $0) }.min() ?? 99 }
+        return order.sorted { rank($0) < rank($1) }.prefix(12).compactMap { id in
+            guard var p = people[id] else { return nil }
+            p.role = (jobs[id] ?? []).joined(separator: ", ")
+            return p
+        }
+    }
+
+    /// Everything someone worked on, films and shows, grouped by what they did. Talk shows, award shows and
+    /// other appearances as themselves go in their own group at the end.
     static func person(_ id: String) async throws -> PersonCredits {
         let num = id.replacingOccurrences(of: "tmdbp-", with: "")
-        let m = try await call("/person/\(num)", ["append_to_response": "movie_credits"])
+        let m = try await call("/person/\(num)", ["append_to_response": "combined_credits"])
         guard let name = m["name"].str else { throw CatalogError.http(404) }
-        let person = Person(id: id, name: name, role: m["known_for_department"].str ?? "", photo: img(m["profile_path"].str, "w342"))
-        func films(_ list: [J], minVotes: Int) -> [FilmRef] {
-            var seen = Set<String>()
-            return list.filter { j in
-                guard let d = j["release_date"].str.flatMap({ airDate.date(from: $0) }), d <= .now else { return false }
-                return (j["vote_count"].int ?? 0) >= minVotes
-            }
-            .compactMap(ref)
-            .filter { seen.insert($0.id).inserted }
-            .sorted { ($0.year ?? 0, $0.title) < ($1.year ?? 0, $1.title) }
+        let dept = m["known_for_department"].str ?? "Acting"
+        let person = Person(id: id, name: name, role: departmentName(dept), photo: img(m["profile_path"].str, "w342"))
+        let showGenresToSkip: Set<Int> = [10767, 10763, 10764]   // talk, news, reality
+
+        var groups: [String: [String: Credit]] = [:]
+        func add(_ group: String, _ j: J, role: String) {
+            guard let f = ref(j) else { return }
+            let date = (j["release_date"].str ?? j["first_air_date"].str).flatMap { airDate.date(from: $0) }
+            var c = groups[group]?[f.id] ?? Credit(film: f, roles: [], popularity: j["popularity"].double ?? 0,
+                                                   released: date.map { $0 <= .now } ?? false)
+            if !role.isEmpty && !c.roles.contains(role) { c.roles.append(role) }
+            groups[group, default: [:]][f.id] = c
         }
-        let directed = films(m["movie_credits"]["crew"].array.filter { $0["job"].str == "Director" }, minVotes: 0)
-        let acted = films(m["movie_credits"]["cast"].array, minVotes: 40)
-        return PersonCredits(person: person, biography: m["biography"].str, directed: directed, acted: acted)
+        for c in m["combined_credits"]["cast"].array {
+            let character = c["character"].str ?? ""
+            let genres = Set(c["genre_ids"].array.compactMap(\.int))
+            let isSelf = character.range(of: #"\b(self|himself|herself|themselves)\b"#, options: [.regularExpression, .caseInsensitive]) != nil
+            if isSelf || !genres.isDisjoint(with: showGenresToSkip) { add("Appearances", c, role: character); continue }
+            var role = character
+            if c["media_type"].str == "tv", let n = c["episode_count"].int, n > 0 { role += role.isEmpty ? "\(n) episodes" : " · \(n) ep" }
+            add("Acting", c, role: role)
+        }
+        for c in m["combined_credits"]["crew"].array {
+            let d = c["department"].str ?? "Crew"
+            add(d == "Production" ? "Producing" : d == "Sound" ? "Music & sound" : d == "Camera" ? "Cinematography" : d, c, role: c["job"].str ?? "")
+        }
+        let main = dept == "Production" ? "Producing" : dept == "Sound" ? "Music & sound" : dept == "Camera" ? "Cinematography" : dept
+        let preferred = [main, "Directing", "Acting", "Writing", "Producing", "Cinematography", "Editing", "Music & sound"]
+        let names = groups.keys.sorted { a, b in
+            if a == "Appearances" { return false }
+            if b == "Appearances" { return true }
+            let ia = preferred.firstIndex(of: a) ?? 99, ib = preferred.firstIndex(of: b) ?? 99
+            return ia != ib ? ia < ib : (groups[a]?.count ?? 0) > (groups[b]?.count ?? 0)
+        }
+        let out = names.map { n in
+            CreditGroup(name: n, credits: (groups[n] ?? [:]).values.sorted { ($0.film.year ?? 9999, $0.film.title) > ($1.film.year ?? 9999, $1.film.title) })
+        }
+        return PersonCredits(person: person, biography: m["biography"].str, knownFor: departmentName(dept),
+                             birthday: m["birthday"].str, birthplace: m["place_of_birth"].str, groups: out)
     }
 
     static func season(_ showID: String, _ number: Int) async throws -> [Episode] {

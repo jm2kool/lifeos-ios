@@ -46,7 +46,8 @@ struct FilmDetail: Codable, Hashable {
     var nextEpisode: Episode?
     // Films only: the release date (for reminders), and directors with their TMDB ids (for filmographies).
     var releaseDate: Date?
-    var directorPeople: [Person] = []
+    var directorPeople: [Person] = []    // for shows, the creators
+    var crew: [Person] = []              // writers, producers, composer, cinematographer, editor — role is their jobs
 
     /// Seasons that count towards finishing a show: everything except the specials.
     var regularSeasons: [SeasonInfo] { seasons.filter { $0.number > 0 && $0.episodeCount > 0 } }

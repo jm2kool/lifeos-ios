@@ -100,11 +100,21 @@ struct SettingsView: View {
                 Section {
                     LabeledContent { Text(Intelligence.status) } label: { Label("Apple Intelligence", systemImage: "apple.intelligence") }
                     Button { router.sheet = .ask } label: { Label("Ask Matinee what to watch", systemImage: "sparkles") }
+                    Button { router.sheet = .finder(nil) } label: { Label("Find a film from a link or scene", systemImage: "sparkle.magnifyingglass") }
                 } header: { Text("On-device intelligence") } footer: {
-                    Text("Ask Matinee, “Write it up” in the log sheet, ticket reading and your Year in Review summary run on your iPhone with Apple Intelligence. Nothing is sent anywhere. Try “Hey Siri, ask Matinee what to watch”.")
+                    Text("Ask Matinee, the film finder, “Write it up” in the log sheet, ticket reading and your Year in Review summary run on your iPhone with Apple Intelligence. Nothing is sent anywhere. Try “Hey Siri, ask Matinee what to watch”.")
                 }
 
                 WidgetSettingsSection()
+
+                Section {
+                    NavigationLink { ChangelogView() } label: {
+                        LabeledContent { Text(Changelog.installed) } label: { Label("What's new", systemImage: "sparkles") }
+                    }
+                    Button { startTour() } label: { Label("Take the app tour", systemImage: "play.rectangle.on.rectangle") }
+                } header: { Text("About") } footer: {
+                    Text("Version \(Changelog.current): \(Changelog.releases.first?.headline ?? "").")
+                }
 
                 Section {
                     Button("Erase library", role: .destructive) { confirmErase = true }
@@ -133,6 +143,14 @@ struct SettingsView: View {
             .confirmationDialog("Sign out?", isPresented: $confirmSignOut, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive) { auth.signOut(); dismiss() }
             } message: { Text("Your library stays on this iPhone.") }
+        }
+    }
+
+    private func startTour() {
+        dismiss()
+        Task {
+            try? await Task.sleep(for: .milliseconds(450))
+            router.tour = .welcome
         }
     }
 

@@ -149,6 +149,7 @@ jobs:
           SIMCTL_CHILD_MATINEE_TASTE=1 xcrun simctl launch --terminate-running-process "$UDID" $APP; shot 10 9-taste-quiz
           SIMCTL_CHILD_MATINEE_LIST=1 xcrun simctl launch --terminate-running-process "$UDID" $APP; shot 9 10-list-deck
           SIMCTL_CHILD_MATINEE_SHAKE=1 xcrun simctl launch --terminate-running-process "$UDID" $APP; shot 8 11-shake-pick
+          SIMCTL_CHILD_MATINEE_ONBOARDING=1 xcrun simctl launch --terminate-running-process "$UDID" $APP; shot 8 12-tour
           ls -lh out
 
       - continue-on-error: true

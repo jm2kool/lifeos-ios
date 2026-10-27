@@ -462,31 +462,18 @@ struct FilmView: View {
             .padding(.horizontal, 16)
         }
 
+        let crew = d.directorPeople + d.crew.filter { c in !d.directorPeople.contains { $0.id == c.id } }
+        if !crew.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                SectionHeader(ref.isShow ? "Created by & crew" : "Crew", subtitle: "Tap anyone to see everything they've made")
+                PeopleRow(people: crew, surface: surface)
+            }
+        }
+
         if !d.cast.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                SectionHeader(ref.isShow ? "Cast" : "Cast & crew", subtitle: "Tap anyone for how many of their films you've seen")
-                ScrollView(.horizontal) {
-                    LazyHStack(alignment: .top, spacing: 14) {
-                        ForEach(Array((d.directorPeople + d.cast).enumerated()), id: \.offset) { _, p in
-                            NavigationLink(value: PersonRoute(id: p.id, name: p.name)) {
-                            VStack(spacing: 6) {
-                                ZStack {
-                                    Circle().fill(surface)
-                                    Text(p.name.prefix(1)).font(.title2.bold()).foregroundStyle(.white.opacity(0.65))
-                                    if p.photo != nil { RemoteImage(url: p.photo).clipShape(Circle()) }
-                                }
-                                .frame(width: 72, height: 72)
-                                Text(p.name).font(.caption.weight(.semibold)).lineLimit(2).multilineTextAlignment(.center)
-                                if !p.role.isEmpty { Text(p.role).font(.caption2).foregroundStyle(.white.opacity(0.65)).lineLimit(1) }
-                            }
-                            .frame(width: 84)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 20)
-                }
-                .scrollIndicators(.hidden)
+                SectionHeader("Cast")
+                PeopleRow(people: d.cast, surface: surface)
             }
         }
 

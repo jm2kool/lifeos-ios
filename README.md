@@ -42,6 +42,9 @@ Matinee is not affiliated with Letterboxd.
 | — | **Watch parties** | Start one from a film you're watching and share the link. Play and pause stay in step for everyone, Live Activity included. |
 | — | **Scan a ticket** | Photograph a cinema ticket (Diary → 🎟). Matinee reads the film and the date and opens the log sheet. |
 | — | **Spotlight** | Your films, shows and watchlist show up in iPhone search. |
+| — | **What's this from? (AI finder)** | Paste a YouTube Short, X post, TikTok, Reel or Reddit link, pick a screenshot, or describe a scene. Matinee reads the post's title, caption, hashtags and the text in the video frame, Apple Intelligence guesses the film or show on the iPhone, and TMDB confirms it. Paste a link into Search and it goes straight there; there's also a Siri/Shortcuts action for the share sheet. |
+| Cast & crew | **Everyone who made it** | Film pages list the crew (writers, producers, composer, cinematographer, editor) as well as the cast. Tap anyone, or search their name, to see every film and show they worked on, grouped by role, with how many you've seen. |
+| — | **Tour and update log** | A welcome tour on first launch, a What's New tour after each update, and Settings → What's new with every version's changes. |
 
 ## Install
 

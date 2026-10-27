@@ -70,6 +70,7 @@ enum SheetRoute: Identifiable, Equatable {
     case scanTicket
     case ask
     case party(String)
+    case finder(String?)                        // the AI finder, optionally with a link or text to look up
 
     var id: String {
         switch self {
@@ -91,6 +92,7 @@ enum SheetRoute: Identifiable, Equatable {
         case .scanTicket: return "scan"
         case .ask: return "ask"
         case .party(let c): return "party-\(c)"
+        case .finder(let t): return "finder-\(t ?? "")"
         }
     }
 }
@@ -100,6 +102,8 @@ final class Router {
     /// One router for the app, so Siri and Shortcuts can open things too.
     static let shared = Router()
     var tab: AppTab = .films
+    /// The welcome tour or What's New, shown full screen.
+    var tour: TourMode?
     var sheet: SheetRoute?
     var filmsPath = NavigationPath()
     var diaryPath = NavigationPath()

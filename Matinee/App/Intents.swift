@@ -126,6 +126,24 @@ struct ScanTicketIntent: AppIntent {
     }
 }
 
+/// "What's this from?" — the finder, with a link from the share sheet or a description.
+/// In Shortcuts, add it to a shortcut that's shown in the share sheet to send links straight from YouTube, X or TikTok.
+struct FindFilmIntent: AppIntent {
+    static var title: LocalizedStringResource = "Find a Film from a Clip"
+    static var description = IntentDescription("Find the film or show a YouTube Short, X post, TikTok or Reel is from, or describe a scene.")
+    static var openAppWhenRun: Bool = true
+
+    @Parameter(title: "Link or description", requestValueDialog: "Paste the link, or describe the scene.")
+    var query: String
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        Router.shared.closeRandom()
+        Router.shared.sheet = .finder(query)
+        return .result()
+    }
+}
+
 struct MatineeShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(intent: AskMatineeIntent(), phrases: [
@@ -133,6 +151,10 @@ struct MatineeShortcuts: AppShortcutsProvider {
             "What should I watch in \(.applicationName)",
             "Help me pick a film in \(.applicationName)",
         ], shortTitle: "Ask Matinee", systemImageName: "sparkles")
+        AppShortcut(intent: FindFilmIntent(), phrases: [
+            "What's this from in \(.applicationName)",
+            "Find a film from a clip in \(.applicationName)",
+        ], shortTitle: "What's this from?", systemImageName: "sparkle.magnifyingglass")
         AppShortcut(intent: RandomPickIntent(), phrases: [
             "Pick a film in \(.applicationName)",
             "Random pick in \(.applicationName)",
