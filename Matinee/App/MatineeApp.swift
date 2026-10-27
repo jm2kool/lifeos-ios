@@ -1,16 +1,18 @@
 import SwiftUI
 import UIKit
+import UserNotifications
 
 @main
 struct MatineeApp: App {
     @State private var library = Library.shared
     @State private var auth = Auth.shared
-    @State private var router = Router()
+    @State private var router = Router.shared
     @State private var watching = Watching.shared
     @State private var taste = Taste.shared
     @Environment(\.scenePhase) private var phase
 
     init() {
+        UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
         let env = ProcessInfo.processInfo.environment
         if env["MATINEE_PREVIEW"] != nil {
             Library.shared.seedDemo()
@@ -37,6 +39,8 @@ struct MatineeApp: App {
                 Task {
                     await auth.refreshIfNeeded()
                     await library.reconcileWithCloud()
+                    await Reminders.refresh(library)
+                    await Social.shared.refreshFollowing()
                 }
             }
         }
@@ -61,6 +65,11 @@ enum SheetRoute: Identifiable, Equatable {
     case logEpisode(LogEntry)                  // a new diary entry for an episode or season of a show
     case episode(FilmRef, Episode)
     case wrap(FilmRef, Int, Bool)               // show, season, and whether it finished the show
+    case logDraft(LogEntry)                     // a new diary entry that's already filled in (e.g. from a ticket)
+    case yearReview(Int)
+    case scanTicket
+    case ask
+    case party(String)
 
     var id: String {
         switch self {
@@ -77,12 +86,19 @@ enum SheetRoute: Identifiable, Equatable {
         case .logEpisode(let e): return "logep-\(e.film.id)-\(e.episodeLabel ?? "")"
         case .episode(let f, let e): return "ep-\(f.id)-\(e.id)"
         case .wrap(let f, let s, let series): return "wrap-\(f.id)-\(s)-\(series)"
+        case .logDraft(let e): return "draft-\(e.film.id)-\(e.id)"
+        case .yearReview(let y): return "year-\(y)"
+        case .scanTicket: return "scan"
+        case .ask: return "ask"
+        case .party(let c): return "party-\(c)"
         }
     }
 }
 
 @Observable @MainActor
 final class Router {
+    /// One router for the app, so Siri and Shortcuts can open things too.
+    static let shared = Router()
     var tab: AppTab = .films
     var sheet: SheetRoute?
     var filmsPath = NavigationPath()
@@ -172,13 +188,16 @@ final class Router {
         tab = t
     }
 
-    func open(_ f: FilmRef) {
+    func open(_ f: FilmRef) { push(f) }
+
+    /// Push any page onto the current tab.
+    func push<V: Hashable>(_ v: V) {
         switch tab {
-        case .films: filmsPath.append(f)
-        case .diary: diaryPath.append(f)
-        case .library: libraryPath.append(f)
-        case .profile: profilePath.append(f)
-        case .search: searchPath.append(f)
+        case .films: filmsPath.append(v)
+        case .diary: diaryPath.append(v)
+        case .library: libraryPath.append(v)
+        case .profile: profilePath.append(v)
+        case .search: searchPath.append(v)
         }
     }
 }

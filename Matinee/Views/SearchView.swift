@@ -211,7 +211,10 @@ struct QuickLogSheet: View {
             .navigationTitle("What did you watch?")
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search films and shows")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close", systemImage: "xmark") { dismiss() } } }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Close", systemImage: "xmark") { dismiss() } }
+                ToolbarItem(placement: .topBarTrailing) { Button("Scan a ticket", systemImage: "ticket") { router.sheet = .scanTicket } }
+            }
             .task(id: query) {
                 guard !query.isEmpty else { results = []; return }
                 try? await Task.sleep(for: .milliseconds(300))

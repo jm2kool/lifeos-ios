@@ -24,6 +24,8 @@ struct LogSheet: View {
     @State private var art: FilmArt?
     @State private var artLoaded = false
     @State private var palette: PosterPalette?
+    @State private var suggestion: String?
+    @State private var writing = false
 
     /// The sheet is painted in the film's accent colour, like its page.
     private var bg: Color { palette?.background ?? .black }
@@ -131,6 +133,7 @@ struct LogSheet: View {
                             .focused($reviewFocused)
                             .padding(14)
                             .background(surface, in: .rect(cornerRadius: 18))
+                        if Intelligence.isAvailable { writeItUp }
                     }
 
                     // Tags
@@ -198,6 +201,39 @@ struct LogSheet: View {
         .onAppear(perform: prefill)
     }
 
+    /// Apple Intelligence turns quick notes into a short review in your own words, on the phone.
+    @ViewBuilder private var writeItUp: some View {
+        if let suggestion {
+            VStack(alignment: .leading, spacing: 10) {
+                Label("Suggested review", systemImage: "apple.intelligence").font(.caption.weight(.heavy)).foregroundStyle(palette?.highlight ?? Theme.accent)
+                Text(suggestion).font(.subheadline)
+                HStack(spacing: 10) {
+                    Button("Use this") { review = suggestion; self.suggestion = nil }.buttonStyle(.glassProminent)
+                    Button("Keep mine") { self.suggestion = nil }.buttonStyle(.glass)
+                }
+                .controlSize(.small)
+            }
+            .padding(14)
+            .background(surface, in: .rect(cornerRadius: 18))
+            .transition(.opacity.combined(with: .move(edge: .top)))
+        } else if review.trimmingCharacters(in: .whitespacesAndNewlines).count >= 8 {
+            Button {
+                reviewFocused = false
+                writing = true
+                Task {
+                    let out = await Intelligence.writeReview(notes: review, film: film, score: comfort ? nil : rating, liked: liked)
+                    withAnimation(.smooth) { suggestion = out; writing = false }
+                    if out == nil { library.toast = Toast(text: "Couldn't write that one up", symbol: "exclamationmark.triangle") }
+                }
+            } label: {
+                Label(writing ? "Writing…" : "Write it up from my notes", systemImage: "apple.intelligence")
+                    .font(.footnote.weight(.semibold))
+            }
+            .buttonStyle(.glass).controlSize(.small)
+            .disabled(writing)
+        }
+    }
+
     private var isCustomDate: Bool { !Calendar.current.isDateInToday(date) && !Calendar.current.isDateInYesterday(date) }
 
     private var likeButton: some View {
@@ -241,6 +277,12 @@ struct LogSheet: View {
             rating = library.rating(film.id)
             liked = library.isLiked(film.id)
             rewatch = !earlier.isEmpty
+        }
+        // A draft from a ticket brings its date and tags.
+        if existing == nil, let d = draft {
+            date = min(d.watchedOn, .now)
+            if !Calendar.current.isDateInToday(date) && !Calendar.current.isDateInYesterday(date) { showCalendar = false }
+            if tags.isEmpty { tags = d.tags }
         }
     }
 

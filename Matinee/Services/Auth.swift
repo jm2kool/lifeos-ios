@@ -257,6 +257,11 @@ final class Auth {
         req.httpBody = body
         guard let (_, resp) = try? await URLSession.shared.data(for: req), let code = (resp as? HTTPURLResponse)?.statusCode else { return .failed }
         if (200..<300).contains(code) { lastProfilePush = body; return .ok }
+        // A server set up before the watchlist and persona columns existed: publish without them.
+        if code == 400, PublicProfile.sendsExtras {
+            PublicProfile.sendsExtras = false
+            return await pushProfile(profile)
+        }
         return code == 409 ? .handleTaken : .failed
     }
     @ObservationIgnored private var lastProfilePush: Data?
@@ -285,6 +290,34 @@ final class Auth {
         req.setValue("Bearer \(session?.accessToken ?? anonKey)", forHTTPHeaderField: "Authorization")
         guard let (data, resp) = try? await URLSession.shared.data(for: req), (resp as? HTTPURLResponse)?.statusCode == 200 else { return [] }
         return (try? JSONDecoder().decode([PublicProfile].self, from: data)) ?? []
+    }
+
+    // MARK: Any other table (follows, activity, parties — see README)
+
+    /// One request to the account server's REST API, as you when signed in. nil when it couldn't be reached.
+    func rest(_ method: String = "GET", _ table: String, query: [String: String] = [:], body: Any? = nil,
+              prefer: String? = nil) async -> (data: Data, status: Int)? {
+        await refreshIfNeeded()
+        guard configured, var c = URLComponents(string: base + "/rest/v1/" + table) else { return nil }
+        if !query.isEmpty { c.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) } }
+        guard let url = c.url else { return nil }
+        var req = URLRequest(url: url)
+        req.httpMethod = method
+        req.timeoutInterval = 20
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(anonKey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(session?.accessToken ?? anonKey)", forHTTPHeaderField: "Authorization")
+        if let prefer { req.setValue(prefer, forHTTPHeaderField: "Prefer") }
+        if let body { req.httpBody = try? JSONSerialization.data(withJSONObject: body) }
+        guard let (data, resp) = try? await URLSession.shared.data(for: req) else { return nil }
+        return (data, (resp as? HTTPURLResponse)?.statusCode ?? 0)
+    }
+
+    /// Public profiles by account id.
+    func profiles(ids: [String]) async -> [PublicProfile] {
+        let ids = Array(Set(ids)).filter { !$0.isEmpty }
+        guard !ids.isEmpty else { return [] }
+        return await profiles(["user_id": "in.(\(ids.joined(separator: ",")))", "select": "user_id,handle,name,bio,avatar_url,avatar_data"])
     }
 
     static func randomString(_ n: Int) -> String {

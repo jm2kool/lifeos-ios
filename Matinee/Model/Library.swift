@@ -109,6 +109,7 @@ final class Library {
     }
 
     func log(_ e: LogEntry) {
+        defer { if let saved = doc.entries.first(where: { $0.id == e.id }) { Task { await Social.shared.post(saved) } } }
         mutate("Logged \(e.film.title)\(e.episodeLabel.map { " · \($0)" } ?? "")", symbol: "eye.fill") { d in
             if let i = d.entries.firstIndex(where: { $0.id == e.id }) { d.entries[i] = e } else { d.entries.append(e) }
             // An unrated comfort watch leaves any rating you gave before alone.
@@ -140,6 +141,7 @@ final class Library {
     }
 
     func delete(_ e: LogEntry) {
+        Task { await Social.shared.unpost(e) }
         mutate("Entry deleted", symbol: "trash", undoable: true) { d in
             d.entries.removeAll { $0.id == e.id }
             // Deleting a diary entry doesn't un-watch the film (use Remove from watched for that).
@@ -281,6 +283,8 @@ final class Library {
             if on { list.insert(show, at: 0) } else { list.removeAll { $0.id == show.id } }
             d.currentlyWatching = list
         }
+        // Pinning a show is when episode reminders start to make sense.
+        if on { Task { await Reminders.refresh(self, force: true, ask: true) } }
     }
 
     /// Rating an episode counts as having watched it.
@@ -323,6 +327,22 @@ final class Library {
     }
 
     func setProfile(_ p: Profile) { mutate { d in d.profile = p } }
+
+    // MARK: Release reminders
+
+    var reminders: [ReleaseReminder] { doc.reminders ?? [] }
+    func hasReminder(_ id: String) -> Bool { reminders.contains { $0.film.id == id } }
+
+    func toggleReminder(_ f: FilmRef, on date: Date) {
+        let on = !hasReminder(f.id)
+        mutate(on ? "We'll remind you on \(date.formatted(.dateTime.day().month(.abbreviated)))" : "Reminder removed",
+               symbol: on ? "bell.fill" : "bell.slash") { d in
+            var list = d.reminders ?? []
+            if on { list.append(ReleaseReminder(film: f, date: date)) } else { list.removeAll { $0.film.id == f.id } }
+            d.reminders = list
+        }
+        Task { await Reminders.refresh(self, force: true, ask: on) }
+    }
 
     /// Quiet batch changes (imports): no toast per film.
     func apply(_ change: (inout LibraryDoc) -> Void) { mutate(nil, change) }
@@ -380,6 +400,7 @@ final class Library {
 
     private func persist(sync: Bool = true) {
         WatchlistWidget.publish(doc.watchlist)
+        Spotlight.schedule(self)
         let data = try? Self.encoder.encode(doc)
         if let data { try? data.write(to: Self.fileURL, options: .atomic) }
         guard sync, Auth.shared.signedIn, let data else { return }

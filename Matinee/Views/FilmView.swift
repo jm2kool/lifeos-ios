@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 
 struct FilmView: View {
     let film: FilmRef
@@ -15,6 +16,8 @@ struct FilmView: View {
     @State private var trailerKey: String?
     @State private var showTrailer = false
     @State private var shareImage: UIImage?
+    @State private var hosting = false
+    @Environment(Auth.self) private var auth
     @AppStorage(FilmRatingStyle.key) private var ratingStyle: FilmRatingStyle = .score
 
     /// The page takes its colour from the poster: deep enough for white text, never washed out.
@@ -328,7 +331,47 @@ struct FilmView: View {
     /// Pin a show to Currently watching on Home, and mark a comfort title so it's never asked for a rating.
     private var watchExtras: some View {
         let comfort = library.isComfort(ref.id)
-        return HStack(spacing: 8) {
+        return VStack(spacing: 8) {
+            if let release = detail?.releaseDate, release > .now, !ref.isShow {
+                let on = library.hasReminder(ref.id)
+                GlassChip(prominent: on, action: {
+                    library.toggleReminder(ref, on: release)
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                }) {
+                    Label(on ? "Reminder on · \(release.formatted(.dateTime.day().month(.abbreviated)))"
+                             : "Remind me when it's out · \(release.formatted(.dateTime.day().month(.abbreviated).year()))",
+                          systemImage: on ? "bell.fill" : "bell")
+                        .lineLimit(1).minimumScaleFactor(0.75)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            if let s = watching.session(for: ref.id) {
+                GlassChip(prominent: s.party != nil, action: {
+                    if let code = s.party { router.sheet = .party(code) } else { hostParty(s) }
+                }) {
+                    Label(s.party.map { "Watch party · \($0)" } ?? (hosting ? "Starting party…" : "Watch together"), systemImage: "person.3.fill")
+                        .lineLimit(1).minimumScaleFactor(0.75)
+                        .frame(maxWidth: .infinity)
+                }
+                .disabled(hosting)
+            }
+            comfortRow(comfort)
+        }
+    }
+
+    private func hostParty(_ s: WatchSession) {
+        guard auth.signedIn else { router.sheet = .signIn; return }
+        hosting = true
+        Task {
+            let code = await Party.shared.host(s)
+            hosting = false
+            if let code { router.sheet = .party(code) }
+            else { library.toast = Toast(text: Party.shared.error ?? "Couldn't start a party", symbol: "person.3") }
+        }
+    }
+
+    private func comfortRow(_ comfort: Bool) -> some View {
+        HStack(spacing: 8) {
             if ref.isShow {
                 let pinned = library.isCurrentlyWatching(ref.id)
                 GlassChip(prominent: pinned, action: {
@@ -421,10 +464,11 @@ struct FilmView: View {
 
         if !d.cast.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
-                SectionHeader("Cast")
+                SectionHeader(ref.isShow ? "Cast" : "Cast & crew", subtitle: "Tap anyone for how many of their films you've seen")
                 ScrollView(.horizontal) {
                     LazyHStack(alignment: .top, spacing: 14) {
-                        ForEach(d.cast) { p in
+                        ForEach(Array((d.directorPeople + d.cast).enumerated()), id: \.offset) { _, p in
+                            NavigationLink(value: PersonRoute(id: p.id, name: p.name)) {
                             VStack(spacing: 6) {
                                 ZStack {
                                     Circle().fill(surface)
@@ -436,6 +480,8 @@ struct FilmView: View {
                                 if !p.role.isEmpty { Text(p.role).font(.caption2).foregroundStyle(.white.opacity(0.65)).lineLimit(1) }
                             }
                             .frame(width: 84)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                     .padding(.horizontal, 20)
@@ -489,6 +535,7 @@ struct FilmView: View {
             VStack(alignment: .leading, spacing: 12) {
                 SectionHeader("Your diary", subtitle: ref.isShow ? (mine.count == 1 ? "1 entry" : "\(mine.count) entries")
                               : mine.count == 1 ? "Watched once" : "Watched \(mine.count) times")
+                if !ref.isShow { RewatchChart(entries: mine, accent: palette?.highlight ?? Theme.accent, surface: surface) }
                 VStack(spacing: 8) {
                     ForEach(mine) { e in
                         Button { router.sheet = .log(e.film, e) } label: {
@@ -513,5 +560,49 @@ struct FilmView: View {
                 .padding(.horizontal, 16)
             }
         }
+    }
+}
+
+/// How your score for a film has moved each time you've watched it.
+struct RewatchChart: View {
+    let entries: [LogEntry]
+    let accent: Color
+    let surface: Color
+
+    private var points: [LogEntry] { entries.filter { ($0.rating ?? 0) > 0 }.sorted { $0.watchedOn < $1.watchedOn } }
+
+    var body: some View {
+        let p = points
+        if p.count >= 2, let first = p.first?.rating, let last = p.last?.rating {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(summary(first, last)).font(.subheadline.weight(.semibold))
+                Chart(p) { e in
+                    LineMark(x: .value("Watched", e.watchedOn), y: .value("Score", e.rating ?? 0))
+                        .interpolationMethod(.monotone)
+                        .foregroundStyle(accent)
+                    PointMark(x: .value("Watched", e.watchedOn), y: .value("Score", e.rating ?? 0))
+                        .foregroundStyle(Score.color(e.rating ?? 0))
+                        .annotation(position: .top) {
+                            Text(Score.text(e.rating)).font(.caption2.weight(.bold)).foregroundStyle(.white.opacity(0.8))
+                        }
+                }
+                .chartYScale(domain: max(0, (p.compactMap(\.rating).min() ?? 0) - 15)...100)
+                .chartYAxis(.hidden)
+                .chartXAxis {
+                    AxisMarks(values: p.map(\.watchedOn)) { _ in
+                        AxisValueLabel(format: .dateTime.month(.abbreviated).year(.twoDigits))
+                    }
+                }
+                .frame(height: 120)
+            }
+            .padding(16)
+            .background(surface, in: .rect(cornerRadius: 18))
+        }
+    }
+
+    private func summary(_ a: Double, _ b: Double) -> String {
+        let d = Int((b - a).rounded())
+        if abs(d) < 3 { return "You've felt the same about it every time" }
+        return d > 0 ? "It's grown on you: up \(d) points since the first watch" : "It's lost a little shine: down \(-d) points since the first watch"
     }
 }

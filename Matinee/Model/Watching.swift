@@ -23,6 +23,8 @@ struct WatchSession: Codable, Hashable, Identifiable {
     var season: Int?
     var episode: Int?
     var episodeTitle: String?
+    /// The watch party's code, when you're watching together.
+    var party: String?
 
     var episodeCode: String? {
         guard let s = season, let e = episode else { return nil }
@@ -143,11 +145,47 @@ final class Watching {
             s[i].runStartedAt = nil
             s[i].stops.append(Intermission(at: position, mood: mood, note: note.trimmingCharacters(in: .whitespacesAndNewlines)))
         }
+        tellParty(id)
+    }
+
+    // MARK: Watch parties
+
+    private func tellParty(_ id: UUID) {
+        guard let s = sessions.first(where: { $0.id == id }), s.party != nil else { return }
+        Task { await Party.shared.push(s) }
+    }
+
+    func setParty(_ id: UUID, _ code: String?) {
+        update { s in if let i = s.firstIndex(where: { $0.id == id }) { s[i].party = code } }
+    }
+
+    /// Someone in the party played or paused: follow along. Joining starts a session if there isn't one.
+    func applyParty(_ row: PartyRow) {
+        update { s in
+            let i: Int
+            if let found = s.firstIndex(where: { $0.film.id == row.film.id }) {
+                i = found
+            } else {
+                var n = WatchSession(film: row.film, runtimeMinutes: row.runtimeMinutes, runStartedAt: nil)
+                n.season = row.season; n.episode = row.episode; n.episodeTitle = row.episodeTitle
+                s.append(n)
+                i = s.count - 1
+            }
+            // Only one film runs at a time.
+            if row.runStartedAt != nil {
+                for j in s.indices where j != i && s[j].running { s[j].banked = s[j].elapsed(); s[j].runStartedAt = nil }
+            }
+            s[i].party = row.code
+            s[i].runStartedAt = row.runStartedAt
+            s[i].banked = row.banked
+            if s[i].runtimeMinutes == nil { s[i].runtimeMinutes = row.runtimeMinutes }
+        }
     }
 
     func resume(_ id: UUID) {
         guard let film = sessions.first(where: { $0.id == id })?.film else { return }
         start(film, runtime: nil)   // matches by id, so an episode session just carries on
+        tellParty(id)
     }
 
     @discardableResult

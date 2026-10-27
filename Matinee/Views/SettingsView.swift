@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import UserNotifications
 
 struct SettingsView: View {
     @Environment(Library.self) private var library
@@ -92,6 +93,17 @@ struct SettingsView: View {
                     Text("On letterboxd.com go to Settings → Data → Export, unzip it in Files, then pick diary.csv, watched.csv, ratings.csv, watchlist.csv and the rest. For ratings only, pick ratings.csv — rated films are added to your films too.")
                 }
 
+                NotificationSettingsSection()
+
+                FriendsSettingsSection()
+
+                Section {
+                    LabeledContent { Text(Intelligence.status) } label: { Label("Apple Intelligence", systemImage: "apple.intelligence") }
+                    Button { router.sheet = .ask } label: { Label("Ask Matinee what to watch", systemImage: "sparkles") }
+                } header: { Text("On-device intelligence") } footer: {
+                    Text("Ask Matinee, “Write it up” in the log sheet, ticket reading and your Year in Review summary run on your iPhone with Apple Intelligence. Nothing is sent anywhere. Try “Hey Siri, ask Matinee what to watch”.")
+                }
+
                 WidgetSettingsSection()
 
                 Section {
@@ -171,5 +183,57 @@ struct WidgetSettingsSection: View {
         case .offline: Label("Couldn't reach server", systemImage: "wifi.exclamationmark").foregroundStyle(Theme.accent)
         case .noServer: Text(sync.sharedFolder ? "Working" : "No account server").foregroundStyle(sync.sharedFolder ? Theme.watch : Theme.accent)
         }
+    }
+}
+
+/// New episodes and release days.
+struct NotificationSettingsSection: View {
+    @Environment(Library.self) private var library
+    @AppStorage(Reminders.episodesKey) private var episodes = true
+    @AppStorage(Reminders.releasesKey) private var releases = true
+    @State private var allowed = true
+
+    var body: some View {
+        Section {
+            Toggle(isOn: $episodes) { Label("New episodes", systemImage: "tv") }
+            Toggle(isOn: $releases) { Label("Watchlist releases", systemImage: "film") }
+            if !allowed {
+                Button { if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) } } label: {
+                    Label("Notifications are off for Matinee — turn them on", systemImage: "bell.slash")
+                }
+            }
+        } header: { Text("Notifications") } footer: {
+            Text("The day a new episode airs for shows you're watching (at 6pm), and the day films on your watchlist or with a reminder come out (at 10am).")
+        }
+        .onChange(of: episodes) { _, _ in Task { await Reminders.refresh(library, force: true, ask: true); allowed = await Reminders.authorized } }
+        .onChange(of: releases) { _, _ in Task { await Reminders.refresh(library, force: true, ask: true); allowed = await Reminders.authorized } }
+        .task {
+            let s = await UNUserNotificationCenter.current().notificationSettings()
+            allowed = s.authorizationStatus != .denied
+        }
+    }
+}
+
+/// Sharing your diary and watchlist, and the one-time server setup for friends and parties.
+struct FriendsSettingsSection: View {
+    @Environment(Library.self) private var library
+    @AppStorage(Social.shareActivityKey) private var shareActivity = false
+    @AppStorage(Social.shareWatchlistKey) private var shareWatchlist = false
+    @State private var copied = false
+
+    var body: some View {
+        Section {
+            Toggle(isOn: $shareActivity) { Label("Share my diary with followers", systemImage: "person.2.wave.2") }
+            Toggle(isOn: $shareWatchlist) { Label("Show my watchlist for Blend", systemImage: "circle.lefthalf.filled") }
+            Button {
+                UIPasteboard.general.string = Social.setupSQL
+                copied = true
+            } label: { Label(copied ? "Copied — paste it into Supabase" : "Copy setup SQL", systemImage: copied ? "checkmark" : "doc.on.doc") }
+            JoinPartyButton()
+        } header: { Text("Friends") } footer: {
+            Text("Following, the friends feed and watch parties need three tables on your account server: copy the SQL, then in supabase.com open SQL Editor → New query, paste and Run. Sharing is off until you turn it on.")
+        }
+        .onChange(of: shareActivity) { _, on in if on { Task { await Social.shared.backfill(library) } } }
+        .onChange(of: shareWatchlist) { _, _ in Task { await library.publishProfile() } }
     }
 }

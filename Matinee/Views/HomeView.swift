@@ -58,6 +58,9 @@ struct HomeView: View {
                     CurrentlyWatchingSection(shows: library.currentlyWatching)
                 }
                 IntermissionShelf(media: media)
+                if YearInReviewBanner.inSeason && !library.doc.entries.isEmpty { YearInReviewBanner() }
+                AskMatineeCard()
+                FriendsShelf()
                 if showsShows && !continueWatching.isEmpty {
                     VStack(alignment: .leading, spacing: 14) {
                         SectionHeader(title: "Continue watching", subtitle: "Shows you're partway through") {
@@ -115,7 +118,11 @@ struct HomeView: View {
         .ambientBackground(glowFilms, intensity: 0.5)
         .ignoresSafeArea(edges: .top)
         .toolbar(.hidden, for: .navigationBar)
-        .refreshable { await load(force: true) }
+        .refreshable {
+            await load(force: true)
+            await Social.shared.loadFeed()
+        }
+        .task { await Social.shared.loadFeed() }
         .task(id: token) { if connected { await load(force: true) } }
         .onChange(of: media) { _, _ in heroPage = 0 }
     }
@@ -408,6 +415,65 @@ struct TMDBConnectCard: View {
         }
         .padding(20)
         .glassEffect(.regular, in: .rect(cornerRadius: 28))
+        .padding(.horizontal, 16)
+    }
+}
+
+/// "What are you in the mood for?" — opens Ask Matinee.
+struct AskMatineeCard: View {
+    @Environment(Router.self) private var router
+    @Environment(Library.self) private var library
+
+    var body: some View {
+        if !library.doc.watchlist.isEmpty {
+            Button { router.sheet = .ask } label: {
+                HStack(spacing: 14) {
+                    Image(systemName: Intelligence.isAvailable ? "apple.intelligence" : "wand.and.stars")
+                        .font(.title2).foregroundStyle(Theme.accent)
+                        .frame(width: 34)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("What are you in the mood for?").font(.headline)
+                        Text("Ask Matinee to pick from your watchlist").font(.subheadline).foregroundStyle(Theme.dim)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right").foregroundStyle(Theme.dim)
+                }
+                .padding(16)
+                .contentShape(.rect(cornerRadius: 22))
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 16)
+        }
+    }
+}
+
+/// December and early January: your year in review, front and centre.
+struct YearInReviewBanner: View {
+    @Environment(Router.self) private var router
+
+    static var inSeason: Bool {
+        let c = Calendar.current.dateComponents([.month, .day], from: .now)
+        return c.month == 12 || (c.month == 1 && (c.day ?? 1) <= 15)
+    }
+    private var year: Int { let n = Date.now; return Calendar.current.component(.month, from: n) == 1 ? n.year - 1 : n.year }
+
+    var body: some View {
+        Button { router.sheet = .yearReview(year) } label: {
+            HStack(spacing: 14) {
+                Text("🎞️").font(.system(size: 38))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Your \(String(year)) in film is ready").font(.headline)
+                    Text("Top films, hours watched, your busiest month").font(.subheadline).foregroundStyle(.white.opacity(0.8))
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+            }
+            .padding(18)
+            .background(LinearGradient(colors: [Theme.accent.opacity(0.75), Theme.heart.opacity(0.55)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                        in: .rect(cornerRadius: 24))
+        }
+        .buttonStyle(.plain)
         .padding(.horizontal, 16)
     }
 }

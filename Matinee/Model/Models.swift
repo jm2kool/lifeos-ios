@@ -44,6 +44,9 @@ struct FilmDetail: Codable, Hashable {
     var seasons: [SeasonInfo] = []    // season 0 (specials) included when TMDB has it
     var lastYear: Int?
     var nextEpisode: Episode?
+    // Films only: the release date (for reminders), and directors with their TMDB ids (for filmographies).
+    var releaseDate: Date?
+    var directorPeople: [Person] = []
 
     /// Seasons that count towards finishing a show: everything except the specials.
     var regularSeasons: [SeasonInfo] { seasons.filter { $0.number > 0 && $0.episodeCount > 0 } }
@@ -150,6 +153,13 @@ struct FilmList: Codable, Hashable, Identifiable {
     var updatedAt = Date.now
 }
 
+/// "Tell me when it's out": a film and the day it's released.
+struct ReleaseReminder: Codable, Hashable, Identifiable {
+    var film: FilmRef
+    var date: Date
+    var id: String { film.id }
+}
+
 struct Profile: Codable, Hashable {
     var name = ""
     var handle = ""
@@ -180,6 +190,7 @@ struct LibraryDoc: Codable {
     var comfort: [String]?                    // ids of comfort films and shows: watched, never rated
     var watching: [WatchSession]?             // films and episodes in progress, with their intermissions
     var topFavorites: [FilmRef]?              // up to eight films and shows, in your order; nil in libraries from before
+    var reminders: [ReleaseReminder]?         // films you asked to be told about when they come out
 
     /// Favourite films and shows together, in your order. Older libraries kept them apart, films first.
     var allFavorites: [FilmRef] { topFavorites ?? (favorites + (favoriteShows ?? [])) }

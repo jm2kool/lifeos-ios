@@ -69,6 +69,9 @@ struct DiaryView: View {
         .searchable(text: $filter, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Filter by title or #tag")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
+                Button("Scan a ticket", systemImage: "ticket") { router.sheet = .scanTicket }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button("Log a film", systemImage: "plus") { router.sheet = .quickLog }
             }
         }
@@ -110,6 +113,7 @@ struct DiaryRow: View {
 /// This year at a glance, with a GitHub-style heatmap of film nights.
 struct YearSummary: View {
     @Environment(Library.self) private var library
+    @Environment(Router.self) private var router
     @AppStorage(FilmRatingStyle.key) private var filmStyle: FilmRatingStyle = .score
 
     var body: some View {
@@ -132,6 +136,14 @@ struct YearSummary: View {
                 }
             }
             Heatmap(dates: library.doc.entries.map(\.watchedOn))
+            HStack(spacing: 8) {
+                Button { router.sheet = .yearReview(year) } label: {
+                    Label("Year in review", systemImage: "sparkles.rectangle.stack").frame(maxWidth: .infinity)
+                }
+                Button { router.diaryPath.append(StatsRoute()) } label: { Label("All stats", systemImage: "chart.bar").frame(maxWidth: .infinity) }
+            }
+            .buttonStyle(.glass).controlSize(.small)
+            .font(.footnote.weight(.semibold))
         }
         .padding(18)
         .glassEffect(.regular, in: .rect(cornerRadius: 26))

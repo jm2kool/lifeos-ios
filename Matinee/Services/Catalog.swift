@@ -63,6 +63,14 @@ struct WatchProviders: Hashable {
     var isEmpty: Bool { stream.isEmpty && free.isEmpty && rent.isEmpty && buy.isEmpty }
 }
 
+/// Someone's filmography from TMDB.
+struct PersonCredits: Hashable {
+    var person: Person
+    var biography: String?
+    var directed: [FilmRef]
+    var acted: [FilmRef]
+}
+
 enum HomeShelf: String, CaseIterable, Identifiable {
     case trending, topRated, newReleases, trendingShows, topRatedShows
     var id: String { rawValue }
@@ -133,7 +141,18 @@ enum Catalog {
         if let hit = detailCache[id] { return hit }
         let d = try await TMDB.detail(id)
         detailCache[id] = d
+        FactStore.shared.record(d)
         return d
+    }
+
+    private static var personCache: [String: PersonCredits] = [:]
+
+    /// Everything someone directed or acted in, for "you've seen 9 of 13".
+    static func person(_ id: String) async throws -> PersonCredits {
+        if let hit = personCache[id] { return hit }
+        let p = try await TMDB.person(id)
+        personCache[id] = p
+        return p
     }
 
     static func cached(_ id: String) -> FilmDetail? { detailCache[id] }
@@ -424,6 +443,11 @@ enum TMDB {
         d.runtimeMinutes = m["runtime"].int
         d.genres = m["genres"].array.compactMap { $0["name"].str?.replacingOccurrences(of: "Science Fiction", with: "Sci-Fi") }
         d.directors = m["credits"]["crew"].array.filter { $0["job"].str == "Director" }.compactMap { $0["name"].str }
+        d.directorPeople = m["credits"]["crew"].array.filter { $0["job"].str == "Director" }.compactMap { c in
+            guard let pid = c["id"].int, let name = c["name"].str else { return nil }
+            return Person(id: "tmdbp-\(pid)", name: name, role: "Director", photo: img(c["profile_path"].str, "w185"))
+        }
+        d.releaseDate = m["release_date"].str.flatMap { airDate.date(from: $0) }
         d.cast = m["credits"]["cast"].array.prefix(30).compactMap { c in
             guard let pid = c["id"].int, let name = c["name"].str else { return nil }
             return Person(id: "tmdbp-\(pid)", name: name, role: c["character"].str ?? "", photo: img(c["profile_path"].str, "w185"))
@@ -467,6 +491,28 @@ enum TMDB {
         if !m["next_episode_to_air"].isNull { d.nextEpisode = episode(m["next_episode_to_air"], season: 0) }
         d.similar = m["recommendations"]["results"].array.compactMap(showRef).filter { $0.poster != nil }
         return d
+    }
+
+    /// A person's films: the ones they directed and the ones they acted in. Released films only, and
+    /// for acting, ones enough people have rated (so a filmography isn't padded with cameos nobody saw).
+    static func person(_ id: String) async throws -> PersonCredits {
+        let num = id.replacingOccurrences(of: "tmdbp-", with: "")
+        let m = try await call("/person/\(num)", ["append_to_response": "movie_credits"])
+        guard let name = m["name"].str else { throw CatalogError.http(404) }
+        let person = Person(id: id, name: name, role: m["known_for_department"].str ?? "", photo: img(m["profile_path"].str, "w342"))
+        func films(_ list: [J], minVotes: Int) -> [FilmRef] {
+            var seen = Set<String>()
+            return list.filter { j in
+                guard let d = j["release_date"].str.flatMap({ airDate.date(from: $0) }), d <= .now else { return false }
+                return (j["vote_count"].int ?? 0) >= minVotes
+            }
+            .compactMap(ref)
+            .filter { seen.insert($0.id).inserted }
+            .sorted { ($0.year ?? 0, $0.title) < ($1.year ?? 0, $1.title) }
+        }
+        let directed = films(m["movie_credits"]["crew"].array.filter { $0["job"].str == "Director" }, minVotes: 0)
+        let acted = films(m["movie_credits"]["cast"].array, minVotes: 40)
+        return PersonCredits(person: person, biography: m["biography"].str, directed: directed, acted: acted)
     }
 
     static func season(_ showID: String, _ number: Int) async throws -> [Episode] {

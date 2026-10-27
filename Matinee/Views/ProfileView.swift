@@ -69,6 +69,21 @@ struct ProfileView: View {
                 .glassEffect(.regular, in: .rect(cornerRadius: 24))
                 .padding(.horizontal, 16)
 
+                GlassEffectContainer(spacing: 8) {
+                    HStack(spacing: 8) {
+                        NavigationLink(value: StatsRoute()) { Label("Stats", systemImage: "chart.bar.fill").frame(maxWidth: .infinity) }
+                            .buttonStyle(.glass)
+                        Button { router.sheet = .yearReview(Date.now.year) } label: {
+                            Label(String(Date.now.year), systemImage: "sparkles.rectangle.stack").frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.glass)
+                        NavigationLink(value: FeedRoute()) { Label("Friends", systemImage: "person.2.fill").frame(maxWidth: .infinity) }
+                            .buttonStyle(.glass)
+                    }
+                    .controlSize(.large)
+                }
+                .padding(.horizontal, 16)
+
                 if !library.currentlyWatching.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
                         SectionHeader("Currently watching", subtitle: "On your public profile")
@@ -562,6 +577,7 @@ struct PublicProfileView: View {
     @Environment(Auth.self) private var auth
     @State private var profile: PublicProfile?
     @State private var loaded = false
+    @State private var activity: [FeedItem] = []
 
     var body: some View {
         ScrollView {
@@ -572,9 +588,37 @@ struct PublicProfileView: View {
                         Text(p.name.isEmpty ? "Film fan" : p.name).font(.title.weight(.bold))
                         if let h = p.handle { Text("@\(h)").font(.subheadline).foregroundStyle(Theme.dim) }
                         if !p.bio.isEmpty { Text(p.bio).multilineTextAlignment(.center).foregroundStyle(.white.opacity(0.85)).padding(.horizontal, 30) }
+                        if let persona = p.persona { Text("\(persona.emoji) \(persona.name)").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent) }
+                        FollowBar(profile: p).padding(.top, 4)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.top, 10)
+                    if !activity.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            SectionHeader("Recently watched")
+                            ScrollView(.horizontal) {
+                                LazyHStack(alignment: .top, spacing: 10) {
+                                    ForEach(activity) { a in
+                                        NavigationLink(value: a.film) {
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                PosterView(film: a.film, width: 96)
+                                                HStack(spacing: 4) {
+                                                    SmallRating(rating: a.rating)
+                                                    if a.liked { Image(systemName: "heart.fill").font(.system(size: 9)).foregroundStyle(Theme.heart) }
+                                                }
+                                                .frame(height: 14)
+                                            }
+                                        }
+                                        .buttonStyle(.plain)
+                                        .filmContextMenu(a.film)
+                                    }
+                                }
+                                .padding(.horizontal, 20)
+                            }
+                            .scrollIndicators(.hidden)
+                            .scrollClipDisabled()
+                        }
+                    }
                     if !p.currentlyWatching.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             SectionHeader("Currently watching")
@@ -612,6 +656,7 @@ struct PublicProfileView: View {
         .task {
             profile = await auth.profile(handle: handle)
             loaded = true
+            if let id = profile?.userID { activity = await Social.shared.activity(of: id) }
         }
     }
 }

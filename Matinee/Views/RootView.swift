@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreSpotlight
 
 struct RootView: View {
     @Environment(Library.self) private var library
@@ -81,6 +82,13 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in pickFromWatchlist() }
         // Widgets and the Live Activity open films with matinee://film/<id>?title=…; shared profiles are matinee://u/<username>.
         .onOpenURL { url in
+            if url.scheme == "matinee", url.host == "party" {
+                let code = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).uppercased()
+                guard !code.isEmpty else { return }
+                router.closeRandom()
+                router.sheet = .party(code)
+                return
+            }
             if url.scheme == "matinee", url.host == "u" {
                 let handle = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
                 guard !handle.isEmpty else { return }
@@ -119,7 +127,21 @@ struct RootView: View {
             library.adoptAccountProfile()
             Task { await library.reconcileWithCloud() }
         }
+        .onContinueUserActivity(CSSearchableItemActionType) { activity in
+            guard let film = Spotlight.film(for: activity, in: library) else { return }
+            router.sheet = nil
+            router.closeRandom()
+            router.tab = .films
+            router.filmsPath = NavigationPath()
+            router.open(film)
+        }
         .task { NowWatchingActivity.sync(watching.sessions) }
+        .task { await Party.shared.run() }
+        .task {
+            try? await Task.sleep(for: .seconds(3))
+            await Spotlight.index(library)
+            await Reminders.refresh(library)
+        }
         .task { await previewMode() }
     }
 
@@ -174,10 +196,20 @@ extension View {
             .navigationDestination(for: GenreRoute.self) { GenreView(genre: $0.name) }
             .navigationDestination(for: CollectionRoute.self) { CollectionView(route: $0) }
             .navigationDestination(for: ProfileRoute.self) { PublicProfileView(handle: $0.handle) }
+            .navigationDestination(for: PersonRoute.self) { PersonView(route: $0) }
+            .navigationDestination(for: StatsRoute.self) { _ in StatsView() }
+            .navigationDestination(for: FeedRoute.self) { _ in FeedView() }
+            .navigationDestination(for: BlendRoute.self) { BlendView(profile: $0.profile) }
+            .navigationDestination(for: FollowListRoute.self) { FollowListView(route: $0) }
     }
 }
 
 struct GenreRoute: Hashable { let name: String }
+struct PersonRoute: Hashable { let id: String; let name: String }
+struct StatsRoute: Hashable {}
+struct FeedRoute: Hashable {}
+struct BlendRoute: Hashable { let profile: PublicProfile }
+struct FollowListRoute: Hashable { let userID: String; let followers: Bool; let title: String }
 
 enum CollectionRoute: Hashable {
     case shelf(HomeShelf), watched, liked, watchlist, tag(String), rated(Int), forYou, shows
@@ -200,6 +232,11 @@ struct SheetHost: View {
         case .logEpisode(let e): LogSheet(film: e.film, existing: nil, draft: e)
         case .episode(let f, let e): EpisodeSheet(show: f, episode: e)
         case .wrap(let f, let s, let series): SeasonWrapSheet(show: f, season: s, series: series)
+        case .logDraft(let e): LogSheet(film: e.film, existing: nil, draft: e)
+        case .yearReview(let y): YearInReviewView(year: y)
+        case .scanTicket: TicketScanSheet()
+        case .ask: AskMatineeSheet()
+        case .party(let c): PartySheet(code: c)
         }
     }
 }

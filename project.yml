@@ -38,6 +38,7 @@ targets:
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_ENTITLEMENTS: Config/Matinee.entitlements
         INFOPLIST_KEY_NSSupportsLiveActivities: YES
+        INFOPLIST_KEY_NSCameraUsageDescription: "Matinee reads cinema tickets you photograph so it can log the film and the date."
         ENABLE_PREVIEWS: YES
   MatineeWidgets:
     type: app-extension
