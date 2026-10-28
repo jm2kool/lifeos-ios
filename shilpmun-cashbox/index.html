@@ -1,0 +1,849 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16285A">
+<meta name="robots" content="noindex">
+<title>SHILPMUN Cash Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Pinyon+Script&display=swap">
+<style>
+/* SHILPMUN 2026 brand: navy hosts, oxblood speaks. Anton = authority (capitals, numerals),
+   EB Garamond = record (all reading text), Pinyon Script = the year only. One hairline rule as structure. */
+:root {
+  --bg: #FFFFFF;          /* Paper */
+  --surface: #FFFFFF;
+  --mist: #EEF0F5;        /* Navy Mist */
+  --ox-mist: #F7EFEF;     /* Oxblood Mist */
+  --rule: #C7CBD4;        /* Rule */
+  --ink: #1C1F2A;         /* Ink */
+  --muted: #555c70;
+  --head: #16285A;        /* Shilp Navy as text */
+  --accent: #781E1E;      /* Mun Oxblood */
+  --field: #16285A;       /* Navy field */
+  --field-ink: #FFFFFF;
+  --field-muted: #D7D7D7; /* Script Silver */
+  --silver: #D7D7D7;
+  --good: #1D6B45;
+  --btn: #16285A;
+  --btn-ink: #FFFFFF;
+  --f-auth: "Anton", "Oswald", "Impact", "Arial Narrow", sans-serif;
+  --f-record: "EB Garamond", "Garamond", "Georgia", serif;
+  --f-sig: "Pinyon Script", "Snell Roundhand", cursive;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0B1229; --surface: #111A38; --mist: #18234A; --ox-mist: #2A1620; --rule: #2B3866;
+    --ink: #E8EBF3; --muted: #A3ABC4; --head: #DCE2F5; --accent: #E2847C;
+    --field: #16285A; --field-ink: #FFFFFF; --field-muted: #C9CEDB; --silver: #8F98B5;
+    --good: #6FCF9E; --btn: #DCE2F5; --btn-ink: #0B1229;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0B1229; --surface: #111A38; --mist: #18234A; --ox-mist: #2A1620; --rule: #2B3866;
+  --ink: #E8EBF3; --muted: #A3ABC4; --head: #DCE2F5; --accent: #E2847C;
+  --field: #16285A; --field-ink: #FFFFFF; --field-muted: #C9CEDB; --silver: #8F98B5;
+  --good: #6FCF9E; --btn: #DCE2F5; --btn-ink: #0B1229;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: var(--f-record); font-size: 18px; line-height: 1.45;
+  padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+[hidden] { display: none !important; }
+.gutter { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 1180px; margin: 0 auto; }
+.auth { font-family: var(--f-auth); font-weight: 400; text-transform: uppercase; letter-spacing: 0.01em; }
+.num { font-family: var(--f-auth); font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
+.sc { font-family: var(--f-record); font-variant-caps: all-small-caps; letter-spacing: 0.12em; font-size: 1rem; color: var(--accent); font-weight: 500; }
+.it { font-style: italic; }
+button { font: inherit; color: inherit; }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- Masthead ---------- */
+.mast { border-bottom: 1px solid var(--rule); background: var(--bg); position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); background: var(--bg); z-index: 21; }
+.mast .wrap { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding-block: 12px; }
+.lockup-row { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.lockup { position: relative; font-family: var(--f-auth); font-size: 2rem; line-height: 1; letter-spacing: 0; white-space: nowrap; }
+.lockup .s { color: var(--head); }
+.lockup .m { color: var(--accent); }
+.lockup .y { position: absolute; left: 54%; top: 52%; transform: translate(-50%, -50%) rotate(-6deg); font-family: var(--f-sig); font-size: 1.25rem; color: var(--silver); pointer-events: none; text-shadow: 0 0 2px var(--bg); }
+.vrule { width: 1px; align-self: stretch; background: var(--rule); }
+.mast-meta { line-height: 1.15; min-width: 0; }
+.mast-meta .sc { font-size: 0.82rem; display: block; }
+.mast-meta .it { font-size: 0.95rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.mast-actions { display: flex; align-items: center; gap: 8px; }
+.sync { font-size: 0.85rem; color: var(--muted); font-style: italic; white-space: nowrap; }
+.sync.err { color: var(--accent); font-style: normal; font-weight: 600; }
+.ghost { border: 1px solid var(--rule); background: transparent; border-radius: 2px; padding: 8px 12px; cursor: pointer; font-family: var(--f-auth); font-size: 0.9rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--head); }
+.ghost:hover { background: var(--mist); }
+@media (max-width: 560px) { .mast-meta, .vrule { display: none; } .sync { display: none; } .lockup { font-size: 1.7rem; } }
+
+/* ---------- Layout ---------- */
+main .wrap { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; padding-block: 20px 60px; }
+@media (min-width: 960px) {
+  main .wrap { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); align-items: start; gap: 28px; }
+  .col-right { position: sticky; top: 84px; }
+}
+.col { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+
+/* ---------- Cash summary (navy field) ---------- */
+.field { background: var(--field); color: var(--field-ink); padding: 20px 20px 18px; position: relative; overflow: hidden; }
+.field .sc { color: var(--field-muted); font-size: 0.95rem; }
+.field .big { font-family: var(--f-auth); font-size: clamp(3.2rem, 13vw, 5.2rem); line-height: 1; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.field .sub { font-style: italic; color: var(--field-muted); margin-top: 6px; font-size: 1rem; }
+.field .hair { height: 1px; background: rgba(215,215,215,.35); margin: 16px 0 14px; }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.stat .k { font-variant-caps: all-small-caps; letter-spacing: 0.1em; font-size: 0.9rem; color: var(--field-muted); }
+.stat .v { font-family: var(--f-auth); font-size: 1.45rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+@media (max-width: 480px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 14px; } }
+.field .yr { position: absolute; right: 16px; top: 6px; font-family: var(--f-sig); font-size: 4.2rem; color: rgba(215,215,215,.13); pointer-events: none; line-height: 1; }
+.start-hint { margin-top: 14px; background: var(--ox-mist); color: var(--ink); border-left: 3px solid var(--accent); padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 1rem; position: relative; }
+.start-hint button { border: 0; background: var(--accent); color: #fff; padding: 8px 12px; border-radius: 2px; cursor: pointer; font-family: var(--f-auth); text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.9rem; }
+
+/* ---------- Entry panel ---------- */
+.panel { background: var(--surface); border: 1px solid var(--rule); border-top: 4px solid var(--head); }
+.tabs { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--rule); }
+.tabs button { border: 0; background: transparent; padding: 14px 6px; cursor: pointer; font-family: var(--f-auth); text-transform: uppercase; font-size: 1.05rem; letter-spacing: 0.04em; color: var(--muted); border-bottom: 3px solid transparent; margin-bottom: -1px; }
+.tabs button[aria-pressed="true"] { color: var(--head); border-bottom-color: var(--accent); }
+@media (max-width: 420px) { .tabs button { font-size: 0.95rem; letter-spacing: 0.02em; white-space: nowrap; } }
+.pbody { padding: 18px; display: flex; flex-direction: column; gap: 18px; }
+.lbl { font-variant-caps: all-small-caps; letter-spacing: 0.12em; color: var(--accent); font-weight: 600; font-size: 1.02rem; display: block; margin-bottom: 8px; }
+.row2 { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+
+.stepper { display: grid; grid-template-columns: 64px minmax(0, 1fr) 64px; gap: 8px; }
+.stepper button { border: 1px solid var(--rule); background: var(--mist); color: var(--head); cursor: pointer; font-family: var(--f-auth); font-size: 2rem; border-radius: 2px; min-height: 64px; }
+.stepper button:active { background: var(--rule); }
+.bigin { width: 100%; min-width: 0; border: 1px solid var(--rule); background: var(--bg); color: var(--head); text-align: center; font-family: var(--f-auth); font-size: 2.3rem; border-radius: 2px; padding: 6px 10px; font-variant-numeric: tabular-nums; }
+input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+.quick { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+@media (max-width: 420px) { .quick { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.quick button { border: 1px solid var(--rule); background: var(--surface); color: var(--head); padding: 10px 0; cursor: pointer; font-family: var(--f-auth); font-size: 1.15rem; border-radius: 2px; }
+.quick button.on { background: var(--head); color: var(--bg); border-color: var(--head); }
+
+.due { border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); padding: 10px 0; }
+.due .k { font-style: italic; color: var(--muted); }
+.due .v { font-family: var(--f-auth); font-size: 2rem; color: var(--head); font-variant-numeric: tabular-nums; }
+
+.seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--rule); }
+.seg button { border: 0; background: transparent; padding: 12px; cursor: pointer; font-family: var(--f-auth); text-transform: uppercase; letter-spacing: 0.05em; font-size: 1.05rem; color: var(--muted); }
+.seg button + button { border-left: 1px solid var(--rule); }
+.seg button[aria-pressed="true"] { background: var(--head); color: var(--bg); }
+
+.notes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+.notes button { border: 1px solid var(--rule); background: var(--mist); color: var(--head); padding: 12px 4px; cursor: pointer; font-family: var(--f-auth); font-size: 1.2rem; border-radius: 2px; }
+.notes button:active { background: var(--rule); }
+.notes .alt { background: var(--surface); font-size: 1rem; letter-spacing: 0.05em; }
+.hint { font-style: italic; color: var(--muted); font-size: 0.95rem; margin-top: 6px; }
+
+.result { padding: 16px; background: var(--mist); border-left: 4px solid var(--rule); }
+.result .k { font-family: var(--f-auth); text-transform: uppercase; letter-spacing: 0.05em; font-size: 1.05rem; color: var(--muted); }
+.result .v { font-family: var(--f-auth); font-size: clamp(2.8rem, 12vw, 3.8rem); line-height: 1; margin-top: 4px; font-variant-numeric: tabular-nums; color: var(--head); }
+.result .bd { font-style: italic; margin-top: 6px; color: var(--ink); }
+.result.give { background: var(--ox-mist); border-left-color: var(--accent); }
+.result.give .k, .result.give .v { color: var(--accent); }
+.result.short { background: var(--ox-mist); border-left-color: var(--accent); }
+.result.short .k, .result.short .v { color: var(--accent); }
+.result.exact { border-left-color: var(--good); }
+.result.exact .k { color: var(--good); }
+
+.primary { width: 100%; border: 0; background: var(--btn); color: var(--btn-ink); padding: 18px; cursor: pointer; font-family: var(--f-auth); text-transform: uppercase; letter-spacing: 0.06em; font-size: 1.3rem; border-radius: 2px; }
+.primary:disabled { opacity: .4; cursor: not-allowed; }
+.text-in { width: 100%; border: 1px solid var(--rule); background: var(--bg); color: var(--ink); padding: 12px; font: 1.05rem var(--f-record); border-radius: 2px; }
+.err-line { color: var(--accent); font-weight: 600; }
+
+/* ---------- Count the box ---------- */
+.count { padding: 18px; }
+.count h2, .log-head h2 { font-family: var(--f-auth); font-weight: 400; text-transform: uppercase; color: var(--head); font-size: 1.7rem; line-height: 1; margin: 0; }
+.deno { width: 100%; border-collapse: collapse; margin-top: 12px; }
+.deno th { text-align: left; font-variant-caps: all-small-caps; letter-spacing: 0.12em; font-weight: 500; font-size: 0.9rem; background: var(--head); color: var(--bg); padding: 6px 10px; }
+.deno th:last-child, .deno td:last-child { text-align: right; }
+.deno td { padding: 6px 10px; border-bottom: 1px solid var(--rule); vertical-align: middle; }
+.deno tr:nth-child(even) td { background: var(--mist); }
+.deno .dn { font-family: var(--f-auth); font-size: 1.2rem; color: var(--head); white-space: nowrap; }
+.deno input { width: 76px; border: 1px solid var(--rule); background: var(--bg); color: var(--ink); padding: 6px 8px; font-family: var(--f-auth); font-size: 1.15rem; text-align: center; border-radius: 2px; }
+.deno .sub { font-family: var(--f-auth); font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.count-total { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.count-total .v { font-family: var(--f-auth); font-size: 2rem; color: var(--head); }
+.verdict { margin-top: 8px; padding: 10px 12px; font-weight: 600; background: var(--mist); }
+.verdict.ok { color: var(--good); }
+.verdict.bad { color: var(--accent); background: var(--ox-mist); }
+.count-foot { display: flex; justify-content: flex-end; margin-top: 10px; }
+
+/* ---------- Log ---------- */
+.log { padding: 18px; }
+.log-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.filters { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+.filters button { border: 1px solid var(--rule); background: transparent; padding: 5px 11px; cursor: pointer; font-variant-caps: all-small-caps; letter-spacing: 0.1em; font-size: 0.95rem; color: var(--muted); border-radius: 2px; }
+.filters button[aria-pressed="true"] { background: var(--head); color: var(--bg); border-color: var(--head); }
+.entries { list-style: none; margin: 10px 0 0; padding: 0; }
+.entry { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--rule); align-items: start; }
+.entry .t { font-family: var(--f-auth); color: var(--muted); font-size: 0.95rem; padding-top: 3px; font-variant-numeric: tabular-nums; }
+.entry .w { min-width: 0; }
+.entry .ti { font-weight: 600; color: var(--head); }
+.entry .me { font-style: italic; color: var(--muted); font-size: 0.95rem; overflow-wrap: anywhere; }
+.entry .r { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.amt { font-family: var(--f-auth); font-size: 1.3rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.amt.plus { color: var(--good); } .amt.minus { color: var(--accent); } .amt.zero { color: var(--muted); font-size: 1.05rem; }
+.tag { font-variant-caps: all-small-caps; letter-spacing: 0.1em; font-size: 0.85rem; color: var(--accent); margin-left: 6px; font-weight: 600; }
+.void-btn { border: 0; background: none; padding: 2px 0; cursor: pointer; font-size: 0.9rem; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+.void-btn.arm { color: var(--accent); font-weight: 600; }
+.entry.voided .ti, .entry.voided .amt { text-decoration: line-through; opacity: .55; }
+.entry.voided .me { opacity: .75; }
+.empty { font-style: italic; color: var(--muted); padding: 16px 0 4px; }
+.more { margin-top: 12px; }
+
+/* ---------- PIN gate ---------- */
+.gate { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding-block: 32px; }
+.gate-card { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 18px; }
+.gate .lockup { font-size: 3.4rem; align-self: flex-start; }
+.gate .lockup .y { font-size: 2.1rem; }
+.gate h1 { font-family: var(--f-auth); font-weight: 400; text-transform: uppercase; color: var(--head); font-size: 2.4rem; line-height: 0.98; margin: 0; }
+.gate .deck { font-style: italic; color: var(--head); font-size: 1.15rem; margin: 0; }
+.gate .bigin { letter-spacing: 0.3em; }
+
+/* ---------- Toast ---------- */
+.toast { position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 24px); background: var(--field); color: #fff; padding: 12px 14px 12px 16px; display: flex; align-items: center; gap: 14px; opacity: 0; pointer-events: none; transition: opacity .18s, transform .18s; z-index: 50; max-width: calc(100% - 32px); border-left: 4px solid #B8443E; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.toast .msg { font-size: 1.02rem; }
+.toast button { border: 1px solid rgba(255,255,255,.5); background: transparent; color: #fff; padding: 6px 10px; cursor: pointer; font-family: var(--f-auth); text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.85rem; border-radius: 2px; white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+</style>
+</head>
+<body>
+
+<!-- PIN gate -->
+<section class="gate gutter" id="gate">
+  <form class="gate-card" id="gate-form" autocomplete="off">
+    <div class="lockup" aria-label="SHILPMUN 2026"><span class="s">SHILP</span><span class="m">MUN</span><span class="y" aria-hidden="true">2026</span></div>
+    <div>
+      <span class="sc">Coupon &amp; cash desk</span>
+      <h1>Enter the desk PIN</h1>
+    </div>
+    <p class="deck">Every coupon sale, refund and cash movement is logged here. Only people with the PIN can see or add to it.</p>
+    <div>
+      <label class="lbl" for="pin">PIN</label>
+      <input class="bigin" id="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="off" required>
+    </div>
+    <div>
+      <label class="lbl" for="who">Your name</label>
+      <input class="text-in" id="who" type="text" maxlength="40" placeholder="Shown next to the entries you record">
+    </div>
+    <div class="err-line" id="gate-err" hidden></div>
+    <button class="primary" id="gate-btn" type="submit">Open the desk</button>
+  </form>
+</section>
+
+<!-- App -->
+<div id="app" hidden>
+  <header class="mast gutter">
+    <div class="wrap">
+      <div class="lockup-row">
+        <div class="lockup" aria-label="SHILPMUN 2026"><span class="s">SHILP</span><span class="m">MUN</span><span class="y" aria-hidden="true">2026</span></div>
+        <div class="vrule" aria-hidden="true"></div>
+        <div class="mast-meta"><span class="sc">Coupon &amp; cash desk</span><span class="it" id="who-line">₹50 a coupon</span></div>
+      </div>
+      <div class="mast-actions">
+        <span class="sync" id="sync">Connecting…</span>
+        <button class="ghost" type="button" id="lock">Lock</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="gutter">
+    <div class="wrap">
+      <div class="col">
+        <section class="field" aria-label="Cash summary">
+          <span class="sc">Cash that should be in the box</span>
+          <div class="big" id="s-drawer">₹0</div>
+          <div class="sub" id="s-drawer-note">Float ₹0 + cash sales ₹0</div>
+          <div class="hair" aria-hidden="true"></div>
+          <div class="stats">
+            <div class="stat"><div class="k">Coupons out</div><div class="v" id="s-coupons">0</div></div>
+            <div class="stat"><div class="k">Sales value</div><div class="v" id="s-sales">₹0</div></div>
+            <div class="stat"><div class="k">Paid by UPI</div><div class="v" id="s-upi">₹0</div></div>
+            <div class="stat"><div class="k">Change given</div><div class="v" id="s-change">₹0</div></div>
+          </div>
+          <div class="start-hint" id="start-hint" hidden>
+            <span>Starting with change in the box? Log it first so the total is right.</span>
+            <button type="button" id="start-btn">Add starting change</button>
+          </div>
+          <span class="yr" aria-hidden="true">2026</span>
+        </section>
+
+        <section class="panel" aria-label="New entry">
+          <div class="tabs" role="group" aria-label="Entry type">
+            <button type="button" data-mode="sale" aria-pressed="true">Sale</button>
+            <button type="button" data-mode="refund" aria-pressed="false">Refund</button>
+            <button type="button" data-mode="float" aria-pressed="false">Cash in/out</button>
+          </div>
+
+          <!-- Sale -->
+          <form class="pbody" id="f-sale" autocomplete="off">
+            <div>
+              <label class="lbl" for="sale-n">Coupons</label>
+              <div class="stepper">
+                <button type="button" data-step="-1" data-for="sale-n" aria-label="One fewer coupon">−</button>
+                <input class="bigin" id="sale-n" type="number" inputmode="numeric" min="1" max="10000" value="1">
+                <button type="button" data-step="1" data-for="sale-n" aria-label="One more coupon">+</button>
+              </div>
+              <div class="quick" id="quick"></div>
+            </div>
+            <div class="due row2"><span class="k">Amount due</span><span class="v" id="sale-due">₹50</span></div>
+            <div class="seg" role="group" aria-label="Payment method">
+              <button type="button" data-method="cash" aria-pressed="true">Cash</button>
+              <button type="button" data-method="upi" aria-pressed="false">UPI</button>
+            </div>
+            <div id="recv-box">
+              <label class="lbl" for="sale-recv">Cash handed to you</label>
+              <input class="bigin" id="sale-recv" type="number" inputmode="numeric" min="0" placeholder="₹0">
+              <div class="notes" id="notes">
+                <button type="button" data-note="500">+500</button>
+                <button type="button" data-note="200">+200</button>
+                <button type="button" data-note="100">+100</button>
+                <button type="button" data-note="50">+50</button>
+                <button type="button" data-note="20">+20</button>
+                <button type="button" data-note="10">+10</button>
+                <button type="button" class="alt" id="exact">Exact</button>
+                <button type="button" class="alt" id="recv-clear">Clear</button>
+                <button type="button" class="alt" data-note="2000">+2000</button>
+              </div>
+              <div class="hint">Tap each note they hand you. Two ₹500s is two taps.</div>
+            </div>
+            <div class="result" id="sale-res" aria-live="polite"><div class="k">Enter the cash handed to you</div><div class="v"></div><div class="bd"></div></div>
+            <div class="err-line" id="sale-err" hidden></div>
+            <button class="primary" id="sale-btn" type="submit" disabled>Record sale</button>
+          </form>
+
+          <!-- Refund -->
+          <form class="pbody" id="f-refund" autocomplete="off" hidden>
+            <div>
+              <label class="lbl" for="ref-n">Coupons handed back</label>
+              <div class="stepper">
+                <button type="button" data-step="-1" data-for="ref-n" aria-label="One fewer coupon">−</button>
+                <input class="bigin" id="ref-n" type="number" inputmode="numeric" min="1" max="10000" value="1">
+                <button type="button" data-step="1" data-for="ref-n" aria-label="One more coupon">+</button>
+              </div>
+            </div>
+            <div class="result give"><div class="k">Pay back in cash</div><div class="v" id="ref-amt">₹50</div><div class="bd" id="ref-bd"></div></div>
+            <div>
+              <label class="lbl" for="ref-note">Note (optional)</label>
+              <input class="text-in" id="ref-note" type="text" maxlength="120" placeholder="Who, and why">
+            </div>
+            <div class="err-line" id="ref-err" hidden></div>
+            <button class="primary" id="ref-btn" type="submit">Record refund</button>
+          </form>
+
+          <!-- Float -->
+          <form class="pbody" id="f-float" autocomplete="off" hidden>
+            <div class="seg" role="group" aria-label="Direction">
+              <button type="button" data-dir="in" aria-pressed="true">Put cash in</button>
+              <button type="button" data-dir="out" aria-pressed="false">Take cash out</button>
+            </div>
+            <div>
+              <label class="lbl" for="float-amt">Amount</label>
+              <input class="bigin" id="float-amt" type="number" inputmode="numeric" min="1" placeholder="₹0">
+            </div>
+            <div>
+              <label class="lbl" for="float-note">Note</label>
+              <input class="text-in" id="float-note" type="text" maxlength="120" placeholder="Starting change, handed to treasurer, bank deposit…">
+            </div>
+            <div class="err-line" id="float-err" hidden></div>
+            <button class="primary" id="float-btn" type="submit" disabled>Record</button>
+          </form>
+        </section>
+      </div>
+
+      <div class="col col-right">
+        <section class="panel count" aria-label="Count the box">
+          <div class="row2"><h2>Count the box</h2><span class="sc">Expected <span id="c-expected" class="num">₹0</span></span></div>
+          <div style="overflow-x:auto">
+            <table class="deno">
+              <thead><tr><th>Note</th><th>How many</th><th>Total</th></tr></thead>
+              <tbody id="deno-body"></tbody>
+            </table>
+          </div>
+          <div class="count-total"><span class="sc">Counted</span><span class="v" id="c-total">₹0</span></div>
+          <div class="verdict" id="verdict">Count each note and the total will be checked against the log.</div>
+          <div class="count-foot"><button class="ghost" type="button" id="c-reset">Reset count</button></div>
+        </section>
+
+        <section class="panel log" aria-label="Log">
+          <div class="log-head">
+            <h2>The log</h2>
+            <button class="ghost" type="button" id="export">Export CSV</button>
+          </div>
+          <div class="filters" role="group" aria-label="Show">
+            <button type="button" data-filter="all" aria-pressed="true">All</button>
+            <button type="button" data-filter="sale" aria-pressed="false">Sales</button>
+            <button type="button" data-filter="refund" aria-pressed="false">Refunds</button>
+            <button type="button" data-filter="float" aria-pressed="false">Cash in/out</button>
+            <button type="button" data-filter="void" aria-pressed="false">Voided</button>
+          </div>
+          <ul class="entries" id="entries"></ul>
+          <div class="empty" id="empty">Loading the log…</div>
+          <button class="ghost more" type="button" id="more" hidden>Show more</button>
+        </section>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"><span class="msg" id="toast-msg"></span><button type="button" id="toast-undo" hidden>Undo</button></div>
+
+<script>
+(function () {
+  "use strict";
+  var API = "https://pryljjakjcswekcwxcog.supabase.co/rest/v1/rpc/";
+  var KEY = "sb_publishable_I91KuA6XXzqt-li5CCzXFg_u0F7QEOZ";
+  var NOTES = [500, 200, 100, 50, 20, 10, 5, 2, 1];
+  var DENOMS = [2000, 500, 200, 100, 50, 20, 10];
+  var POLL_MS = 8000;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var store = {
+    get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+    del: function (k) { try { localStorage.removeItem(k); } catch (e) {} }
+  };
+  var int = function (v) { var n = Math.floor(Number(v)); return isFinite(n) ? n : 0; };
+  var rs = function (n) { return (n < 0 ? "−₹" : "₹") + Math.abs(n).toLocaleString("en-IN"); };
+  var signed = function (n) { return (n > 0 ? "+" : n < 0 ? "−" : "") + "₹" + Math.abs(n).toLocaleString("en-IN"); };
+
+  function breakdown(amount) {
+    var out = [], left = amount;
+    NOTES.forEach(function (n) { var c = Math.floor(left / n); if (c > 0) { out.push(c > 1 ? c + " × ₹" + n : "₹" + n); left -= c * n; } });
+    return out.join(" + ");
+  }
+
+  var S = {
+    pin: store.get("cb_pin") || "", who: store.get("cb_who") || "",
+    price: 50, entries: [], loaded: false, mode: "sale", method: "cash", dir: "in",
+    filter: "all", shown: 60, saving: false, armed: null, armTimer: null,
+    lastSync: 0, syncErr: false, pollTimer: null, counts: {}
+  };
+  try { S.counts = JSON.parse(store.get("cb_counts") || "{}") || {}; } catch (e) { S.counts = {}; }
+
+  /* ---------- API ---------- */
+  function rpc(fn, body) {
+    return fetch(API + fn, {
+      method: "POST",
+      headers: { "apikey": KEY, "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    }).then(function (r) {
+      if (!r.ok) throw new Error("http_" + r.status);
+      return r.json();
+    });
+  }
+  function pinError(code) {
+    if (code === "locked") return "Too many wrong PINs. Wait 10 minutes and try again.";
+    return "That PIN didn't work. Check it and try again.";
+  }
+
+  /* ---------- Gate ---------- */
+  $("who").value = S.who;
+  $("gate-form").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var pin = $("pin").value.trim(), btn = $("gate-btn"), err = $("gate-err");
+    if (!pin) return;
+    btn.disabled = true; btn.textContent = "Checking…"; err.hidden = true;
+    rpc("cashbox_list", { p_pin: pin }).then(function (res) {
+      btn.disabled = false; btn.textContent = "Open the desk";
+      if (!res || !res.ok) { err.textContent = pinError(res && res.error); err.hidden = false; return; }
+      S.pin = pin; S.who = $("who").value.trim().slice(0, 40);
+      store.set("cb_pin", pin); store.set("cb_who", S.who);
+      applyList(res); openApp();
+    }, function () {
+      btn.disabled = false; btn.textContent = "Open the desk";
+      err.textContent = "Couldn't reach the server. Check your internet and try again."; err.hidden = false;
+    });
+  });
+  function openApp() {
+    $("gate").hidden = true; $("app").hidden = false; $("pin").value = "";
+    $("who-line").textContent = S.who ? "At the desk: " + S.who : "₹" + S.price + " a coupon";
+    renderAll(); startPolling();
+  }
+  $("lock").addEventListener("click", function () {
+    S.pin = ""; store.del("cb_pin"); stopPolling();
+    S.entries = []; S.loaded = false;
+    $("app").hidden = true; $("gate").hidden = false; $("pin").focus();
+  });
+
+  /* ---------- Sync ---------- */
+  function applyList(res) {
+    S.price = int(res.price) || 50;
+    S.entries = Array.isArray(res.entries) ? res.entries : [];
+    S.loaded = true; S.lastSync = Date.now(); S.syncErr = false;
+  }
+  function refresh() {
+    if (!S.pin) return Promise.resolve();
+    return rpc("cashbox_list", { p_pin: S.pin }).then(function (res) {
+      if (!res || !res.ok) {
+        if (res && (res.error === "bad" || res.error === "locked")) { $("lock").click(); $("gate-err").textContent = "The desk PIN has changed. Enter the new one."; $("gate-err").hidden = false; }
+        return;
+      }
+      applyList(res); renderSummary(); renderLog(); renderSync();
+    }, function () { S.syncErr = true; renderSync(); });
+  }
+  function startPolling() {
+    stopPolling();
+    S.pollTimer = setInterval(function () { if (!document.hidden) refresh(); renderSync(); }, POLL_MS);
+  }
+  function stopPolling() { if (S.pollTimer) clearInterval(S.pollTimer); S.pollTimer = null; }
+  document.addEventListener("visibilitychange", function () { if (!document.hidden && S.pin) refresh(); });
+  window.addEventListener("online", function () { if (S.pin) refresh(); });
+  function renderSync() {
+    var el = $("sync");
+    if (S.syncErr) { el.className = "sync err"; el.textContent = "Offline, not syncing"; return; }
+    var s = Math.round((Date.now() - S.lastSync) / 1000);
+    el.className = "sync"; el.textContent = s < 5 ? "Up to date" : "Synced " + s + "s ago";
+  }
+
+  /* ---------- Totals ---------- */
+  function totals() {
+    var t = { drawer: 0, float: 0, cashSales: 0, refunds: 0, coupons: 0, upi: 0, change: 0, live: 0 };
+    S.entries.forEach(function (e) {
+      if (e.voided_at) return;
+      t.live++;
+      t.drawer += int(e.cash);
+      if (e.kind === "sale") { t.coupons += int(e.coupons); t.upi += int(e.upi); t.change += int(e.change); t.cashSales += int(e.cash); }
+      else if (e.kind === "refund") { t.coupons -= int(e.coupons); t.refunds -= int(e.cash); }
+      else if (e.kind === "float") { t.float += int(e.cash); }
+    });
+    return t;
+  }
+  function renderSummary() {
+    var t = totals();
+    $("s-drawer").textContent = rs(t.drawer);
+    $("s-drawer-note").textContent = "Float " + rs(t.float) + " + cash sales " + rs(t.cashSales) + (t.refunds ? " − refunds " + rs(t.refunds) : "");
+    $("s-coupons").textContent = t.coupons.toLocaleString("en-IN");
+    $("s-sales").textContent = rs(t.coupons * S.price);
+    $("s-upi").textContent = rs(t.upi);
+    $("s-change").textContent = rs(t.change);
+    var hasFloat = S.entries.some(function (e) { return e.kind === "float" && !e.voided_at; });
+    $("start-hint").hidden = !S.loaded || hasFloat;
+    renderCount(t.drawer);
+  }
+
+  /* ---------- Tabs ---------- */
+  function setMode(m) {
+    S.mode = m;
+    document.querySelectorAll("[data-mode]").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.mode === m)); });
+    $("f-sale").hidden = m !== "sale"; $("f-refund").hidden = m !== "refund"; $("f-float").hidden = m !== "float";
+  }
+  document.querySelectorAll("[data-mode]").forEach(function (b) { b.addEventListener("click", function () { setMode(b.dataset.mode); }); });
+  $("start-btn").addEventListener("click", function () {
+    setMode("float"); setDir("in"); $("float-note").value = "Starting change"; renderFloat(); $("float-amt").focus();
+  });
+  document.querySelectorAll("[data-step]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var inp = $(b.dataset.for);
+      inp.value = Math.min(10000, Math.max(1, int(inp.value) + int(b.dataset.step)));
+      inp.dispatchEvent(new Event("input"));
+    });
+  });
+
+  /* ---------- Sale ---------- */
+  [1, 2, 3, 4, 5, 6, 8, 10].forEach(function (n) {
+    var b = document.createElement("button"); b.type = "button"; b.textContent = n; b.dataset.n = n;
+    b.addEventListener("click", function () { $("sale-n").value = n; renderSale(); });
+    $("quick").appendChild(b);
+  });
+  document.querySelectorAll("[data-method]").forEach(function (b) {
+    b.addEventListener("click", function () { S.method = b.dataset.method; renderSale(); });
+  });
+  document.querySelectorAll("[data-note]").forEach(function (b) {
+    b.addEventListener("click", function () { $("sale-recv").value = int($("sale-recv").value) + int(b.dataset.note); renderSale(); });
+  });
+  $("exact").addEventListener("click", function () { $("sale-recv").value = saleN() * S.price; renderSale(); });
+  $("recv-clear").addEventListener("click", function () { $("sale-recv").value = ""; renderSale(); });
+  $("sale-n").addEventListener("input", renderSale);
+  $("sale-recv").addEventListener("input", renderSale);
+
+  function saleN() { return Math.max(0, Math.min(10000, int($("sale-n").value))); }
+  function renderSale() {
+    var n = saleN(), due = n * S.price, cash = S.method === "cash", rv = $("sale-recv").value;
+    document.querySelectorAll("#quick button").forEach(function (b) { b.classList.toggle("on", int(b.dataset.n) === n); });
+    document.querySelectorAll("[data-method]").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.method === S.method)); });
+    $("sale-due").textContent = rs(due);
+    $("recv-box").hidden = !cash;
+    var res = $("sale-res"), k = res.querySelector(".k"), v = res.querySelector(".v"), bd = res.querySelector(".bd");
+    var ok = false; res.className = "result"; bd.textContent = "";
+    if (n < 1) { k.textContent = "Pick at least one coupon"; v.textContent = ""; }
+    else if (!cash) { res.className = "result exact"; k.textContent = "Collect by UPI"; v.textContent = rs(due); bd.textContent = "Check the payment shows on the phone before you hand over coupons."; ok = true; }
+    else if (rv === "") { k.textContent = "Enter the cash handed to you"; v.textContent = ""; }
+    else {
+      var change = int(rv) - due;
+      if (change < 0) { res.className = "result short"; k.textContent = "Short by"; v.textContent = rs(-change); bd.textContent = "Ask for " + rs(-change) + " more."; }
+      else if (change === 0) { res.className = "result exact"; k.textContent = "Exact. No change"; v.textContent = "₹0"; ok = true; }
+      else { res.className = "result give"; k.textContent = "Give back"; v.textContent = rs(change); bd.textContent = breakdown(change); ok = true; }
+    }
+    var btn = $("sale-btn");
+    btn.disabled = !ok || S.saving;
+    btn.textContent = S.saving ? "Saving…" : (n > 0 ? "Record sale · " + n + (n === 1 ? " coupon" : " coupons") : "Record sale");
+  }
+  $("f-sale").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var n = saleN(), due = n * S.price, cash = S.method === "cash", rec = cash ? int($("sale-recv").value) : due;
+    if (n < 1 || rec < due || S.saving) return;
+    var change = rec - due;
+    submit("sale-err", { p_kind: "sale", p_coupons: n, p_method: S.method, p_received: rec },
+      cash ? (change > 0 ? "Sale saved. Give back " + rs(change) + "." : "Sale saved. Exact cash.") : "UPI sale saved.",
+      function () { $("sale-n").value = 1; $("sale-recv").value = ""; renderSale(); });
+  });
+
+  /* ---------- Refund ---------- */
+  function renderRefund() {
+    var n = Math.max(0, int($("ref-n").value));
+    $("ref-amt").textContent = rs(n * S.price);
+    $("ref-bd").textContent = n > 0 ? breakdown(n * S.price) : "";
+    $("ref-btn").disabled = n < 1 || S.saving;
+    $("ref-btn").textContent = S.saving ? "Saving…" : "Record refund";
+  }
+  $("ref-n").addEventListener("input", renderRefund);
+  $("f-refund").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var n = int($("ref-n").value); if (n < 1 || S.saving) return;
+    submit("ref-err", { p_kind: "refund", p_coupons: n, p_note: $("ref-note").value },
+      "Refund saved. Pay back " + rs(n * S.price) + ".",
+      function () { $("ref-n").value = 1; $("ref-note").value = ""; renderRefund(); });
+  });
+
+  /* ---------- Cash in / out ---------- */
+  function setDir(d) { S.dir = d; document.querySelectorAll("[data-dir]").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.dir === d)); }); }
+  document.querySelectorAll("[data-dir]").forEach(function (b) { b.addEventListener("click", function () { setDir(b.dataset.dir); renderFloat(); }); });
+  function renderFloat() {
+    var a = int($("float-amt").value);
+    $("float-btn").disabled = a < 1 || S.saving;
+    $("float-btn").textContent = S.saving ? "Saving…" : (a > 0 ? (S.dir === "in" ? "Put in " : "Take out ") + rs(a) : "Record");
+  }
+  $("float-amt").addEventListener("input", renderFloat);
+  $("f-float").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var a = int($("float-amt").value); if (a < 1 || S.saving) return;
+    submit("float-err", { p_kind: "float", p_amount: S.dir === "in" ? a : -a, p_note: $("float-note").value },
+      S.dir === "in" ? rs(a) + " added to the box." : rs(a) + " taken out of the box.",
+      function () { $("float-amt").value = ""; $("float-note").value = ""; renderFloat(); setMode("sale"); });
+  });
+
+  function renderForms() { renderSale(); renderRefund(); renderFloat(); }
+
+  /* ---------- Saving ---------- */
+  var ERR = {
+    short: "The cash handed over is less than the amount due.",
+    coupons: "Coupons must be between 1 and 10,000.",
+    amount: "Enter an amount above ₹0.",
+    method: "Pick Cash or UPI.", kind: "Pick an entry type."
+  };
+  function submit(errId, args, okMsg, after) {
+    var err = $(errId); err.hidden = true;
+    S.saving = true; renderForms();
+    args.p_pin = S.pin; args.p_by = S.who;
+    rpc("cashbox_add", args).then(function (res) {
+      S.saving = false;
+      if (!res || !res.ok) {
+        var code = res && res.error;
+        if (code === "bad" || code === "locked") { err.textContent = pinError(code); }
+        else { err.textContent = (ERR[code] || "Not saved. Try again.") + " Nothing was recorded."; }
+        err.hidden = false; renderForms(); return;
+      }
+      S.entries.unshift(res.entry);
+      after && after(); renderForms(); renderSummary(); renderLog();
+      toast(okMsg, res.entry.id);
+      refresh();
+    }, function () {
+      S.saving = false; renderForms();
+      err.textContent = "Not saved. Couldn't reach the server, so this entry is still on screen. Check the internet and tap the button again.";
+      err.hidden = false;
+    });
+  }
+
+  /* ---------- Void ---------- */
+  function voidEntry(id, reason, done) {
+    rpc("cashbox_void", { p_pin: S.pin, p_id: id, p_reason: reason }).then(function (res) {
+      if (res && res.ok) {
+        S.entries = S.entries.map(function (e) { return e.id === id ? res.entry : e; });
+        renderSummary(); renderLog(); toast("Entry voided. It stays in the log, struck out.");
+      } else if (res && res.error === "not_found") { toast("That entry was already voided."); refresh(); }
+      else toast("Couldn't void it. Try again.");
+      done && done();
+    }, function () { toast("Couldn't reach the server. Try again."); done && done(); });
+  }
+
+  /* ---------- Log ---------- */
+  document.querySelectorAll("[data-filter]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      S.filter = b.dataset.filter; S.shown = 60;
+      document.querySelectorAll("[data-filter]").forEach(function (x) { x.setAttribute("aria-pressed", String(x === b)); });
+      renderLog();
+    });
+  });
+  $("more").addEventListener("click", function () { S.shown += 100; renderLog(); });
+
+  function describe(e) {
+    var n = int(e.coupons), pl = n === 1 ? " coupon" : " coupons";
+    if (e.kind === "sale") {
+      if (e.method === "upi") return { ti: n + pl + " sold", tag: "UPI", me: "Paid " + rs(int(e.upi)) + " by UPI" };
+      var ch = int(e.change);
+      return { ti: n + pl + " sold", tag: "Cash", me: "Got " + rs(int(e.received)) + (ch > 0 ? ", gave back " + rs(ch) : ", exact") };
+    }
+    if (e.kind === "refund") return { ti: n + pl + " refunded", tag: "Refund", me: "Paid back " + rs(-int(e.cash)) + (e.note ? ". " + e.note : "") };
+    var c = int(e.cash);
+    return { ti: c >= 0 ? "Cash put in" : "Cash taken out", tag: "Cash in/out", me: e.note || (c >= 0 ? "Added to the box" : "Removed from the box") };
+  }
+  function renderLog() {
+    var list = S.entries.filter(function (e) {
+      if (S.filter === "all") return true;
+      if (S.filter === "void") return !!e.voided_at;
+      return e.kind === S.filter && !e.voided_at;
+    });
+    var ul = $("entries"); ul.innerHTML = "";
+    var empty = $("empty");
+    if (!S.loaded) { empty.hidden = false; empty.textContent = "Loading the log…"; $("more").hidden = true; return; }
+    if (!list.length) {
+      empty.hidden = false;
+      empty.textContent = S.entries.length ? "Nothing in this view." : "Nothing recorded yet. Add the starting change under Cash in / out, then record each sale as it happens.";
+      $("more").hidden = true; return;
+    }
+    empty.hidden = true;
+    list.slice(0, S.shown).forEach(function (e) {
+      var d = describe(e), li = document.createElement("li");
+      li.className = "entry" + (e.voided_at ? " voided" : "");
+      var t = document.createElement("div"); t.className = "t";
+      t.textContent = new Date(e.at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
+      var w = document.createElement("div"); w.className = "w";
+      var ti = document.createElement("div"); ti.className = "ti"; ti.textContent = d.ti;
+      var tag = document.createElement("span"); tag.className = "tag"; tag.textContent = e.voided_at ? "Voided" : d.tag; ti.appendChild(tag);
+      var me = document.createElement("div"); me.className = "me";
+      var bits = [d.me];
+      if (e.by) bits.push(e.by);
+      if (e.voided_at) bits.push("voided " + new Date(e.voided_at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }));
+      me.textContent = bits.join(" · ");
+      w.appendChild(ti); w.appendChild(me);
+      var r = document.createElement("div"); r.className = "r";
+      var c = int(e.cash), amt = document.createElement("div");
+      amt.className = "amt " + (c > 0 ? "plus" : c < 0 ? "minus" : "zero");
+      amt.textContent = c === 0 ? "₹0 cash" : signed(c);
+      amt.title = "Effect on the cash box";
+      r.appendChild(amt);
+      if (!e.voided_at) {
+        var vb = document.createElement("button"); vb.type = "button";
+        vb.className = "void-btn" + (S.armed === e.id ? " arm" : "");
+        vb.textContent = S.armed === e.id ? "Tap again to void" : "Void";
+        vb.addEventListener("click", function () {
+          if (S.armed !== e.id) {
+            S.armed = e.id; clearTimeout(S.armTimer);
+            S.armTimer = setTimeout(function () { S.armed = null; renderLog(); }, 4000);
+            renderLog(); return;
+          }
+          S.armed = null; clearTimeout(S.armTimer);
+          vb.disabled = true; vb.textContent = "Voiding…";
+          voidEntry(e.id, "Voided at desk");
+        });
+        r.appendChild(vb);
+      }
+      li.appendChild(t); li.appendChild(w); li.appendChild(r);
+      ul.appendChild(li);
+    });
+    $("more").hidden = list.length <= S.shown;
+  }
+
+  /* ---------- Count the box ---------- */
+  var tb = $("deno-body");
+  DENOMS.forEach(function (d) {
+    var tr = document.createElement("tr");
+    tr.innerHTML = '<td class="dn">₹' + d + '</td><td><input type="number" inputmode="numeric" min="0" id="cnt-' + d + '" aria-label="Number of ₹' + d + ' notes"></td><td class="sub" id="sub-' + d + '">₹0</td>';
+    tb.appendChild(tr);
+  });
+  var coinTr = document.createElement("tr");
+  coinTr.innerHTML = '<td class="dn">Coins</td><td><input type="number" inputmode="numeric" min="0" id="cnt-coins" aria-label="Total value of coins in rupees" placeholder="₹"></td><td class="sub" id="sub-coins">₹0</td>';
+  tb.appendChild(coinTr);
+  DENOMS.concat(["coins"]).forEach(function (d) {
+    var inp = $("cnt-" + d);
+    if (S.counts[d]) inp.value = S.counts[d];
+    inp.addEventListener("input", function () {
+      S.counts[d] = inp.value; store.set("cb_counts", JSON.stringify(S.counts)); renderCount();
+    });
+  });
+  $("c-reset").addEventListener("click", function () {
+    S.counts = {}; store.del("cb_counts");
+    DENOMS.concat(["coins"]).forEach(function (d) { $("cnt-" + d).value = ""; });
+    renderCount();
+  });
+  function renderCount(expected) {
+    if (expected === undefined) expected = totals().drawer;
+    var total = 0, any = false;
+    DENOMS.forEach(function (d) { var v = int($("cnt-" + d).value); if ($("cnt-" + d).value !== "") any = true; total += v * d; $("sub-" + d).textContent = rs(v * d); });
+    var coins = int($("cnt-coins").value); if ($("cnt-coins").value !== "") any = true;
+    total += coins; $("sub-coins").textContent = rs(coins);
+    $("c-total").textContent = rs(total);
+    $("c-expected").textContent = rs(expected);
+    var v = $("verdict");
+    if (!any) { v.className = "verdict"; v.textContent = "Count each note and the total will be checked against the log."; return; }
+    var diff = total - expected;
+    if (diff === 0) { v.className = "verdict ok"; v.textContent = "Matches the log exactly."; }
+    else if (diff > 0) { v.className = "verdict bad"; v.textContent = rs(diff) + " more in the box than the log says."; }
+    else { v.className = "verdict bad"; v.textContent = rs(-diff) + " short of what the log says."; }
+  }
+
+  /* ---------- Export ---------- */
+  $("export").addEventListener("click", function () {
+    var rows = [["Date", "Time", "Type", "Coupons", "Method", "Cash received", "Change given", "Cash in/out of box", "UPI", "Note", "Recorded by", "Voided"]];
+    S.entries.slice().reverse().forEach(function (e) {
+      var dt = new Date(e.at);
+      rows.push([dt.toLocaleDateString("en-IN"), dt.toLocaleTimeString("en-IN"), e.kind, int(e.coupons), e.method, int(e.received), int(e.change), int(e.cash), int(e.upi), e.note || "", e.by || "", e.voided_at ? "yes" : ""]);
+    });
+    var t = totals();
+    rows.push([]);
+    rows.push(["Cash that should be in the box", t.drawer]);
+    rows.push(["Coupons out", t.coupons]);
+    rows.push(["Sales value", t.coupons * S.price]);
+    rows.push(["Paid by UPI", t.upi]);
+    rows.push(["Change given", t.change]);
+    var csv = "﻿" + rows.map(function (r) { return r.map(function (v) { v = String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(","); }).join("\n");
+    var url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    var a = document.createElement("a"); a.href = url; a.download = "shilpmun-cash-desk-" + new Date().toISOString().slice(0, 10) + ".csv";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+  });
+
+  /* ---------- Toast ---------- */
+  var toastTimer = null, toastId = null;
+  function toast(msg, undoId) {
+    $("toast-msg").textContent = msg;
+    toastId = undoId || null;
+    $("toast-undo").hidden = !toastId;
+    $("toast").classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { $("toast").classList.remove("show"); toastId = null; }, toastId ? 9000 : 3200);
+  }
+  $("toast-undo").addEventListener("click", function () {
+    if (!toastId) return;
+    var id = toastId; toastId = null; $("toast-undo").hidden = true;
+    voidEntry(id, "Undone right after recording");
+  });
+
+  /* ---------- Boot ---------- */
+  function renderAll() { renderForms(); renderSummary(); renderLog(); renderSync(); }
+  renderAll();
+  if (S.pin) {
+    rpc("cashbox_list", { p_pin: S.pin }).then(function (res) {
+      if (res && res.ok) { applyList(res); openApp(); }
+      else { store.del("cb_pin"); S.pin = ""; $("pin").focus(); }
+    }, function () {
+      $("gate-err").textContent = "Couldn't reach the server. Check your internet and try again."; $("gate-err").hidden = false;
+    });
+  }
+})();
+</script>
+</body>
+</html>
