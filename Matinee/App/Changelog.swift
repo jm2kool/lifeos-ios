@@ -53,6 +53,11 @@ struct Release: Identifiable, Hashable {
 enum Changelog {
     /// Newest first.
     static let releases: [Release] = [
+        Release(version: "1.2.2", date: "28 October 2026", headline: "Layout fixes", items: [
+            ChangeItem(symbol: "rectangle.portrait.and.arrow.forward", title: "Everything fits on screen",
+                       detail: "Tour pages no longer run off the sides of the screen, and the Stats, Year and Friends buttons on your profile stay on one line.",
+                       action: .profile),
+        ]),
         Release(version: "1.2.1", date: "27 October 2026", headline: "A sharper finder, and a round of fixes", items: [
             ChangeItem(symbol: "link", title: "The finder follows short links",
                        detail: "vm.tiktok.com, t.co, bit.ly and other short links are opened first, so more posts can be read. When several clues point to the same title it ranks higher, and every guess is checked at once, so results come back faster.",

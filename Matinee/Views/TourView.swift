@@ -34,56 +34,60 @@ struct TourView: View {
     var body: some View {
         let list = pages
         let color = Self.colors[page % Self.colors.count]
-        ZStack {
-            Color.black.ignoresSafeArea()
-            Circle().fill(color).frame(width: 520, height: 520).blur(radius: 160).opacity(0.45)
-                .offset(y: -220)
-                .animation(.easeInOut(duration: 0.6), value: page)
-                .ignoresSafeArea()
-            VStack(spacing: 0) {
-                HStack {
-                    Spacer()
-                    if page < list.count - 1 {
-                        Button("Skip") { onFinish(nil) }.font(.subheadline.weight(.semibold)).foregroundStyle(.white.opacity(0.7))
-                    }
+        VStack(spacing: 0) {
+            HStack {
+                Spacer()
+                if page < list.count - 1 {
+                    Button("Skip") { onFinish(nil) }.font(.subheadline.weight(.semibold)).foregroundStyle(.white.opacity(0.7))
                 }
-                .frame(height: 44)
-                .padding(.horizontal, 22)
-
-                TabView(selection: $page) {
-                    ForEach(Array(list.enumerated()), id: \.element.id) { i, p in
-                        pageView(p, color: Self.colors[i % Self.colors.count]).tag(i)
-                    }
-                }
-                .tabViewStyle(.page(indexDisplayMode: .never))
-
-                HStack(spacing: 6) {
-                    ForEach(list.indices, id: \.self) { i in
-                        Capsule().fill(i == page ? Color.white : Color.white.opacity(0.25))
-                            .frame(width: i == page ? 18 : 6, height: 6)
-                    }
-                }
-                .animation(.snappy, value: page)
-                .padding(.bottom, 18)
-
-                VStack(spacing: 10) {
-                    if let action = list.indices.contains(page) ? list[page].item.action : nil {
-                        Button { onFinish(action) } label: {
-                            Label("Try it", systemImage: "arrow.up.forward").frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.glass).controlSize(.large)
-                    }
-                    Button {
-                        if page < list.count - 1 { withAnimation(.smooth) { page += 1 } } else { onFinish(nil) }
-                    } label: {
-                        Text(page < list.count - 1 ? "Next" : mode == .welcome ? "Get started" : "Done")
-                            .font(.headline).frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.glassProminent).controlSize(.large)
-                }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 24)
             }
+            .frame(height: 44)
+            .padding(.horizontal, 22)
+
+            TabView(selection: $page) {
+                ForEach(Array(list.enumerated()), id: \.element.id) { i, p in
+                    pageView(p, color: Self.colors[i % Self.colors.count]).tag(i)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+
+            HStack(spacing: 6) {
+                ForEach(list.indices, id: \.self) { i in
+                    Capsule().fill(i == page ? Color.white : Color.white.opacity(0.25))
+                        .frame(width: i == page ? 18 : 6, height: 6)
+                }
+            }
+            .animation(.snappy, value: page)
+            .padding(.bottom, 18)
+
+            VStack(spacing: 10) {
+                if let action = list.indices.contains(page) ? list[page].item.action : nil {
+                    Button { onFinish(action) } label: {
+                        Label("Try it", systemImage: "arrow.up.forward").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.glass).controlSize(.large)
+                }
+                Button {
+                    if page < list.count - 1 { withAnimation(.smooth) { page += 1 } } else { onFinish(nil) }
+                } label: {
+                    Text(page < list.count - 1 ? "Next" : mode == .welcome ? "Get started" : "Done")
+                        .font(.headline).frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glassProminent).controlSize(.large)
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // The glow sits behind the page so its size never widens the layout past the screen.
+        .background {
+            ZStack {
+                Color.black
+                Circle().fill(color).frame(width: 520, height: 520).blur(radius: 160).opacity(0.45)
+                    .offset(y: -220)
+                    .animation(.easeInOut(duration: 0.6), value: page)
+            }
+            .ignoresSafeArea()
         }
         .preferredColorScheme(.dark)
         .sensoryFeedback(.selection, trigger: page)

@@ -71,13 +71,13 @@ struct ProfileView: View {
 
                 GlassEffectContainer(spacing: 8) {
                     HStack(spacing: 8) {
-                        NavigationLink(value: StatsRoute()) { Label("Stats", systemImage: "chart.bar.fill").frame(maxWidth: .infinity) }
+                        NavigationLink(value: StatsRoute()) { Label("Stats", systemImage: "chart.bar.fill").profileButtonLabel() }
                             .buttonStyle(.glass)
                         Button { router.sheet = .yearReview(Date.now.year) } label: {
-                            Label(String(Date.now.year), systemImage: "sparkles.rectangle.stack").frame(maxWidth: .infinity)
+                            Label(String(Date.now.year), systemImage: "sparkles.rectangle.stack").profileButtonLabel()
                         }
                         .buttonStyle(.glass)
-                        NavigationLink(value: FeedRoute()) { Label("Friends", systemImage: "person.2.fill").frame(maxWidth: .infinity) }
+                        NavigationLink(value: FeedRoute()) { Label("Friends", systemImage: "person.2.fill").profileButtonLabel() }
                             .buttonStyle(.glass)
                     }
                     .controlSize(.large)
@@ -658,5 +658,12 @@ struct PublicProfileView: View {
             loaded = true
             if let id = profile?.userID { activity = await Social.shared.activity(of: id) }
         }
+    }
+}
+
+private extension View {
+    /// Keeps the three Profile shortcut buttons on one line, shrinking the text a little rather than wrapping it.
+    func profileButtonLabel() -> some View {
+        lineLimit(1).minimumScaleFactor(0.75).frame(maxWidth: .infinity)
     }
 }
