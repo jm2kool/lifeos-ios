@@ -17,6 +17,8 @@ struct SwipeDeck<Empty: View>: View {
     @State private var index = 0
     @State private var drag: CGSize = .zero
     @State private var flying: CGFloat = 0     // -1 left, 1 right while a card animates out
+    /// A card is on its way out: a second quick tap mustn't count the same film twice or skip the next one.
+    @State private var moving = false
 
     var body: some View {
         VStack(spacing: 18) {
@@ -47,6 +49,7 @@ struct SwipeDeck<Empty: View>: View {
                         .accessibilityLabel(nopeLabel.capitalized)
                     if let middle {
                         roundButton(middle.symbol, size: 50, color: .white.opacity(0.85)) {
+                            guard !moving, films.indices.contains(index) else { return }
                             let f = films[index]; onMiddle?(f); advance(direction: 0)
                         }
                         .accessibilityLabel(middle.label)
@@ -74,12 +77,14 @@ struct SwipeDeck<Empty: View>: View {
     }
 
     private func swipe(_ f: FilmRef, right: Bool) {
+        guard !moving else { return }
         UIImpactFeedbackGenerator(style: right ? .medium : .light).impactOccurred()
         onSwipe(f, right)
         advance(direction: right ? 1 : -1)
     }
 
     private func advance(direction: CGFloat) {
+        moving = true
         withAnimation(.easeIn(duration: 0.22)) {
             drag = direction == 0 ? CGSize(width: 0, height: -900) : CGSize(width: direction * 700, height: drag.height + 40)
         }
@@ -87,6 +92,7 @@ struct SwipeDeck<Empty: View>: View {
             try? await Task.sleep(for: .milliseconds(230))
             drag = .zero
             index += 1
+            moving = false
         }
     }
 

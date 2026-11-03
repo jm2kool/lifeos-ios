@@ -214,7 +214,7 @@ struct QuickLogSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                let pool = query.isEmpty ? Array((library.doc.watchlist + library.watchedFilms).prefix(20)) : results
+                let pool = query.isEmpty ? Self.suggestions(library) : results
                 if query.isEmpty && !pool.isEmpty {
                     Text("From your watchlist and recent films").font(.caption.weight(.semibold)).foregroundStyle(Theme.dim)
                         .listRowBackground(Color.clear)
@@ -251,6 +251,14 @@ struct QuickLogSheet: View {
                 if let r = try? await Catalog.search(query), !Task.isCancelled { results = r }
             }
         }
+    }
+}
+
+extension QuickLogSheet {
+    /// Before you search: your watchlist, then what you watched lately — each title once.
+    static func suggestions(_ library: Library) -> [FilmRef] {
+        var seen = Set<String>()
+        return Array((library.doc.watchlist + library.watchedFilms).filter { seen.insert($0.id).inserted }.prefix(20))
     }
 }
 

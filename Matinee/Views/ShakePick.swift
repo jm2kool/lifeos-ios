@@ -26,6 +26,7 @@ struct RandomPickDeck: View {
     @State private var drag: CGSize = .zero
     @State private var appeared = false
     @State private var expanded = false
+    @State private var skipping = false
 
     private var kind: Binding<MediaFilter> {
         Binding(get: { router.randomKind }, set: { router.randomKind = $0; router.deal(library) })
@@ -168,13 +169,15 @@ struct RandomPickDeck: View {
 
     /// The top card flies off to the left and the next one comes up.
     private func skip() {
-        guard index < films.count else { return }
+        guard index < films.count, !skipping else { return }
+        skipping = true
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         withAnimation(.easeIn(duration: 0.22)) { drag = CGSize(width: -700, height: drag.height + 40) }
         Task {
             try? await Task.sleep(for: .milliseconds(230))
             drag = .zero
             index += 1
+            skipping = false
         }
     }
 
