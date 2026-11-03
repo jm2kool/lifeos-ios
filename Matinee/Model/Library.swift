@@ -18,6 +18,24 @@ final class Library {
     var toast: Toast?
     private var undoSnapshot: LibraryDoc?
     private var syncTask: Task<Void, Never>?
+    /// Goes up with every change to `doc`, so the sorted diary and the lookup sets are only rebuilt when needed.
+    @ObservationIgnored private var version = 0
+    @ObservationIgnored private var sortedCache: (version: Int, list: [LogEntry])?
+    @ObservationIgnored private var indexCache: (version: Int, watched: Set<String>, watchlist: Set<String>, liked: Set<String>)?
+
+    /// Every change to the library goes through here.
+    private func setDoc(_ d: LibraryDoc) {
+        doc = d
+        version &+= 1
+    }
+
+    /// The account this phone's library was last synced with. Until the first sync with an account finishes,
+    /// nothing is sent to it — so a new phone can never push its empty library over yours.
+    private static let ownerKey = "libraryOwner"
+    private var owner: String? {
+        get { UserDefaults.standard.string(forKey: Self.ownerKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.ownerKey) }
+    }
 
     private static var fileURL: URL {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Matinee", isDirectory: true)
@@ -32,20 +50,39 @@ final class Library {
         if let data = try? Data(contentsOf: Self.fileURL), var d = try? Self.decoder.decode(LibraryDoc.self, from: data) {
             let old = d.ratingScale == nil
             d.migrate()
-            doc = d
+            setDoc(d)
             if old { persist(sync: false) }
         }
+        // Signed in before the library remembered its account: it's already that account's library.
+        if owner == nil, let id = Auth.shared.session?.userID { owner = id }
         WatchlistWidget.publish(doc.watchlist)
     }
 
     // MARK: Reading
 
-    var entries: [LogEntry] { doc.entries.sorted { ($0.watchedOn, $0.createdAt) > ($1.watchedOn, $1.createdAt) } }
+    /// The diary, newest first.
+    var entries: [LogEntry] {
+        let all = doc.entries   // read through `doc` so views still follow changes
+        if let c = sortedCache, c.version == version { return c.list }
+        let list = all.sorted { ($0.watchedOn, $0.createdAt) > ($1.watchedOn, $1.createdAt) }
+        sortedCache = (version, list)
+        return list
+    }
     func entries(for id: String) -> [LogEntry] { entries.filter { $0.film.id == id } }
-    /// Episode and season entries don't make a show watched — finishing it (or marking it) does.
-    func isWatched(_ id: String) -> Bool { doc.watched.contains { $0.id == id } || doc.entries.contains { $0.film.id == id && $0.season == nil } }
-    func isLiked(_ id: String) -> Bool { doc.liked.contains { $0.id == id } }
-    func inWatchlist(_ id: String) -> Bool { doc.watchlist.contains { $0.id == id } }
+
+    /// Quick lookups for the questions every poster asks, rebuilt once per change rather than per poster.
+    private var index: (watched: Set<String>, watchlist: Set<String>, liked: Set<String>) {
+        let d = doc
+        if let c = indexCache, c.version == version { return (c.watched, c.watchlist, c.liked) }
+        // Episode and season entries don't make a show watched — finishing it (or marking it) does.
+        let watched = Set(d.watched.map(\.id)).union(d.entries.lazy.filter { $0.season == nil }.map(\.film.id))
+        let built = (version: version, watched: watched, watchlist: Set(d.watchlist.map(\.id)), liked: Set(d.liked.map(\.id)))
+        indexCache = built
+        return (built.watched, built.watchlist, built.liked)
+    }
+    func isWatched(_ id: String) -> Bool { index.watched.contains(id) }
+    func isLiked(_ id: String) -> Bool { index.liked.contains(id) }
+    func inWatchlist(_ id: String) -> Bool { index.watchlist.contains(id) }
     func rating(_ id: String) -> Double? { doc.ratings[id] }
     /// Comfort films and shows get watched and logged, but never asked for a rating.
     func isComfort(_ id: String) -> Bool { doc.comfort?.contains(id) ?? false }
@@ -91,11 +128,17 @@ final class Library {
     // MARK: Writing
 
     private func mutate(_ toastText: String? = nil, symbol: String = "checkmark", undoable: Bool = false, _ change: (inout LibraryDoc) -> Void) {
-        if undoable { undoSnapshot = doc }
+        if undoable {
+            undoSnapshot = doc
+        } else if undoSnapshot != nil {
+            // Undo only ever takes back the last thing you did, never something newer along with it.
+            undoSnapshot = nil
+            if toast?.undo == true { toast?.undo = false }
+        }
         var d = doc
         change(&d)
         d.updatedAt = .now
-        withAnimation(.smooth) { doc = d }
+        withAnimation(.smooth) { setDoc(d) }
         persist()
         if let toastText { toast = Toast(text: toastText, symbol: symbol, undo: undoable) }
     }
@@ -103,7 +146,10 @@ final class Library {
     func undo() {
         guard let s = undoSnapshot else { return }
         undoSnapshot = nil
-        withAnimation(.smooth) { doc = s }
+        var restored = s
+        restored.updatedAt = .now   // newer than the change it takes back, so the undo syncs too
+        withAnimation(.smooth) { setDoc(restored) }
+        if let w = restored.watching { Watching.shared.adopt(w) }
         persist()
         toast = Toast(text: "Undone", symbol: "arrow.uturn.backward")
     }
@@ -354,7 +400,7 @@ final class Library {
         var d = doc
         d.watching = sessions
         d.updatedAt = .now
-        doc = d
+        setDoc(d)
         persist()
     }
 
@@ -363,7 +409,7 @@ final class Library {
         var d = doc
         d.taste = t
         d.updatedAt = .now
-        doc = d
+        setDoc(d)
         persist()
     }
 
@@ -390,11 +436,43 @@ final class Library {
         if var l = d.currentlyWatching { for i in l.indices { fix(&l[i]) }; d.currentlyWatching = l }
         for l in d.lists.indices { for i in d.lists[l].films.indices { fix(&d.lists[l].films[i]) } }
         if var shows = d.shows, shows[r.id] != nil { fix(&shows[r.id]!.show); d.shows = shows }
-        doc = d
+        setDoc(d)
         persist(sync: false)
     }
 
     func eraseAll() { mutate("Library cleared", symbol: "trash", undoable: true) { d in let p = d.profile; d = LibraryDoc(); d.profile = p } }
+
+    // MARK: Goals, blocking and backups
+
+    /// How many films you mean to watch this year; nil clears it.
+    func setYearGoal(_ n: Int?) {
+        mutate(n.map { "Goal set: \($0) films this year" }, symbol: "target") { d in d.yearGoal = n.flatMap { $0 > 0 ? $0 : nil } }
+    }
+
+    var blocked: [String] { doc.blocked ?? [] }
+    func isBlocked(_ userID: String) -> Bool { blocked.contains(userID) }
+
+    /// Hide someone everywhere: their profile, their posts in your feed, and search. Undo by unblocking.
+    func setBlocked(_ userID: String, _ on: Bool, name: String) {
+        guard on != isBlocked(userID) else { return }
+        mutate(on ? "Blocked \(name)" : "Unblocked \(name)", symbol: on ? "hand.raised.fill" : "hand.raised.slash") { d in
+            var list = d.blocked ?? []
+            if on { list.append(userID) } else { list.removeAll { $0 == userID } }
+            d.blocked = list
+        }
+    }
+
+    /// Bring back a Matinee backup. It's merged into what's here, so nothing on this iPhone is lost; undo takes it back out.
+    func restore(_ backup: LibraryDoc) {
+        var b = backup
+        b.migrate()
+        let added = Set(b.entries.map(\.id)).subtracting(doc.entries.map(\.id)).count
+        mutate("Restored · \(added) diary entr\(added == 1 ? "y" : "ies") added", symbol: "arrow.counterclockwise", undoable: true) { d in
+            d = d.merged(with: b)
+        }
+        if let w = doc.watching { Watching.shared.adopt(w) }
+        if let t = b.taste, Taste.shared.profile.persona == nil { Taste.shared.adopt(t) }
+    }
 
     // MARK: Persistence & sync
 
@@ -403,7 +481,8 @@ final class Library {
         Spotlight.schedule(self)
         let data = try? Self.encoder.encode(doc)
         if let data { try? data.write(to: Self.fileURL, options: .atomic) }
-        guard sync, Auth.shared.signedIn, let data else { return }
+        // Nothing goes up until this phone's first sync with the account has finished (see `owner`).
+        guard sync, let me = Auth.shared.session?.userID, owner == me, let data else { return }
         syncTask?.cancel()
         syncTask = Task {
             try? await Task.sleep(for: .seconds(2))
@@ -416,7 +495,7 @@ final class Library {
     /// Your public profile (name, photo, favourites, Currently watching) for everyone to see.
     /// Sent only when one of those changed.
     func publishProfile() async {
-        guard let id = Auth.shared.session?.userID else { return }
+        guard let id = Auth.shared.session?.userID, owner == id else { return }
         if await Auth.shared.pushProfile(PublicProfile.mine(self, userID: id)) == .handleTaken {
             toast = Toast(text: "@\(Handle.clean(doc.profile.handle) ?? "") is taken — pick another username", symbol: "at")
         }
@@ -427,26 +506,58 @@ final class Library {
     /// Take whichever copy (phone or account) was changed most recently. Runs after signing in, at launch
     /// and whenever the app comes back, so changes from another phone arrive and a push that failed
     /// (offline, app closed too soon) gets another go.
+    ///
+    /// The first time this phone's library meets an account, a library made without signing in is merged
+    /// with the account's (nothing is lost), and one that belonged to a different account gives way to it.
     func reconcileWithCloud() async {
-        guard Auth.shared.signedIn, !reconciling else { return }
+        guard let me = Auth.shared.session?.userID, !reconciling else { return }
         reconciling = true
         defer { reconciling = false }
         defer { Task { await publishProfile() } }
-        if let data = await Auth.shared.pullLibrary(), var remote = try? Self.decoder.decode(LibraryDoc.self, from: data) {
+        let previous = owner
+        switch await Auth.shared.pullLibrary() {
+        case .failed:
+            // Couldn't tell what the account holds: change nothing, try again next time.
+            return
+        case .empty:
+            // A new account: this phone's library becomes its library.
+            owner = me
+        case .found(let data):
+            guard var remote = try? Self.decoder.decode(LibraryDoc.self, from: data) else { return }
             remote.migrate()
+            if previous != me {
+                owner = me
+                let merge = previous == nil && !doc.isBlank
+                let next = !merge ? remote : doc.updatedAt > remote.updatedAt ? doc.merged(with: remote) : remote.merged(with: doc)
+                adopt(next, keepingTaste: true)
+                if merge, let out = try? Self.encoder.encode(next) { await Auth.shared.pushLibrary(out) }
+                return
+            }
             // Saved dates keep whole seconds only, so a copy within a second of this one is the same copy.
             if abs(remote.updatedAt.timeIntervalSince(doc.updatedAt)) < 1 { return }
-            if remote.updatedAt > doc.updatedAt || doc.entries.isEmpty && doc.watchlist.isEmpty {
-                var r = remote
-                if r.taste == nil { r.taste = doc.taste }
-                doc = r
-                persist(sync: false)
-                if let t = r.taste { Taste.shared.adopt(t) }
-                if let w = r.watching { Watching.shared.adopt(w) }
+            if remote.updatedAt > doc.updatedAt || doc.isBlank {
+                adopt(remote, keepingTaste: true)
                 return
             }
         }
         if let data = try? Self.encoder.encode(doc) { await Auth.shared.pushLibrary(data) }
+    }
+
+    /// Switch to a copy of the library from your account.
+    private func adopt(_ next: LibraryDoc, keepingTaste: Bool) {
+        var r = next
+        if keepingTaste && r.taste == nil { r.taste = doc.taste }
+        undoSnapshot = nil
+        withAnimation(.smooth) { setDoc(r) }
+        persist(sync: false)
+        if let t = r.taste { Taste.shared.adopt(t) }
+        if let w = r.watching { Watching.shared.adopt(w) }
+    }
+
+    /// After deleting your account: the library stays on the phone, no longer tied to it.
+    func forgetAccount() {
+        syncTask?.cancel()
+        owner = nil
     }
 
     func adoptAccountProfile() {
@@ -494,7 +605,8 @@ final class Library {
         d.setFavorites([refs[2], show, refs[0], refs[6], refs[9]])
         d.lists = [FilmList(name: "Desert planets & big sound", note: "Films to feel in your chest.", ranked: true, films: [refs[0], refs[8], refs[4], refs[3]])]
         d.profile = Profile(name: "Alex Rivera", handle: "alex", bio: "Film nights every Friday.")
-        doc = d
+        d.yearGoal = 52
+        setDoc(d)
         persist(sync: false)
     }
 }

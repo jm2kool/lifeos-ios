@@ -44,6 +44,12 @@ struct WatchProvider: Hashable, Identifiable {
         if n.contains("netflix") { s = "https://www.netflix.com/search?q=\(q)" }
         else if n.contains("amazon") || n.contains("prime") { s = "https://www.primevideo.com/search/ref=atv_nb_sr?phrase=\(q)" }
         else if n.contains("hotstar") { s = "https://www.hotstar.com/in/explore?search_query=\(q)" }
+        else if n.contains("disney") { s = "https://www.disneyplus.com/search?q=\(q)" }
+        else if n.contains("max") && !n.contains("cinemax") { s = "https://play.max.com/search?q=\(q)" }
+        else if n.contains("hulu") { s = "https://www.hulu.com/search?q=\(q)" }
+        else if n.contains("paramount") { s = "https://www.paramountplus.com/search/?q=\(q)" }
+        else if n.contains("peacock") { s = "https://www.peacocktv.com/search?q=\(q)" }
+        else if n.contains("jiocinema") { s = "https://www.jiocinema.com/search/\(q)" }
         else if n.contains("apple") { s = "https://tv.apple.com/search?term=\(q)" }
         else if n.contains("google play") { s = "https://play.google.com/store/search?q=\(q)&c=movies" }
         else if n.contains("youtube") { s = "https://www.youtube.com/results?search_query=\(q)+full+movie" }
@@ -125,21 +131,63 @@ enum Catalog {
 
     private static var detailCache: [String: FilmDetail] = [:]
     private static var shelfCache: [String: [FilmRef]] = [:]
+    private static var cachesBorn = Date.now
 
+    /// Film data held in memory is let go every few hours, so a phone that keeps Matinee open for days still
+    /// sees new episodes, new seasons and this week's charts.
+    private static func expireStale() {
+        guard Date.now.timeIntervalSince(cachesBorn) > 3 * 3600 else { return }
+        cachesBorn = .now
+        detailCache = [:]; shelfCache = [:]; seasonCache = [:]; personCache = [:]; providerCache = [:]
+    }
+
+    /// TMDB answers. They follow the server's caching rules, so charts and episode dates stay current;
+    /// when the phone is offline, the last copy seen is used instead.
     static let session: URLSession = {
         let c = URLSessionConfiguration.default
-        c.urlCache = URLCache(memoryCapacity: 32 << 20, diskCapacity: 256 << 20)
-        c.requestCachePolicy = .returnCacheDataElseLoad
+        c.urlCache = URLCache(memoryCapacity: 8 << 20, diskCapacity: 64 << 20, directory: cacheFolder("api"))
+        c.requestCachePolicy = .useProtocolCachePolicy
         c.timeoutIntervalForRequest = 20
         return URLSession(configuration: c)
     }()
 
+    /// Posters, stills and logos never change at the same address, so they're kept for as long as there's room.
+    static let imageSession: URLSession = {
+        let c = URLSessionConfiguration.default
+        c.urlCache = URLCache(memoryCapacity: 24 << 20, diskCapacity: 256 << 20, directory: cacheFolder("images"))
+        c.requestCachePolicy = .returnCacheDataElseLoad
+        c.timeoutIntervalForRequest = 30
+        return URLSession(configuration: c)
+    }()
+
+    nonisolated private static func cacheFolder(_ name: String) -> URL? {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?.appendingPathComponent("Matinee-\(name)", isDirectory: true)
+    }
+
+    /// How much room downloaded posters and film data take, in bytes.
+    static var cacheSize: Int {
+        (session.configuration.urlCache?.currentDiskUsage ?? 0) + (imageSession.configuration.urlCache?.currentDiskUsage ?? 0)
+            + URLCache.shared.currentDiskUsage
+    }
+
+    /// Settings → Storage: forget downloaded posters and film data. They come back as you browse.
+    static func clearCaches() {
+        session.configuration.urlCache?.removeAllCachedResponses()
+        imageSession.configuration.urlCache?.removeAllCachedResponses()
+        URLCache.shared.removeAllCachedResponses()
+        ImageStore.shared.removeAll()
+        detailCache = [:]; shelfCache = [:]; seasonCache = [:]; personCache = [:]; providerCache = [:]
+        artCache = [:]; trailerCache = [:]
+    }
+
     // MARK: Public API
 
-    static func shelf(_ s: HomeShelf) async throws -> [FilmRef] {
+    /// A Home shelf. `fresh` skips every cache (pull to refresh).
+    static func shelf(_ s: HomeShelf, fresh: Bool = false) async throws -> [FilmRef] {
+        expireStale()
         let key = s.rawValue
-        if let hit = shelfCache[key] { return hit }
-        let films = try await TMDB.shelf(s)
+        if !fresh, let hit = shelfCache[key] { return hit }
+        let films = try await TMDB.shelf(s, fresh: fresh)
         if !films.isEmpty { shelfCache[key] = films }
         return films
     }
@@ -166,6 +214,7 @@ enum Catalog {
     }
 
     static func detail(_ id: String) async throws -> FilmDetail {
+        expireStale()
         if let hit = detailCache[id] { return hit }
         let d = try await TMDB.detail(id)
         detailCache[id] = d
@@ -189,6 +238,7 @@ enum Catalog {
 
     /// Every episode in one season of a show.
     static func season(_ showID: String, _ number: Int) async throws -> [Episode] {
+        expireStale()
         let key = "\(showID)|\(number)"
         if let hit = seasonCache[key] { return hit }
         let eps = try await TMDB.season(showID, number)
@@ -240,8 +290,18 @@ enum Catalog {
 
     private static var providerCache: [String: WatchProviders] = [:]
 
-    /// Where the film streams, rents or sells in a country (India by default). Data from JustWatch via TMDB.
-    static func providers(_ id: String, region: String = "IN") async -> WatchProviders? {
+    /// Where "Where to watch" looks: the country picked in Settings, else the iPhone's own region.
+    static let regionKey = "watchRegion"
+    static var watchRegion: String {
+        if let s = UserDefaults.standard.string(forKey: regionKey), !s.isEmpty { return s }
+        if let r = Locale.current.region?.identifier, r.count == 2 { return r }
+        return "US"
+    }
+    nonisolated static func regionName(_ code: String) -> String { Locale.current.localizedString(forRegionCode: code) ?? code }
+
+    /// Where the film streams, rents or sells in a country (yours by default). Data from JustWatch via TMDB.
+    static func providers(_ id: String, region: String? = nil) async -> WatchProviders? {
+        let region = region ?? watchRegion
         guard let path = TMDB.path(id) else { return nil }
         let key = "\(id)|\(region)"
         if let hit = providerCache[key] { return hit }
@@ -288,21 +348,37 @@ enum Catalog {
 
     // MARK: Networking
 
-    static func get(_ url: URL, headers: [String: String] = [:]) async throws -> J {
+    static func get(_ url: URL, headers: [String: String] = [:], fresh: Bool = false) async throws -> J {
         var req = URLRequest(url: url)
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         for (k, v) in headers { req.setValue(v, forHTTPHeaderField: k) }
+        if fresh { req.cachePolicy = .reloadIgnoringLocalCacheData }
         let result: (Data, URLResponse)
-        do { result = try await session.data(for: req) } catch { throw CatalogError.offline }
+        do {
+            result = try await session.data(for: req)
+        } catch {
+            // Offline: the last answer we saw, however old, beats an empty screen.
+            var cached = req
+            cached.cachePolicy = .returnCacheDataDontLoad
+            guard let hit = try? await session.data(for: cached) else { throw CatalogError.offline }
+            result = hit
+        }
         let (data, resp) = result
         if let h = resp as? HTTPURLResponse, !(200..<300).contains(h.statusCode) { throw CatalogError.http(h.statusCode) }
         return J(try? JSONSerialization.jsonObject(with: data))
     }
 
-    static func url(_ base: String, _ path: String, _ q: [String: String] = [:]) -> URL {
-        var c = URLComponents(string: base + path)!
+    /// nil only for an id that can't be part of an address (from a mistyped link, say).
+    static func url(_ base: String, _ path: String, _ q: [String: String] = [:]) -> URL? {
+        let safePath = path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path
+        guard var c = URLComponents(string: base + safePath) else { return nil }
         if !q.isEmpty { c.queryItems = q.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) } }
-        return c.url!
+        return c.url
+    }
+
+    /// Ids a link from outside the app may carry: TMDB films and shows, and older IMDb ids.
+    nonisolated static func isValidID(_ id: String) -> Bool {
+        id.range(of: #"^(tmdb-|tmdbtv-)\d{1,10}$|^tt\d{5,10}$"#, options: .regularExpression) != nil
     }
 }
 
@@ -321,17 +397,19 @@ enum TMDB {
         "Drama": 18, "Family": 10751, "Fantasy": 14, "History": 36, "Horror": 27, "Music": 10402,
         "Mystery": 9648, "Romance": 10749, "Sci-Fi": 878, "Thriller": 53, "War": 10752, "Western": 37]
 
-    /// Accepts either a v4 "API Read Access Token" (long JWT) or a v3 API key.
-    static func call(_ path: String, _ q: [String: String] = [:]) async throws -> J {
+    /// Accepts either a v4 "API Read Access Token" (long JWT) or a v3 API key. `fresh` skips the cache.
+    static func call(_ path: String, _ q: [String: String] = [:], fresh: Bool = false) async throws -> J {
         let token = Catalog.tmdbToken.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !token.isEmpty else { throw CatalogError.noToken }
         var q = q
         q["language"] = "en-US"
         if token.count > 40 {
-            return try await Catalog.get(Catalog.url(base, path, q), headers: ["Authorization": "Bearer \(token)"])
+            guard let u = Catalog.url(base, path, q) else { throw CatalogError.http(404) }
+            return try await Catalog.get(u, headers: ["Authorization": "Bearer \(token)"], fresh: fresh)
         }
         q["api_key"] = token
-        return try await Catalog.get(Catalog.url(base, path, q))
+        guard let u = Catalog.url(base, path, q) else { throw CatalogError.http(404) }
+        return try await Catalog.get(u, fresh: fresh)
     }
 
     /// The API path for a film or show id: "/movie/603" or "/tv/1399". nil for ids TMDB can't look up directly.
@@ -373,8 +451,8 @@ enum TMDB {
                        communityRating: e["vote_average"].double)
     }
 
-    static func list(_ path: String, _ q: [String: String] = [:]) async throws -> [FilmRef] {
-        try await call(path, q)["results"].array.compactMap(ref).filter { $0.poster != nil }
+    static func list(_ path: String, _ q: [String: String] = [:], fresh: Bool = false) async throws -> [FilmRef] {
+        try await call(path, q, fresh: fresh)["results"].array.compactMap(ref).filter { $0.poster != nil }
     }
 
     static let genreNames: [Int: String] = Dictionary(uniqueKeysWithValues: genreIDs.map { ($0.value, $0.key) })
@@ -433,13 +511,13 @@ enum TMDB {
         return (try? await list("/discover/movie", ["with_genres": ids, "sort_by": "vote_average.desc", "vote_count.gte": "1500"])) ?? []
     }
 
-    static func shelf(_ s: HomeShelf) async throws -> [FilmRef] {
+    static func shelf(_ s: HomeShelf, fresh: Bool = false) async throws -> [FilmRef] {
         switch s {
-        case .trending: return try await list("/trending/movie/week")
-        case .topRated: return try await list("/movie/top_rated")
-        case .newReleases: return try await list("/movie/now_playing")
-        case .trendingShows: return try await list("/trending/tv/week")
-        case .topRatedShows: return try await list("/tv/top_rated")
+        case .trending: return try await list("/trending/movie/week", fresh: fresh)
+        case .topRated: return try await list("/movie/top_rated", fresh: fresh)
+        case .newReleases: return try await list("/movie/now_playing", ["region": Catalog.watchRegion], fresh: fresh)
+        case .trendingShows: return try await list("/trending/tv/week", fresh: fresh)
+        case .topRatedShows: return try await list("/tv/top_rated", fresh: fresh)
         }
     }
 
@@ -450,6 +528,16 @@ enum TMDB {
     /// Films and shows together, in TMDB's order of relevance (people are left out).
     static func search(_ q: String) async throws -> [FilmRef] {
         try await searchAll(q).films
+    }
+
+    /// Films only, narrowed to a year when there is one — for matching imported titles exactly.
+    static func searchMovies(_ q: String, year: Int?) async throws -> [FilmRef] {
+        var query = ["query": q, "include_adult": "false"]
+        if let year { query["year"] = String(year) }
+        let found = try await call("/search/movie", query)["results"].array.compactMap(ref)
+        // A year off by one (a festival premiere, a different release) still finds it.
+        if found.isEmpty, year != nil { return try await searchMovies(q, year: nil) }
+        return found
     }
 
     /// Films, shows and people, in TMDB's order of relevance.

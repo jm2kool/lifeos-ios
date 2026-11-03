@@ -2,8 +2,9 @@ import Foundation
 import CryptoKit
 import Security
 
-/// Google sign-in through Supabase Auth. OAuth runs in a secure browser sheet with PKCE, so no
-/// Google SDK (and no client secret) lives in the app. Without signing in, everything stays on the phone.
+/// Sign-in through Supabase Auth: Apple, Google and the other providers run in a secure browser sheet with
+/// PKCE, so no SDK (and no client secret) lives in the app; email and password go straight to the server.
+/// Without signing in, everything stays on the phone.
 @Observable @MainActor
 final class Auth {
     static let shared = Auth()
@@ -67,6 +68,12 @@ final class Auth {
         set { UserDefaults.standard.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: "supabaseKey") }
     }
     var configured: Bool { URL(string: serverURL)?.host != nil && !anonKey.isEmpty }
+    /// The server was typed in Settings rather than built into the app.
+    var serverIsCustom: Bool { !(UserDefaults.standard.string(forKey: "supabaseURL") ?? "").isEmpty }
+
+    /// The sign-in methods switched on in the account server (nil until asked, or if it couldn't be reached).
+    private(set) var enabledProviders: Set<String>?
+    var emailEnabled: Bool { enabledProviders?.contains("email") ?? true }
 
     static let callbackScheme = "matinee"
     static let redirect = "matinee://auth-callback"
@@ -93,7 +100,7 @@ final class Auth {
     struct PendingOAuth { let url: URL; let verifier: String }
 
     func begin(_ p: Provider) -> PendingOAuth? {
-        guard configured else { error = "Google sign-in isn't set up in this build yet."; return nil }
+        guard configured else { error = "Add your account server first: Settings → Account server."; return nil }
         let verifier = Self.randomString(64)
         let challenge = Data(SHA256.hash(data: Data(verifier.utf8))).base64URL
         var c = URLComponents(string: base + "/auth/v1/authorize")!
@@ -142,16 +149,68 @@ final class Auth {
 
     // MARK: Session
 
+    @ObservationIgnored private var refreshing: Task<Void, Never>?
+
+    /// Swap an expiring access token for a fresh one. Calls that arrive while one is under way wait for it,
+    /// so the single-use refresh token is only ever spent once.
     func refreshIfNeeded() async {
         guard let s = session, s.expiresAt.timeIntervalSinceNow < 120 else { return }
-        await token(grant: "refresh_token", body: ["refresh_token": s.refreshToken])
+        if let running = refreshing { await running.value; return }
+        let t = Task { await refresh(s.refreshToken) }
+        refreshing = t
+        await t.value
+        refreshing = nil
+    }
+
+    /// Only a server that says the refresh token is no good ends the session. Being offline, or the server
+    /// having a bad moment, never signs you out.
+    private func refresh(_ token: String) async {
+        guard configured, let url = URL(string: base + "/auth/v1/token?grant_type=refresh_token") else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.timeoutInterval = 20
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(anonKey, forHTTPHeaderField: "apikey")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["refresh_token": token])
+        guard let (data, resp) = try? await URLSession.shared.data(for: req), let code = (resp as? HTTPURLResponse)?.statusCode else { return }
+        let j = J(try? JSONSerialization.jsonObject(with: data))
+        if (200..<300).contains(code), j["access_token"].str != nil {
+            let err = error
+            adopt(j)
+            error = err
+        } else if code == 400 || code == 401 || code == 403 {
+            session = nil
+        }
     }
 
     func continueAsGuest() { isGuest = true }
 
+    /// Which sign-in methods the account server has switched on, so the sign-in screen only offers those.
+    func loadProviders() async {
+        guard configured, let url = URL(string: base + "/auth/v1/settings") else { enabledProviders = nil; return }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 10
+        req.setValue(anonKey, forHTTPHeaderField: "apikey")
+        guard let (data, resp) = try? await URLSession.shared.data(for: req), (resp as? HTTPURLResponse)?.statusCode == 200,
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let external = obj["external"] as? [String: Any] else { return }
+        enabledProviders = Set(external.compactMap { k, v in (v as? Bool) == true ? k : nil })
+    }
+
+    /// Point Matinee at a different account server (or back at the built-in one, with empty fields).
+    func setServer(url: String, key: String) {
+        var u = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !u.isEmpty && !u.lowercased().hasPrefix("http") { u = "https://" + u }
+        if session != nil && u != serverURL { signOut() }
+        serverURL = u
+        anonKey = key
+        enabledProviders = nil
+        error = nil
+    }
+
     func signOut() {
-        if let s = session, configured {
-            var req = URLRequest(url: URL(string: base + "/auth/v1/logout")!)
+        if let s = session, configured, let url = URL(string: base + "/auth/v1/logout") {
+            var req = URLRequest(url: url)
             req.httpMethod = "POST"
             req.setValue(anonKey, forHTTPHeaderField: "apikey")
             req.setValue("Bearer \(s.accessToken)", forHTTPHeaderField: "Authorization")
@@ -161,13 +220,37 @@ final class Auth {
         isGuest = false
     }
 
+    /// Deletes your account and everything synced to it. With the server's `delete_my_account` function (in the
+    /// Friends setup SQL) the sign-in itself goes; without it, your library, profile, follows and shared diary are
+    /// removed and you're signed out. Returns nil on success, or what went wrong.
+    func deleteAccount() async -> String? {
+        guard let s = session, configured else { return "You're not signed in." }
+        await refreshIfNeeded()
+        let me = s.userID
+        guard let r = await rest("POST", "rpc/delete_my_account", body: [String: Any]()) else {
+            return "Couldn't reach the account server. Check your connection and try again."
+        }
+        var full = (200..<300).contains(r.status)
+        if !full {
+            // An older server without the function: remove every row that's yours instead.
+            var ok = true
+            for (table, column) in [("libraries", "user_id"), ("profiles", "user_id"), ("activity", "user_id"), ("follows", "follower")] {
+                guard let d = await rest("DELETE", table, query: [column: "eq.\(me)"]) else { ok = false; continue }
+                if !(200..<300).contains(d.status) && !Supa.missingTable(d.status, d.data) { ok = false }
+            }
+            guard ok else { return "Couldn't delete everything. Try again in a moment." }
+            full = false
+        }
+        session = nil
+        isGuest = false
+        lastProfilePush = nil
+        return full ? nil : "Your library, profile and posts are deleted. Your sign-in can only be removed by whoever runs the account server — ask them, or run the updated setup SQL from Settings → Friends."
+    }
+
     private func token(grant: String, body: [String: String]) async {
         busy = busy ?? grant
         defer { if busy == grant { busy = nil } }
-        guard let r = try? await post("/auth/v1/token?grant_type=\(grant)", body) else {
-            if grant == "refresh_token" { session = nil }
-            return
-        }
+        guard let r = try? await post("/auth/v1/token?grant_type=\(grant)", body) else { return }
         adopt(r)
     }
 
@@ -190,7 +273,9 @@ final class Auth {
 
     @discardableResult
     func post(_ path: String, _ body: [String: String]) async throws -> J {
-        var req = URLRequest(url: URL(string: base + path)!)
+        guard let url = URL(string: base + path) else { error = "The account server address doesn't look right."; throw CatalogError.offline }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 20
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue(anonKey, forHTTPHeaderField: "apikey")
@@ -213,8 +298,9 @@ final class Auth {
 
     func pushLibrary(_ doc: Data) async {
         await refreshIfNeeded()
-        guard let s = session, configured, let json = try? JSONSerialization.jsonObject(with: doc) else { return }
-        var req = URLRequest(url: URL(string: base + "/rest/v1/libraries?on_conflict=user_id")!)
+        guard let s = session, configured, let json = try? JSONSerialization.jsonObject(with: doc),
+              let url = URL(string: base + "/rest/v1/libraries?on_conflict=user_id") else { return }
+        var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue(anonKey, forHTTPHeaderField: "apikey")
@@ -224,17 +310,23 @@ final class Auth {
         _ = try? await URLSession.shared.data(for: req)
     }
 
-    func pullLibrary() async -> Data? {
+    /// What the account holds: your library, nothing yet (a new account), or no answer.
+    enum LibraryPull { case found(Data), empty, failed }
+
+    func pullLibrary() async -> LibraryPull {
         await refreshIfNeeded()
-        guard let s = session, configured else { return nil }
-        var req = URLRequest(url: URL(string: base + "/rest/v1/libraries?select=doc&user_id=eq.\(s.userID)")!)
+        guard let s = session, configured,
+              let url = URL(string: base + "/rest/v1/libraries?select=doc&user_id=eq.\(s.userID)") else { return .failed }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 20
         req.setValue(anonKey, forHTTPHeaderField: "apikey")
         req.setValue("Bearer \(s.accessToken)", forHTTPHeaderField: "Authorization")
         guard let (data, resp) = try? await URLSession.shared.data(for: req),
               (resp as? HTTPURLResponse)?.statusCode == 200,
-              let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
-              let doc = rows.first?["doc"] else { return nil }
-        return try? JSONSerialization.data(withJSONObject: doc)
+              let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return .failed }
+        guard let doc = rows.first?["doc"] else { return .empty }
+        guard let out = try? JSONSerialization.data(withJSONObject: doc) else { return .failed }
+        return .found(out)
     }
 
     // MARK: Public profiles (the profiles table, see README)
@@ -247,8 +339,9 @@ final class Auth {
         guard let body = try? JSONEncoder().encode(profile) else { return .failed }
         if body == lastProfilePush { return .ok }
         await refreshIfNeeded()
-        guard let s = session, configured, profile.userID == s.userID else { return .failed }
-        var req = URLRequest(url: URL(string: base + "/rest/v1/profiles?on_conflict=user_id")!)
+        guard let s = session, configured, profile.userID == s.userID,
+              let url = URL(string: base + "/rest/v1/profiles?on_conflict=user_id") else { return .failed }
+        var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue(anonKey, forHTTPHeaderField: "apikey")

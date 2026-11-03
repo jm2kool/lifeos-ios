@@ -69,7 +69,7 @@ struct FilmView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    ShareLink(item: "\(ref.title)\(ref.year.map { " (\($0))" } ?? "") — on my watch list in Matinee") {
+                    ShareLink(item: shareText) {
                         Label("Share", systemImage: "square.and.arrow.up")
                     }
                     if let img = shareImage {
@@ -124,6 +124,17 @@ struct FilmView: View {
                 withAnimation(.easeInOut(duration: 0.7)) { palette = p }
             }
         }
+    }
+
+    /// What sharing the page sends: your take if you've seen it, otherwise that it's on your list.
+    private var shareText: String {
+        let name = "\(ref.title)\(ref.year.map { " (\($0))" } ?? "")"
+        if let r = library.rating(ref.id), library.isWatched(ref.id) {
+            return "\(name) — I gave it \(Score.describe(r, style: ratingStyle))\(ratingStyle == .stars ? "" : "/100") on Matinee"
+        }
+        if library.isWatched(ref.id) { return "\(name) — watched it, logged on Matinee" }
+        if library.inWatchlist(ref.id) { return "\(name) — on my watchlist in Matinee" }
+        return "\(name) — found on Matinee"
     }
 
     // MARK: Header
@@ -312,6 +323,12 @@ struct FilmView: View {
                         GlassChip(prominent: true, action: { watching.resume(s.id) }) {
                             Label("Resume", systemImage: "play.fill")
                         }
+                        Menu { SessionMenu(session: s) } label: {
+                            Image(systemName: "ellipsis").font(.subheadline.weight(.bold)).foregroundStyle(.white)
+                                .frame(width: 46, height: 46)
+                                .glassEffect(.regular.interactive(), in: .circle)
+                        }
+                        .accessibilityLabel("More")
                     }
                 }
                 if let stop = s.lastStop, !s.running { IntermissionRow(stop: stop) }

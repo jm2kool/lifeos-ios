@@ -64,17 +64,21 @@ struct YouTubePlayer: UIViewRepresentable {
     func updateUIView(_ web: WKWebView, context: Context) {}
 }
 
-/// Where to watch in India: streaming, free, rent and buy, each opening the service.
+/// Where to watch in your country (Settings → Film data): streaming, free, rent and buy, each opening the service.
 struct WatchProvidersSection: View {
     let film: FilmRef
     var surface: Color = Theme.card
     @State private var providers: WatchProviders?
     @State private var loaded = false
     @Environment(\.openURL) private var openURL
+    @AppStorage(Catalog.regionKey) private var chosenRegion = ""
+
+    private var region: String { Catalog.watchRegion }
+    private var place: String { Catalog.regionName(region) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader("Where to watch", subtitle: "In India")
+            SectionHeader("Where to watch", subtitle: "In \(place)")
             Group {
                 if let p = providers, !p.isEmpty {
                     VStack(alignment: .leading, spacing: 14) {
@@ -86,7 +90,7 @@ struct WatchProvidersSection: View {
                     }
                 } else if loaded {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Not streaming, renting or selling in India right now.")
+                        Text("Not streaming, renting or selling in \(place) right now.")
                             .font(.subheadline).foregroundStyle(.white.opacity(0.8))
                         if let u = justWatch {
                             Button { openURL(u) } label: { Label("Check JustWatch for updates", systemImage: "magnifyingglass") }
@@ -102,14 +106,16 @@ struct WatchProvidersSection: View {
             .background(surface, in: .rect(cornerRadius: 22))
             .padding(.horizontal, 16)
         }
-        .task(id: film.id) {
-            providers = await Catalog.providers(film.id)
+        .task(id: "\(film.id)|\(chosenRegion)") {
+            providers = await Catalog.providers(film.id, region: region)
             loaded = true
         }
     }
 
+    /// JustWatch's own search, in your country (it calls the UK "uk").
     private var justWatch: URL? {
-        URL(string: "https://www.justwatch.com/in/search?q=\(film.title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")")
+        let cc = region == "GB" ? "uk" : region.lowercased()
+        return URL(string: "https://www.justwatch.com/\(cc)/search?q=\(film.title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")")
     }
 
     @ViewBuilder private func row(_ label: String, _ list: [WatchProvider]) -> some View {

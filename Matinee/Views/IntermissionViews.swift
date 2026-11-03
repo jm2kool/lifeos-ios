@@ -283,6 +283,7 @@ struct IntermissionShelf: View {
     var media: MediaFilter = .all
     @Environment(Watching.self) private var watching
     @Environment(Router.self) private var router
+    @Environment(Library.self) private var library
 
     var body: some View {
         let paused = watching.paused.filter { media.includes($0.film) }
@@ -323,5 +324,27 @@ struct IntermissionShelf: View {
         .padding(12)
         .frame(width: 300, height: 190, alignment: .topLeading)
         .background(Theme.card, in: .rect(cornerRadius: 22))
+        .contentShape(.rect(cornerRadius: 22))
+        .contextMenu { SessionMenu(session: s) }
+    }
+}
+
+/// Resume, finish or drop a film you paused — from Home, its page, anywhere.
+struct SessionMenu: View {
+    let session: WatchSession
+    @Environment(Watching.self) private var watching
+    @Environment(Router.self) private var router
+    @Environment(Library.self) private var library
+
+    var body: some View {
+        if !session.running {
+            Button("Resume", systemImage: "play.fill") { watching.resume(session.id) }
+        }
+        Button("I finished it — log it", systemImage: "checkmark") {
+            let route = session.finish(in: library)
+            watching.end(session.id)
+            if let route { router.sheet = route }
+        }
+        Button("Stop tracking", systemImage: "xmark", role: .destructive) { watching.end(session.id) }
     }
 }

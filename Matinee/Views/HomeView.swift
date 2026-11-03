@@ -58,6 +58,7 @@ struct HomeView: View {
                     CurrentlyWatchingSection(shows: library.currentlyWatching)
                 }
                 IntermissionShelf(media: media)
+                OnThisDaySection(media: media)
                 if YearInReviewBanner.inSeason && !library.doc.entries.isEmpty { YearInReviewBanner() }
                 AskMatineeCard()
                 FriendsShelf()
@@ -121,9 +122,10 @@ struct HomeView: View {
         .refreshable {
             await load(force: true)
             await Social.shared.loadFeed()
+            if connected { await taste.refreshPicks(library: library, force: true) }
         }
         .task { await Social.shared.loadFeed() }
-        .task(id: token) { if connected { await load(force: true) } }
+        .task(id: token) { if connected { await load() } }
         .onChange(of: media) { _, _ in heroPage = 0 }
     }
 
@@ -290,7 +292,7 @@ struct HomeView: View {
         await withTaskGroup(of: (HomeShelf, [FilmRef]?, String?).self) { g in
             for s in HomeShelf.allCases {
                 g.addTask {
-                    do { let r = try await Catalog.shelf(s); return (s, r, nil) } catch { return (s, nil, error.localizedDescription) }
+                    do { let r = try await Catalog.shelf(s, fresh: force); return (s, r, nil) } catch { return (s, nil, error.localizedDescription) }
                 }
             }
             for await (s, films, err) in g {
@@ -445,6 +447,62 @@ struct AskMatineeCard: View {
             .buttonStyle(.plain)
             .padding(.horizontal, 16)
         }
+    }
+}
+
+/// Films you watched on this day in earlier years.
+struct OnThisDaySection: View {
+    var media: MediaFilter = .all
+    @Environment(Library.self) private var library
+
+    var body: some View {
+        let memories = Self.memories(library.entries).filter { media.includes($0.film) }
+        if !memories.isEmpty {
+            VStack(alignment: .leading, spacing: 14) {
+                SectionHeader("On this day", subtitle: "What you watched on \(Date.now.formatted(.dateTime.day().month(.wide))) in years gone by")
+                ScrollView(.horizontal) {
+                    LazyHStack(alignment: .top, spacing: 12) {
+                        ForEach(memories) { e in
+                            NavigationLink(value: e.film) {
+                                VStack(alignment: .leading, spacing: 5) {
+                                    PosterView(film: e.film, width: 104)
+                                    Text(Self.ago(e.watchedOn)).font(.caption.weight(.bold)).foregroundStyle(Theme.accent)
+                                    HStack(spacing: 4) {
+                                        if let l = e.episodeLabel { Text(l).font(.caption2.weight(.semibold)).foregroundStyle(Theme.dim) }
+                                        SmallRating(rating: e.rating)
+                                        if e.liked { Image(systemName: "heart.fill").font(.system(size: 9)).foregroundStyle(Theme.heart) }
+                                    }
+                                    .frame(height: 14)
+                                }
+                                .frame(width: 104, alignment: .leading)
+                            }
+                            .buttonStyle(.plain)
+                            .filmContextMenu(e.film)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                }
+                .scrollIndicators(.hidden)
+                .scrollClipDisabled()
+            }
+        }
+    }
+
+    /// Entries from today's date in earlier years, one per title per year, most recent year first.
+    static func memories(_ entries: [LogEntry]) -> [LogEntry] {
+        let cal = Calendar.current
+        let today = cal.dateComponents([.year, .month, .day], from: .now)
+        var seen = Set<String>()
+        return entries.filter { e in
+            let c = cal.dateComponents([.year, .month, .day], from: e.watchedOn)
+            guard c.month == today.month, c.day == today.day, let y = c.year, y < (today.year ?? 0) else { return false }
+            return seen.insert("\(e.film.id)|\(y)").inserted
+        }
+    }
+
+    static func ago(_ d: Date) -> String {
+        let n = Date.now.year - d.year
+        return n == 1 ? "A year ago" : "\(n) years ago"
     }
 }
 

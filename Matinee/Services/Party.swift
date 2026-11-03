@@ -102,7 +102,10 @@ final class Party {
     func leave(_ code: String) async {
         guard let me else { return }
         if let s = Watching.shared.sessions.first(where: { $0.party == code }) { Watching.shared.setParty(s.id, nil) }
-        if let row = rows[code] {
+        // Just opened the app? Ask the server who's in the room first, so leaving still reaches everyone.
+        var known = rows[code]
+        if known == nil, case .found(let row) = await lookup(code) { known = row }
+        if let row = known {
             if row.host == me.userID {
                 _ = await Auth.shared.rest("DELETE", "parties", query: ["code": "eq.\(code)"])
             } else {
@@ -127,6 +130,16 @@ final class Party {
         rows[code] = row
     }
 
+    /// What the server says about a party: here it is, it's gone (the host ended it), or no clear answer.
+    private enum Lookup { case found(PartyRow), gone, unknown }
+
+    private func lookup(_ code: String) async -> Lookup {
+        guard let r = await Auth.shared.rest("GET", "parties", query: ["code": "eq.\(code)", "limit": "1"]) else { return .unknown }
+        guard r.status == 200, let rows = try? Supa.decoder.decode([PartyRow].self, from: r.data) else { return .unknown }
+        if let row = rows.first { return .found(row) }
+        return .gone
+    }
+
     private func fetch(_ code: String) async -> PartyRow? {
         guard let r = await Auth.shared.rest("GET", "parties", query: ["code": "eq.\(code)", "limit": "1"]) else {
             error = "Couldn't reach your account server."
@@ -141,7 +154,8 @@ final class Party {
         while !Task.isCancelled {
             let codes = Set(Watching.shared.sessions.compactMap(\.party))
             for code in codes {
-                if let row = await fetch(code) {
+                switch await lookup(code) {
+                case .found(let row):
                     let old = rows[code]
                     rows[code] = row
                     if old?.updatedAt != row.updatedAt || old == nil {
@@ -150,13 +164,16 @@ final class Party {
                             Watching.shared.applyParty(row)
                         }
                     }
-                } else if error == nil, let s = Watching.shared.sessions.first(where: { $0.party == code }) {
-                    // The host ended it.
-                    Watching.shared.setParty(s.id, nil)
-                    rows[code] = nil
-                    Library.shared.toast = Toast(text: "The watch party ended", symbol: "person.3")
+                case .gone:
+                    // The host ended it. (A dropped connection or a server hiccup is .unknown, and changes nothing.)
+                    if let s = Watching.shared.sessions.first(where: { $0.party == code }) {
+                        Watching.shared.setParty(s.id, nil)
+                        rows[code] = nil
+                        Library.shared.toast = Toast(text: "The watch party ended", symbol: "person.3")
+                    }
+                case .unknown:
+                    break
                 }
-                error = nil
             }
             try? await Task.sleep(for: .seconds(codes.isEmpty ? 15 : 5))
         }

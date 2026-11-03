@@ -156,7 +156,12 @@ struct SeasonsSection: View {
             LazyVStack(spacing: 8) {
                 ForEach(eps) { ep in
                     EpisodeRow(show: show, episode: ep, upNext: ep.id == next?.id, surface: surface, accent: accent,
-                               fallbackRuntime: detail.runtimeMinutes)
+                               fallbackRuntime: detail.runtimeMinutes, markUpTo: {
+                        // Catching up: everything that's aired up to this one, in one go.
+                        let earlier = eps.filter { $0.aired && $0.number <= ep.number && !library.isSeen(show.id, $0) }
+                        library.setSeen(show, earlier, true)
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    })
                 }
             }
             .padding(.horizontal, 16)
@@ -241,6 +246,8 @@ struct EpisodeRow: View {
     var surface: Color = Theme.card
     var accent: Color = Theme.accent
     var fallbackRuntime: Int?
+    /// Ticks off this episode and every aired one before it in the season.
+    var markUpTo: (() -> Void)? = nil
     @Environment(Library.self) private var library
     @Environment(Router.self) private var router
     @Environment(Watching.self) private var watching
@@ -310,6 +317,21 @@ struct EpisodeRow: View {
         .padding(.vertical, upNext ? 14 : 6).padding(.horizontal, upNext ? 12 : 4)
         .background(upNext ? surface : .clear, in: .rect(cornerRadius: 18))
         .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(upNext ? accent.opacity(0.6) : .clear, lineWidth: 1))
+        .contentShape(.rect(cornerRadius: 18))
+        .contextMenu {
+            if episode.aired {
+                if let markUpTo, episode.number > 1 {
+                    Button("Watched up to here", systemImage: "checklist") { markUpTo() }
+                }
+                Button(seen ? "Mark as unwatched" : "Mark as watched", systemImage: seen ? "circle" : "checkmark.circle") {
+                    library.toggleSeen(show, episode)
+                }
+                Button("Start watching", systemImage: "play.fill") {
+                    watching.start(show, episode: episode, runtime: fallbackRuntime)
+                }
+            }
+            Button("Details", systemImage: "info.circle") { router.sheet = .episode(show, episode) }
+        }
     }
 }
 

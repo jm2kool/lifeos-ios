@@ -77,10 +77,22 @@ struct FeedRow: View {
             .disabled(person?.handle == nil)
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 4) {
-                    Text(person?.name.isEmpty == false ? person!.name : "Someone").font(.subheadline.weight(.bold))
+                    Text(person.map { $0.name.isEmpty ? ($0.handle.map { "@\($0)" } ?? "Someone") : $0.name } ?? "Someone")
+                        .font(.subheadline.weight(.bold)).lineLimit(1)
                     Text(item.rewatch ? "rewatched" : "watched").font(.subheadline).foregroundStyle(Theme.dim)
                     Spacer()
                     Text(item.createdAt.formatted(.relative(presentation: .named))).font(.caption).foregroundStyle(Theme.dim)
+                    if let person {
+                        Menu {
+                            Button(role: .destructive) { Task { await Social.shared.block(person) } } label: {
+                                Label("Block \(person.handle.map { "@\($0)" } ?? "them")", systemImage: "hand.raised")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis").font(.caption.weight(.bold)).foregroundStyle(Theme.dim)
+                                .frame(width: 28, height: 22).contentShape(.rect)
+                        }
+                        .accessibilityLabel("More")
+                    }
                 }
                 NavigationLink(value: item.film) {
                     HStack(alignment: .top, spacing: 12) {
@@ -206,6 +218,37 @@ struct SocialSetupCard: View {
     }
 }
 
+/// People you've blocked, with a way to unblock them.
+struct BlockedPeopleView: View {
+    @Environment(Library.self) private var library
+    @State private var people: [PublicProfile] = []
+
+    var body: some View {
+        List {
+            if library.blocked.isEmpty {
+                Text("No one. To block someone, open their profile or a post of theirs and tap ••• → Block.")
+                    .font(.subheadline).foregroundStyle(Theme.dim).listRowBackground(Color.clear)
+            }
+            ForEach(library.blocked, id: \.self) { id in
+                let p = people.first { $0.userID == id }
+                let name = p.map { $0.handle.map { "@\($0)" } ?? ($0.name.isEmpty ? "Someone" : $0.name) } ?? "Someone"
+                HStack(spacing: 12) {
+                    Avatar(profile: p?.asProfile ?? Profile(), size: 36)
+                    Text(name).font(.body.weight(.semibold))
+                    Spacer()
+                    Button("Unblock") { library.setBlocked(id, false, name: name) }
+                        .buttonStyle(.glass).controlSize(.small)
+                }
+                .listRowBackground(Theme.card)
+            }
+        }
+        .oledBackground()
+        .navigationTitle("Blocked")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { people = await Auth.shared.profiles(ids: library.blocked) }
+    }
+}
+
 /// Followers or following, for anyone.
 struct FollowListView: View {
     let route: FollowListRoute
@@ -225,7 +268,8 @@ struct FollowListView: View {
         .navigationTitle(route.title)
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            people = await Social.shared.list(route.userID, followers: route.followers)
+            let blocked = Set(Library.shared.blocked)
+            people = await Social.shared.list(route.userID, followers: route.followers).filter { !blocked.contains($0.userID) }
             loaded = true
         }
     }

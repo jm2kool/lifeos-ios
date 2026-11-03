@@ -23,12 +23,13 @@ final class ImageStore {
     init() { cache.totalCostLimit = 120 << 20 }
 
     func cached(_ url: URL) -> UIImage? { cache.object(forKey: url as NSURL) }
+    func removeAll() { cache.removeAllObjects() }
 
     func load(_ url: URL) async -> UIImage? {
         if let hit = cached(url) { return hit }
         if let t = inflight[url] { return await t.value }
         let t = Task<UIImage?, Never> {
-            guard let (data, _) = try? await Catalog.session.data(from: url), let img = UIImage(data: data) else { return nil }
+            guard let (data, _) = try? await Catalog.imageSession.data(from: url), let img = UIImage(data: data) else { return nil }
             return await img.byPreparingForDisplay() ?? img
         }
         inflight[url] = t

@@ -6,7 +6,8 @@ struct LibraryView: View {
     @Environment(Library.self) private var library
     @Environment(Router.self) private var router
     @AppStorage("librarySection") private var section: Pane = .watchlist
-    @AppStorage("watchlistSort") private var sortByTitle = false
+    @AppStorage("watchlistOrder") private var watchlistOrder: ListOrder = .added
+    @AppStorage("filmsOrder") private var filmsOrder: ListOrder = .added
     @AppStorage("watchlistMedia") private var watchlistMedia: MediaFilter = .all
     @State private var importer = Importer()
     @State private var importingWatchlist = false
@@ -49,13 +50,22 @@ struct LibraryView: View {
                     Menu {
                         Button("Import Letterboxd watchlist…", systemImage: "square.and.arrow.down") { importingWatchlist = true }
                         if !library.doc.watchlist.isEmpty {
-                            Picker("Sort", selection: $sortByTitle) {
-                                Text("Recently added").tag(false)
-                                Text("Title").tag(true)
+                            Picker("Sort", selection: $watchlistOrder) {
+                                ForEach(ListOrder.forWatchlist, id: \.self) { Text($0.label(watched: false)).tag($0) }
                             }
                             Button("Random pick", systemImage: "dice") { router.pickRandom(from: library, kind: watchlistMedia) }
                         }
                     } label: { Image(systemName: "line.3.horizontal.decrease") }
+                }
+            }
+            if section == .films && !library.watchedFilms.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Picker("Sort", selection: $filmsOrder) {
+                            ForEach(ListOrder.allCases, id: \.self) { Text($0.label(watched: true)).tag($0) }
+                        }
+                    } label: { Image(systemName: "arrow.up.arrow.down") }
+                    .accessibilityLabel("Sort films")
                 }
             }
         }
@@ -72,7 +82,7 @@ struct LibraryView: View {
     }
 
     @ViewBuilder private var watchlist: some View {
-        let all = sortByTitle ? library.doc.watchlist.sorted { $0.title < $1.title } : library.doc.watchlist
+        let all = watchlistOrder.sort(library.doc.watchlist) { library.rating($0) }
         let list = all.filter(watchlistMedia.includes)
         if importer.running || importer.summary != nil { importStatus }
         if !all.isEmpty {
@@ -169,11 +179,11 @@ struct LibraryView: View {
     }
 
     @ViewBuilder private var films: some View {
-        let list = library.watchedFilms.filter { !$0.isShow }
+        let list = filmsOrder.sort(library.watchedFilms.filter { !$0.isShow }) { library.rating($0) }
         if list.isEmpty {
             EmptyState(symbol: "eye", title: "No films yet", message: "Films you watch, rate or log appear here.").padding(.top, 40)
         } else {
-            Text("\(list.count) watched").font(.subheadline).foregroundStyle(Theme.dim).padding(.horizontal, 20)
+            Text("\(list.count) watched · \(filmsOrder.label(watched: true).lowercased())").font(.subheadline).foregroundStyle(Theme.dim).padding(.horizontal, 20)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 12) {
                 ForEach(list) { f in
                     NavigationLink(value: f) {
@@ -223,6 +233,39 @@ struct LibraryView: View {
     }
 }
 
+/// How the watchlist and your films are ordered.
+enum ListOrder: String, CaseIterable {
+    case added, title, newest, oldest, rating
+
+    static let forWatchlist: [ListOrder] = [.added, .title, .newest, .oldest]
+
+    func label(watched: Bool) -> String {
+        switch self {
+        case .added: return watched ? "Recently watched" : "Recently added"
+        case .title: return "Title"
+        case .newest: return "Newest first"
+        case .oldest: return "Oldest first"
+        case .rating: return "Your rating"
+        }
+    }
+
+    func sort(_ films: [FilmRef], rating: (String) -> Double?) -> [FilmRef] {
+        switch self {
+        case .added: return films
+        case .title: return films.sorted { Self.titleKey($0.title).localizedStandardCompare(Self.titleKey($1.title)) == .orderedAscending }
+        case .newest: return films.sorted { ($0.year ?? 0) > ($1.year ?? 0) }
+        case .oldest: return films.sorted { ($0.year ?? 9999) < ($1.year ?? 9999) }
+        case .rating: return films.sorted { (rating($0.id) ?? -1) > (rating($1.id) ?? -1) }
+        }
+    }
+
+    /// "The Matrix" files under M, as on a shelf.
+    static func titleKey(_ t: String) -> String {
+        for article in ["the ", "a ", "an "] where t.lowercased().hasPrefix(article) { return String(t.dropFirst(article.count)) }
+        return t
+    }
+}
+
 /// Overlapping poster stack, like a fanned hand of cards.
 struct ListCard: View {
     let list: FilmList
@@ -246,7 +289,7 @@ struct ListCard: View {
                     if !list.note.isEmpty { Text(list.note).font(.subheadline).foregroundStyle(Theme.dim).lineLimit(1) }
                 }
                 Spacer()
-                Text("\(list.films.count) film\(list.films.count == 1 ? "" : "s")").font(.caption.weight(.semibold)).foregroundStyle(Theme.dim)
+                Text(list.films.count == 1 ? "1 title" : "\(list.films.count) titles").font(.caption.weight(.semibold)).foregroundStyle(Theme.dim)
             }
         }
         .padding(16)
@@ -332,7 +375,7 @@ private func shareText(_ list: FilmList) -> String {
     var lines = [list.name]
     for (i, f) in list.films.enumerated() {
         let marker = list.ranked ? "\(i + 1)." : "•"
-        lines.append("\(marker) \(f.title) (\(f.yearText))")
+        lines.append("\(marker) \(f.title)\(f.year.map { " (\($0))" } ?? "")")
     }
     return lines.joined(separator: "\n")
 }
@@ -397,7 +440,7 @@ struct AddToListSheet: View {
                         HStack {
                             VStack(alignment: .leading) {
                                 Text(l.name).foregroundStyle(.white)
-                                Text("\(l.films.count) films").font(.caption).foregroundStyle(Theme.dim)
+                                Text(l.films.count == 1 ? "1 title" : "\(l.films.count) titles").font(.caption).foregroundStyle(Theme.dim)
                             }
                             Spacer()
                             Image(systemName: on ? "checkmark.circle.fill" : "circle").foregroundStyle(on ? Theme.accent : Theme.dim).font(.title3)

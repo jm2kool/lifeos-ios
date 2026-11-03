@@ -1,6 +1,6 @@
 # Matinee
 
-An independent film diary for iPhone, inspired by Letterboxd. It's built for iOS 26: Liquid Glass controls, a pure-black OLED theme, and sign-in with Google, Apple, GitHub, Discord, X, Facebook, Microsoft, Spotify or email.
+An independent film diary for iPhone, inspired by Letterboxd. It's built for iOS 26: Liquid Glass controls, a pure-black OLED theme, and sign-in with Apple, Google, email, GitHub, Discord, X, Facebook, Microsoft or Spotify — or no account at all.
 
 Matinee is not affiliated with Letterboxd.
 
@@ -45,6 +45,15 @@ Matinee is not affiliated with Letterboxd.
 | — | **What's this from? (AI finder)** | Paste a YouTube Short, X post, TikTok, Reel or Reddit link, pick a screenshot, or describe a scene. Matinee reads the post's title, caption, hashtags and the text in the video frame, Apple Intelligence guesses the film or show on the iPhone, and TMDB confirms it. Paste a link into Search and it goes straight there; there's also a Siri/Shortcuts action for the share sheet. |
 | Cast & crew | **Everyone who made it** | Film pages list the crew (writers, producers, composer, cinematographer, editor) as well as the cast. Tap anyone, or search their name, to see every film and show they worked on, grouped by role, with how many you've seen. |
 | — | **Tour and update log** | A welcome tour on first launch, a What's New tour after each update, and Settings → What's new with every version's changes. |
+| Year goal / challenge | **A goal for the year** | Set how many films you want to watch (Diary, or Settings → Profile); the Diary shows a ring, how many to go, and whether you're ahead of pace. |
+| — | **On this day** | Home shows what you watched on today's date in earlier years. |
+| Export | **Backups and Letterboxd export** | Settings → Backups saves your whole library as one file (Files, iCloud Drive) and restores it by merging, so nothing here is lost. Your diary and watchlist also export as CSVs in the format letterboxd.com/import reads. |
+| — | **Where to watch, anywhere** | Streaming, rental and buy listings (and New & noteworthy) follow your country: the iPhone's region, or pick one in Settings → Film data. |
+| — | **Catch up on a show** | Press and hold an episode → Watched up to here ticks off every aired episode before it in the season. |
+| Sort | **Sort your shelves** | Watchlist by date added, title or release year; your films by date watched, title, year or your rating. Diary search finds titles, #tags and words in your reviews. |
+| — | **Quick actions** | Press and hold the app icon: Log a film, Random pick, Scan a ticket, What's this from? |
+| — | **Your account, your call** | Delete your account in Settings. Block people from their profile or a post. Turning off diary sharing offers to take down what you shared. |
+| — | **Accessible** | Reduce Motion skips the flickering opening titles and stills the moving backgrounds. |
 
 ## Install
 
@@ -68,9 +77,9 @@ Sign-in goes through a free [Supabase](https://supabase.com) project. Supabase h
    - **Google**: in Google Cloud Console, create an OAuth client of type *Web application*. Set its authorised redirect URI to `https://<your-project>.supabase.co/auth/v1/callback`, then paste the client ID and secret into Supabase.
    - **GitHub, Discord, X, Facebook, Microsoft (Azure), Spotify**: same pattern. Make an OAuth app on that site with the Supabase callback URL above, then paste its ID and secret into Supabase.
    - **Apple**: needs a paid Apple Developer account, for a Services ID and key.
-4. In the app, go to **Settings → Account server** (also on the sign-in screen) and paste the URL and key. To have them built in instead, fill `MatineeSupabaseURL` and `MatineeSupabaseAnonKey` in `Config/Info.plist`.
+4. In the app, go to **Settings → Account server** (also on the sign-in screen) and paste the URL and key. To have them built in instead, fill `MatineeSupabaseURL` and `MatineeSupabaseAnonKey` in `Config/Info.plist`, or add the `SUPABASE_URL` and `SUPABASE_ANON_KEY` repository secrets.
 
-Providers you haven't switched on in Supabase show an error page in the sign-in sheet.
+The sign-in screen asks the server which providers are switched on and only offers those: Apple and Google get their own buttons, email opens a form (sign in, create an account, reset a password), and the rest sit under **More**.
 
 ### Optional: sync your library to your account
 
@@ -118,9 +127,11 @@ create policy "delete own profile" on public.profiles for delete to authenticate
 ```
 Matinee/App        App entry, tabs, routes
 Matinee/Model      FilmRef, LogEntry, FilmList, and the Library store (JSON on disk + cloud sync)
-Matinee/Services   Catalog (TMDB), Auth (Supabase + PKCE), Letterboxd importer, Social and Party (friends, watch
-                   parties), Reminders, Spotlight, FilmFacts (stats cache), Intelligence (on-device Foundation Models)
-Matinee/App        Also Intents.swift: Siri and Shortcuts
+Matinee/Services   Catalog (TMDB), Auth (Supabase + PKCE), Letterboxd importer, Backup (JSON backup, CSV export),
+                   Social and Party (friends, watch parties), Reminders, Spotlight, FilmFacts (stats cache),
+                   Intelligence (on-device Foundation Models)
+Matinee/App        Also Intents.swift: Siri and Shortcuts; MatineeApp.swift: Home Screen quick actions
+Matinee/PrivacyInfo.xcprivacy   App Store privacy manifest (and one for the widget)
 Matinee/Views      Home, Film, Log sheet, Diary, Library, Lists, Profile, Search, Sign-in, Settings
 project.yml        XcodeGen spec. CI runs `xcodegen generate` and then builds.
 ```
@@ -133,6 +144,7 @@ Following, the friends feed, a shared watchlist for Blend and watch parties need
 - `activity`: diary entries you choose to share (off until you switch on **Share my diary with followers**)
 - `parties`: watch-party timers, found by their six-character code
 - `watchlist` and `persona` columns on `profiles`: your watchlist is published only if you switch on **Show my watchlist for Blend**
+- `delete_my_account()`: lets **Settings → Delete my account** remove the sign-in itself. Every table above (and `libraries`, `profiles`) is tied to the account and goes with it. Without the function, the app deletes your rows and signs you out, and the sign-in has to be removed in the Supabase dashboard.
 
 Older servers without these columns keep working: the app falls back to publishing the profile without them.
 

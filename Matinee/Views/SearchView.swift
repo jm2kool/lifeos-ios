@@ -95,7 +95,9 @@ struct SearchView: View {
             try? await Task.sleep(for: .milliseconds(350))
             guard !Task.isCancelled else { return }
             loading = true; defer { loading = false }
-            let found = await auth.searchProfiles(q)
+            error = nil
+            let blocked = Set(library.blocked)
+            let found = await auth.searchProfiles(q).filter { !blocked.contains($0.userID) }
             guard !Task.isCancelled else { return }
             withAnimation(.smooth) { people = found }
             // "@name" looks for people only.
@@ -309,7 +311,9 @@ struct CollectionView: View {
         case .watched: return library.watchedFilms
         case .liked: return library.doc.liked.reversed()
         case .watchlist: return library.doc.watchlist
-        case .tag(let t): return library.entries.filter { $0.tags.contains(t) }.map(\.film)
+        case .tag(let t):
+            var seen = Set<String>()
+            return library.entries.filter { $0.tags.contains(t) && seen.insert($0.film.id).inserted }.map(\.film)
         case .rated(let b): return library.watchedFilms.filter { !$0.isShow && library.rating($0.id).map { Library.band($0) == b } == true }
         case .forYou: return taste.picks.filter(homeMedia.includes)
         case .shows: return library.showsInProgress + library.watchedFilms.filter(\.isShow)

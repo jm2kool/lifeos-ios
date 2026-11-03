@@ -21,6 +21,41 @@
 	<string></string>
 	<key>MatineeTMDBToken</key>
 	<string></string>
+	<key>UIApplicationShortcutItems</key>
+	<array>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>log</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Log a film</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>plus.circle</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>random</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Random pick</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>dice</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>scan</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Scan a ticket</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>ticket</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>find</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>What's this from?</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>sparkle.magnifyingglass</string>
+		</dict>
+	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>UIUserInterfaceStyle</key>

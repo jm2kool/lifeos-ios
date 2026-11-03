@@ -10,7 +10,9 @@ struct RootView: View {
     @State private var showSignIn = false
     @State private var showSplash: Bool = {
         let env = ProcessInfo.processInfo.environment
-        return env["MATINEE_PREVIEW"] == nil || env["MATINEE_SPLASH"] != nil
+        if env["MATINEE_SPLASH"] != nil { return true }
+        // The opening titles flicker and flash, so they're skipped for anyone who has asked iPhone for less motion.
+        return env["MATINEE_PREVIEW"] == nil && !UIAccessibility.isReduceMotionEnabled
     }()
 
     var body: some View {
@@ -93,15 +95,14 @@ struct RootView: View {
                 return
             }
             if url.scheme == "matinee", url.host == "party" {
-                let code = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).uppercased()
-                guard !code.isEmpty else { return }
+                let code = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).uppercased().filter { $0.isLetter || $0.isNumber }
+                guard code.count == 6 else { return }
                 router.closeRandom()
                 router.sheet = .party(code)
                 return
             }
             if url.scheme == "matinee", url.host == "u" {
-                let handle = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-                guard !handle.isEmpty else { return }
+                guard let handle = Handle.clean(url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))) else { return }
                 router.sheet = nil
                 router.closeRandom()
                 router.tab = .search
@@ -111,7 +112,7 @@ struct RootView: View {
             }
             guard url.scheme == "matinee", url.host == "film" else { return }
             let id = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            guard !id.isEmpty else { return }
+            guard Catalog.isValidID(id) else { return }
             let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
             func v(_ k: String) -> String? { q.first { $0.name == k }?.value }
             let film = library.doc.watchlist.first { $0.id == id } ?? library.watchedFilms.first { $0.id == id }
@@ -135,9 +136,13 @@ struct RootView: View {
         .onChange(of: auth.session?.userID) { _, id in
             Task { await Social.shared.refreshFollowing() }
             guard id != nil else { return }
-            library.adoptAccountProfile()
-            Task { await library.reconcileWithCloud() }
+            // Bring in the account's library first, then fill any gaps in your profile from the sign-in.
+            Task {
+                await library.reconcileWithCloud()
+                library.adoptAccountProfile()
+            }
         }
+        .onChange(of: router.pendingAction) { _, a in if a != nil { runPendingAction() } }
         .onContinueUserActivity(CSSearchableItemActionType) { activity in
             guard let film = Spotlight.film(for: activity, in: library) else { return }
             router.sheet = nil
@@ -163,8 +168,10 @@ struct RootView: View {
         if !showSignIn { afterSignIn() }
     }
 
-    /// The welcome tour (or What's New after an update), then the swipe quiz once.
+    /// The welcome tour (or What's New after an update), then the swipe quiz once. A quick action from the
+    /// Home Screen goes first; the tour waits for next time.
     private func afterSignIn() {
+        if router.pendingAction != nil { runPendingAction(); return }
         guard router.tour == nil, !taste.showQuiz else { return }
         if let t = Tour.pending { router.tour = t } else if taste.shouldOffer { taste.showQuiz = true }
     }
@@ -174,8 +181,18 @@ struct RootView: View {
         router.tour = nil
         Task {
             try? await Task.sleep(for: .seconds(0.5))
-            if let action { action.perform() } else if taste.shouldOffer { taste.showQuiz = true }
+            if let action { action.perform() }
+            else if router.pendingAction != nil { runPendingAction() }
+            else if taste.shouldOffer { taste.showQuiz = true }
         }
+    }
+
+    /// A Home Screen quick action, once nothing is in its way.
+    private func runPendingAction() {
+        guard let a = router.pendingAction, !showSplash, !showSignIn, router.tour == nil, !taste.showQuiz else { return }
+        router.pendingAction = nil
+        router.closeRandom()
+        a.perform()
     }
 
     /// Shaking works anywhere except over sign-in, the quiz and sheets.

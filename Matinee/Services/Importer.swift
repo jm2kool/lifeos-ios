@@ -48,10 +48,9 @@ final class Importer {
             await withTaskGroup(of: (String, FilmRef?).self) { g in
                 for r in chunk {
                     g.addTask {
-                        // Letterboxd is films only, so never match a show with the same name.
-                        guard let hits = try? await Catalog.search(r.name).filter({ !$0.isShow }) else { return (importKey(r), nil) }
-                        let f = hits.first { $0.year == r.year } ?? hits.first { abs(($0.year ?? 0) - (r.year ?? 0)) <= 1 } ?? (r.year == nil ? hits.first : nil)
-                        return (importKey(r), f)
+                        // Letterboxd is films only, so search films (never a show with the same name), in the right year.
+                        guard let hits = try? await Catalog.searchMovies(r.name, year: r.year) else { return (importKey(r), nil) }
+                        return (importKey(r), Importer.best(hits, for: r))
                     }
                 }
                 for await (k, f) in g { if let f { resolved[k] = f } }
@@ -61,29 +60,35 @@ final class Importer {
         var entries: [LogEntry] = []
         var unmatchedKeys = Set<String>()
         library.apply { d in
+            // Sets, so a history of thousands of films imports in a blink rather than checking every film against every other.
+            var watchedIDs = Set(d.watched.map(\.id)).union(d.entries.map(\.film.id))
+            var inWatchlist = Set(d.watchlist.map(\.id))
+            var likedIDs = Set(d.liked.map(\.id))
             for r in rows {
                 guard let f = resolved[importKey(r)] else {
                     if unmatchedKeys.insert(importKey(r)).inserted { unmatched.append("\(r.name) (\(r.year.map(String.init) ?? "?"))") }
                     continue
                 }
-                let watched = d.watched.contains { $0.id == f.id } || d.entries.contains { $0.film.id == f.id }
+                let watched = watchedIDs.contains(f.id)
+                func markWatched() { if !watched { d.watched.append(f); watchedIDs.insert(f.id) } }
+                func leaveWatchlist() { if inWatchlist.remove(f.id) != nil { d.watchlist.removeAll { $0.id == f.id } } }
                 switch r.kind {
                 case .diary, .reviews:
                     // Letterboxd rates in stars; Matinee scores films out of 100.
                     entries.append(LogEntry(film: f, watchedOn: r.date ?? .now, rating: r.rating.map(Score.fromStars), liked: false, rewatch: r.rewatch, review: r.review, tags: r.tags))
                 case .watched:
-                    if !watched { d.watched.append(f) }
-                    d.watchlist.removeAll { $0.id == f.id }
+                    markWatched()
+                    leaveWatchlist()
                 case .watchlist:
-                    if !watched && !d.watchlist.contains(where: { $0.id == f.id }) { d.watchlist.append(f) }
+                    if !watched && inWatchlist.insert(f.id).inserted { d.watchlist.append(f) }
                 case .ratings:
                     // On Letterboxd a rating means you've seen it, so it lands in your films and ratings tracker.
                     if let rt = r.rating, rt > 0 { d.ratings[f.id] = Score.fromStars(rt) }
-                    if !watched { d.watched.append(f) }
-                    d.watchlist.removeAll { $0.id == f.id }
+                    markWatched()
+                    leaveWatchlist()
                 case .likes:
-                    if !d.liked.contains(where: { $0.id == f.id }) { d.liked.append(f) }
-                    if !watched { d.watched.append(f) }
+                    if likedIDs.insert(f.id).inserted { d.liked.append(f) }
+                    markWatched()
                 }
             }
         }
@@ -96,16 +101,29 @@ final class Importer {
             byKey[k] = e
         }
         // Add diary entries in one go (no toast per film); the newest viewing sets each film's rating.
+        // A film already logged on the same day isn't logged twice, so importing the same file again is harmless.
         library.apply { d in
-            for e in byKey.values.sorted(by: { $0.watchedOn < $1.watchedOn })
-            where !d.entries.contains(where: { $0.film.id == e.film.id && Calendar.current.isDate($0.watchedOn, inSameDayAs: e.watchedOn) }) {
+            let cal = Calendar.current
+            var logged = Set(d.entries.map { "\($0.film.id)|\(cal.startOfDay(for: $0.watchedOn).timeIntervalSince1970)" })
+            var added = Set<String>()
+            for e in byKey.values.sorted(by: { $0.watchedOn < $1.watchedOn }) {
+                guard logged.insert("\(e.film.id)|\(cal.startOfDay(for: e.watchedOn).timeIntervalSince1970)").inserted else { continue }
                 d.entries.append(e)
                 if let r = e.rating, r > 0 { d.ratings[e.film.id] = r }
-                d.watchlist.removeAll { $0.id == e.film.id }
+                added.insert(e.film.id)
             }
+            if !added.isEmpty { d.watchlist.removeAll { added.contains($0.id) } }
         }
         library.toast = Toast(text: "Imported \(total - unmatched.count) of \(total) films", symbol: "square.and.arrow.down")
         summary = "Matched \(total - unmatched.count) of \(total) films." + (unmatched.isEmpty ? "" : " \(unmatched.count) couldn't be matched.")
+    }
+
+    /// The search hit that is this row: same title and year first, then the same year, then a year either side.
+    nonisolated static func best(_ hits: [FilmRef], for r: Row) -> FilmRef? {
+        func exact(_ list: [FilmRef]) -> FilmRef? { list.first { $0.title.caseInsensitiveCompare(r.name) == .orderedSame } }
+        let sameYear = hits.filter { r.year == nil || $0.year == r.year }
+        let near = r.year.map { y in hits.filter { abs(($0.year ?? 0) - y) <= 1 } } ?? []
+        return exact(sameYear) ?? sameYear.first ?? exact(near) ?? near.first
     }
 
     private func parse(_ text: String, kind: Kind) -> [Row] {
@@ -155,14 +173,14 @@ enum CSV {
     }
 }
 
-/// The Files picker for Letterboxd CSVs. Files are copied into the app first, so reading them never
-/// depends on security-scoped access, and one tap on a file picks it (no Select / Done step).
+/// The Files picker for Letterboxd CSVs (or, with `types`, a Matinee backup). Files are copied into the app first,
+/// so reading them never depends on security-scoped access, and one tap on a file picks it (no Select / Done step).
 struct CSVPicker: UIViewControllerRepresentable {
     var multiple = false
+    var types: [UTType] = [.commaSeparatedText, .plainText, .text, UTType(filenameExtension: "csv")].compactMap { $0 }
     var onPick: ([URL]) -> Void
 
     func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        let types: [UTType] = [.commaSeparatedText, .plainText, .text, UTType(filenameExtension: "csv")].compactMap { $0 }
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: true)
         picker.allowsMultipleSelection = multiple
         picker.delegate = context.coordinator

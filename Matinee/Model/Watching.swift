@@ -167,6 +167,11 @@ final class Watching {
             let i: Int
             if let found = s.firstIndex(where: { $0.film.id == row.film.id }) {
                 i = found
+                // The room moved on to another episode: follow it.
+                if row.season != nil && (s[i].season != row.season || s[i].episode != row.episode) {
+                    s[i].season = row.season; s[i].episode = row.episode; s[i].episodeTitle = row.episodeTitle
+                    s[i].stops = []
+                }
             } else {
                 var n = WatchSession(film: row.film, runtimeMinutes: row.runtimeMinutes, runStartedAt: nil)
                 n.season = row.season; n.episode = row.episode; n.episodeTitle = row.episodeTitle

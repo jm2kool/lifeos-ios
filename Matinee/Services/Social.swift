@@ -138,7 +138,8 @@ final class Social {
         loadingFeed = true
         defer { loadingFeed = false }
         let ids = following.sorted().joined(separator: ",")
-        let items = await activity(["user_id": "in.(\(ids))", "order": "created_at.desc", "limit": "80"])
+        let blocked = Set(Library.shared.blocked)
+        let items = await activity(["user_id": "in.(\(ids))", "order": "created_at.desc", "limit": "80"]).filter { !blocked.contains($0.userID) }
         let missing = Set(items.map(\.userID)).filter { people[$0] == nil }
         for p in await Auth.shared.profiles(ids: Array(missing)) { people[p.userID] = p }
         feed = items
@@ -176,6 +177,24 @@ final class Social {
     func unpost(_ e: LogEntry) async {
         guard Auth.shared.signedIn else { return }
         _ = await Auth.shared.rest("DELETE", "activity", query: ["id": "eq.\(e.id.uuidString.lowercased())"])
+    }
+
+    /// Stop sharing: take every diary entry you shared back off your followers' feeds.
+    @discardableResult
+    func unshareAll() async -> Bool {
+        guard let me else { return false }
+        guard let r = await Auth.shared.rest("DELETE", "activity", query: ["user_id": "eq.\(me)"]) else { return false }
+        return (200..<300).contains(r.status) || Supa.missingTable(r.status, r.data)
+    }
+
+    /// Blocking someone also stops you following them, and drops their posts from your feed straight away.
+    func block(_ p: PublicProfile) async {
+        Library.shared.setBlocked(p.userID, true, name: p.handle.map { "@\($0)" } ?? (p.name.isEmpty ? "them" : p.name))
+        feed.removeAll { $0.userID == p.userID }
+        if isFollowing(p.userID), let me {
+            following.remove(p.userID)
+            _ = await Auth.shared.rest("DELETE", "follows", query: ["follower": "eq.\(me)", "followee": "eq.\(p.userID)"])
+        }
     }
 
     /// Share what's already in your diary (the latest 50 entries) when you first switch sharing on.
@@ -252,6 +271,14 @@ final class Social {
 
     alter table public.profiles add column if not exists watchlist jsonb;
     alter table public.profiles add column if not exists persona jsonb;
+
+    -- Settings → Delete my account: removes your sign-in, and with it every row above that's yours.
+    create or replace function public.delete_my_account() returns void
+    language sql security definer set search_path = public as $$
+      delete from auth.users where id = auth.uid();
+    $$;
+    revoke all on function public.delete_my_account() from public, anon;
+    grant execute on function public.delete_my_account() to authenticated;
     notify pgrst, 'reload schema';
     """
 }

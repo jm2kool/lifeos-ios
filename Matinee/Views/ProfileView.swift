@@ -264,6 +264,7 @@ struct ProfileEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State private var p = Profile()
     @State private var photo: PhotosPickerItem?
+    @State private var loaded = false
 
     var body: some View {
         NavigationStack {
@@ -308,13 +309,20 @@ struct ProfileEditor: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save", systemImage: "checkmark") {
                         p.handle = Handle.clean(p.handle) ?? ""
+                        p.name = p.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                        p.bio = p.bio.trimmingCharacters(in: .whitespacesAndNewlines)
                         library.setProfile(p)
                         dismiss()
                     }
                     .buttonStyle(.glassProminent)
                 }
             }
-            .onAppear { p = library.doc.profile }
+            .onAppear {
+                // Only the first time: coming back from the photo picker mustn't undo your edits.
+                guard !loaded else { return }
+                loaded = true
+                p = library.doc.profile
+            }
             .onChange(of: photo) { _, item in
                 guard let item else { return }
                 Task {
@@ -333,7 +341,9 @@ struct ProfileEditor: View {
         let side = min(img.size.width, img.size.height)
         let crop = CGRect(x: (img.size.width - side) / 2, y: (img.size.height - side) / 2, width: side, height: side)
         let out: CGFloat = 320
-        let r = UIGraphicsImageRenderer(size: CGSize(width: out, height: out))
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1   // 320 real pixels, not 320 points at the screen's 3×
+        let r = UIGraphicsImageRenderer(size: CGSize(width: out, height: out), format: format)
         let squared = r.image { _ in
             img.draw(in: CGRect(x: -crop.minX * out / side, y: -crop.minY * out / side,
                                 width: img.size.width * out / side, height: img.size.height * out / side))
@@ -434,6 +444,7 @@ struct FavoritesMesh: View {
     let colors: [Color]
     static let fallback: [Color] = [Theme.accent, Theme.heart, Color(red: 0.55, green: 0.35, blue: 1), Theme.star, Theme.list]
     @State private var motion = TiltMotion()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var palette: [SIMD3<Float>] {
         (colors.isEmpty ? Self.fallback : colors).map { c in
@@ -445,12 +456,13 @@ struct FavoritesMesh: View {
 
     var body: some View {
         let pal = palette
-        TimelineView(.animation(minimumInterval: 1 / 30)) { tl in
-            let t = Float(tl.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 10_000))
-            let tilt = motion.tilt
+        // With Reduce Motion on, the blend holds still.
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { tl in
+            let t = reduceMotion ? 120 : Float(tl.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 10_000))
+            let tilt = reduceMotion ? SIMD2<Float>(0, 0) : motion.tilt
             MeshGradient(width: 4, height: 4, points: Self.points(t, tilt: tilt), colors: Self.colors(pal, t), smoothsColors: true)
         }
-        .onAppear { motion.start() }
+        .onAppear { if !reduceMotion { motion.start() } }
         .onDisappear { motion.stop() }
         .accessibilityHidden(true)
     }
@@ -575,13 +587,24 @@ struct FavoritesRow: View {
 struct PublicProfileView: View {
     let handle: String
     @Environment(Auth.self) private var auth
+    @Environment(Library.self) private var library
     @State private var profile: PublicProfile?
     @State private var loaded = false
     @State private var activity: [FeedItem] = []
 
+    private var isMe: Bool { profile?.userID == auth.session?.userID }
+
     var body: some View {
         ScrollView {
-            if let p = profile {
+            if let p = profile, library.isBlocked(p.userID) {
+                VStack(spacing: 14) {
+                    EmptyState(symbol: "hand.raised.fill", title: "You've blocked \(p.handle.map { "@\($0)" } ?? "this person")",
+                               message: "Their profile and posts are hidden from you.")
+                    Button("Unblock") { library.setBlocked(p.userID, false, name: p.handle.map { "@\($0)" } ?? p.name) }
+                        .buttonStyle(.glass)
+                }
+                .padding(.top, 60)
+            } else if let p = profile {
                 VStack(alignment: .leading, spacing: 28) {
                     VStack(spacing: 10) {
                         Avatar(profile: p.asProfile, size: 92)
@@ -651,8 +674,22 @@ struct PublicProfileView: View {
             if let h = profile?.handle, let url = URL(string: "matinee://u/\(h)") {
                 ToolbarItem(placement: .topBarTrailing) { ShareLink(item: url) { Image(systemName: "square.and.arrow.up") } }
             }
+            if let p = profile, !isMe {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        if library.isBlocked(p.userID) {
+                            Button("Unblock", systemImage: "hand.raised.slash") { library.setBlocked(p.userID, false, name: p.handle.map { "@\($0)" } ?? p.name) }
+                        } else {
+                            Button("Block", systemImage: "hand.raised", role: .destructive) { Task { await Social.shared.block(p) } }
+                        }
+                    } label: { Image(systemName: "ellipsis") }
+                }
+            }
         }
-        .refreshable { profile = await auth.profile(handle: handle) }
+        .refreshable {
+            profile = await auth.profile(handle: handle)
+            if let id = profile?.userID { activity = await Social.shared.activity(of: id) }
+        }
         .task {
             profile = await auth.profile(handle: handle)
             loaded = true

@@ -192,9 +192,67 @@ struct LibraryDoc: Codable {
     var watching: [WatchSession]?             // films and episodes in progress, with their intermissions
     var topFavorites: [FilmRef]?              // up to eight films and shows, in your order; nil in libraries from before
     var reminders: [ReleaseReminder]?         // films you asked to be told about when they come out
+    var yearGoal: Int?                        // how many films you mean to watch this year
+    var blocked: [String]?                    // account ids of people whose posts and profile you don't want to see
 
     /// Favourite films and shows together, in your order. Older libraries kept them apart, films first.
     var allFavorites: [FilmRef] { topFavorites ?? (favorites + (favoriteShows ?? [])) }
+
+    /// Nothing logged, saved or rated yet.
+    var isBlank: Bool { entries.isEmpty && watchlist.isEmpty && watched.isEmpty && ratings.isEmpty && liked.isEmpty && lists.isEmpty }
+
+    /// Two copies of a library brought together — the first time a phone's library meets an account's, or a
+    /// backup coming back. Nothing is dropped: diary entries, lists, episodes and saved titles from both are kept.
+    /// Where both have a value (a rating, your profile), this copy's wins.
+    func merged(with other: LibraryDoc) -> LibraryDoc {
+        func union(_ a: [FilmRef], _ b: [FilmRef]) -> [FilmRef] {
+            var seen = Set(a.map(\.id))
+            return a + b.filter { seen.insert($0.id).inserted }
+        }
+        var d = self
+        let entryIDs = Set(d.entries.map(\.id))
+        d.entries += other.entries.filter { !entryIDs.contains($0.id) }
+        d.watchlist = union(d.watchlist, other.watchlist)
+        d.liked = union(d.liked, other.liked)
+        d.watched = union(d.watched, other.watched)
+        d.ratings = other.ratings.merging(d.ratings) { _, mine in mine }
+        let listIDs = Set(d.lists.map(\.id))
+        d.lists += other.lists.filter { !listIDs.contains($0.id) }
+        d.setFavorites(d.allFavorites + other.allFavorites)
+        if d.profile == Profile() { d.profile = other.profile }
+        var searches = d.recentSearches
+        for s in other.recentSearches where !searches.contains(s) { searches.append(s) }
+        d.recentSearches = Array(searches.prefix(8))
+        if d.taste == nil { d.taste = other.taste }
+        var shows = other.shows ?? [:]
+        for (id, mine) in d.shows ?? [:] {
+            guard var theirs = shows[id] else { shows[id] = mine; continue }
+            theirs.seen.merge(mine.seen) { a, b in min(a, b) }
+            theirs.episodeRatings.merge(mine.episodeRatings) { _, m in m }
+            theirs.seasonRatings.merge(mine.seasonRatings) { _, m in m }
+            theirs.updatedAt = max(theirs.updatedAt, mine.updatedAt)
+            if theirs.show.poster == nil { theirs.show = mine.show }
+            shows[id] = theirs
+        }
+        if !shows.isEmpty { d.shows = shows }
+        let pinned = union(d.currentlyWatching ?? [], other.currentlyWatching ?? [])
+        if !pinned.isEmpty { d.currentlyWatching = pinned }
+        var comfort = d.comfort ?? []
+        for id in other.comfort ?? [] where !comfort.contains(id) { comfort.append(id) }
+        if !comfort.isEmpty { d.comfort = comfort }
+        var watching = d.watching ?? []
+        for s in other.watching ?? [] where !watching.contains(where: { $0.film.id == s.film.id }) { watching.append(s) }
+        if !watching.isEmpty { d.watching = watching }
+        var reminders = d.reminders ?? []
+        for r in other.reminders ?? [] where !reminders.contains(where: { $0.id == r.id }) { reminders.append(r) }
+        if !reminders.isEmpty { d.reminders = reminders }
+        if d.yearGoal == nil { d.yearGoal = other.yearGoal }
+        var blocked = d.blocked ?? []
+        for id in other.blocked ?? [] where !blocked.contains(id) { blocked.append(id) }
+        if !blocked.isEmpty { d.blocked = blocked }
+        d.updatedAt = .now
+        return d
+    }
 
     /// Sets the one favourites list, and keeps the films and shows halves (used for your character and by older versions) in step.
     mutating func setFavorites(_ list: [FilmRef]) {

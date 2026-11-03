@@ -7,9 +7,18 @@ struct DiaryView: View {
 
     struct MonthGroup: Identifiable { let id: String; var entries: [LogEntry] }
 
+    /// Matches the title, the episode, a tag (type #tag for tags only) or words in your review.
     private var grouped: [MonthGroup] {
-        let q = filter.lowercased().replacingOccurrences(of: "#", with: "")
-        let list = library.entries.filter { q.isEmpty || $0.film.title.localizedCaseInsensitiveContains(q) || $0.tags.contains(q) }
+        let q = filter.trimmingCharacters(in: .whitespaces).lowercased()
+        let tagOnly = q.hasPrefix("#")
+        let t = tagOnly ? String(q.dropFirst()) : q
+        let list = library.entries.filter { e in
+            if q.isEmpty { return true }
+            if e.tags.contains(where: { $0.hasPrefix(t) }) { return true }
+            if tagOnly { return false }
+            return e.film.title.localizedCaseInsensitiveContains(t) || e.review.localizedCaseInsensitiveContains(t)
+                || (e.episodeTitle?.localizedCaseInsensitiveContains(t) ?? false)
+        }
         var out: [MonthGroup] = []
         for e in list {
             let key = e.watchedOn.monthYear
@@ -29,11 +38,18 @@ struct DiaryView: View {
                     .buttonStyle(.glassProminent).controlSize(.large)
                     .listRowBackground(Color.clear).listRowSeparator(.hidden)
             } else {
-                YearSummary()
-                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                ForEach(grouped) { group in
+                let groups = grouped
+                if filter.isEmpty {
+                    YearSummary()
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                } else if groups.isEmpty {
+                    EmptyState(symbol: "magnifyingglass", title: "No entries match", message: "Try part of a title, a word from a review, or #tag.")
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                }
+                ForEach(groups) { group in
                     let month = group.id, entries = group.entries
                     Section {
                         ForEach(entries) { e in
@@ -57,7 +73,7 @@ struct DiaryView: View {
                         HStack {
                             Text(month).font(.headline).foregroundStyle(.white)
                             Spacer()
-                            Text("\(entries.count) film\(entries.count == 1 ? "" : "s")").font(.caption).foregroundStyle(Theme.dim)
+                            Text(Self.count(entries)).font(.caption).foregroundStyle(Theme.dim)
                         }
                     }
                 }
@@ -66,7 +82,7 @@ struct DiaryView: View {
         .listStyle(.plain)
         .ambientBackground(library.entries.prefix(3).map(\.film))
         .navigationTitle("Diary")
-        .searchable(text: $filter, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Filter by title or #tag")
+        .searchable(text: $filter, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Title, #tag or a word from a review")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Scan a ticket", systemImage: "ticket") { router.sheet = .scanTicket }
@@ -75,6 +91,15 @@ struct DiaryView: View {
                 Button("Log a film", systemImage: "plus") { router.sheet = .quickLog }
             }
         }
+    }
+}
+
+extension DiaryView {
+    /// "3 films", or "5 entries" when episodes are in the mix.
+    static func count(_ entries: [LogEntry]) -> String {
+        let n = entries.count
+        if entries.allSatisfy({ $0.season == nil && !$0.film.isShow }) { return n == 1 ? "1 film" : "\(n) films" }
+        return n == 1 ? "1 entry" : "\(n) entries"
     }
 }
 
@@ -135,6 +160,7 @@ struct YearSummary: View {
                     stat(rated.isEmpty ? "–" : String(Int((rated.reduce(0, +) / Double(rated.count)).rounded())), "avg score")
                 }
             }
+            GoalProgress(done: films.count, goal: library.doc.yearGoal)
             Heatmap(dates: library.doc.entries.map(\.watchedOn))
             HStack(spacing: 8) {
                 Button { router.sheet = .yearReview(year) } label: {
@@ -155,6 +181,57 @@ struct YearSummary: View {
             Text(l).font(.caption).foregroundStyle(Theme.dim)
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+/// Your film goal for the year: how far along you are, and whether you're ahead of where you'd need to be.
+struct GoalProgress: View {
+    let done: Int
+    let goal: Int?
+    @Environment(Library.self) private var library
+    static let choices = [12, 24, 36, 52, 75, 100, 150, 200, 365]
+
+    var body: some View {
+        Menu {
+            Section("Films to watch in \(String(Date.now.year))") {
+                ForEach(Self.choices, id: \.self) { n in
+                    Button { library.setYearGoal(n) } label: {
+                        if n == goal { Label("\(n) films", systemImage: "checkmark") } else { Text("\(n) films") }
+                    }
+                }
+            }
+            if goal != nil { Button("Remove goal", systemImage: "xmark", role: .destructive) { library.setYearGoal(nil) } }
+        } label: {
+            if let goal {
+                HStack(spacing: 12) {
+                    ProgressRing(progress: Double(done) / Double(max(goal, 1)), tint: done >= goal ? Theme.watch : Theme.accent)
+                        .frame(width: 30, height: 30)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(done >= goal ? "Goal reached · \(done) of \(goal) films" : "\(done) of \(goal) films").font(.subheadline.weight(.semibold))
+                        Text(pace(goal)).font(.caption).foregroundStyle(Theme.dim)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.up.chevron.down").font(.caption).foregroundStyle(Theme.dim)
+                }
+                .foregroundStyle(.white)
+            } else {
+                Label("Set a goal for \(String(Date.now.year))", systemImage: "target")
+                    .font(.footnote.weight(.semibold)).foregroundStyle(Theme.accent)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Where you'd be if you spread the goal evenly over the year.
+    private func pace(_ goal: Int) -> String {
+        guard done < goal else { return "\(done - goal) more than you planned" }
+        let cal = Calendar.current
+        let day = cal.ordinality(of: .day, in: .year, for: .now) ?? 1
+        let days = cal.range(of: .day, in: .year, for: .now)?.count ?? 365
+        let expected = Int((Double(goal) * Double(day) / Double(days)).rounded())
+        let diff = done - expected
+        if diff == 0 { return "Right on pace" }
+        return diff > 0 ? "\(diff) ahead of pace" : "\(-diff) behind pace · \(goal - done) to go"
     }
 }
 

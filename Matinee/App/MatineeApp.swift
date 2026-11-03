@@ -4,6 +4,7 @@ import UserNotifications
 
 @main
 struct MatineeApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var library = Library.shared
     @State private var auth = Auth.shared
     @State private var router = Router.shared
@@ -13,6 +14,11 @@ struct MatineeApp: App {
 
     init() {
         UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
+        // Versions before 1.3 kept TMDB answers forever in the shared cache; let that go once.
+        if !UserDefaults.standard.bool(forKey: "clearedStaleCache") {
+            URLCache.shared.removeAllCachedResponses()
+            UserDefaults.standard.set(true, forKey: "clearedStaleCache")
+        }
         let env = ProcessInfo.processInfo.environment
         if env["MATINEE_PREVIEW"] != nil {
             Library.shared.seedDemo()
@@ -44,6 +50,43 @@ struct MatineeApp: App {
                 }
             }
         }
+    }
+}
+
+/// Home Screen quick actions: press and hold the Matinee icon for Log a film, Random pick, Scan a ticket
+/// and What's this from? (listed in Config/Info.plist).
+final class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, configurationForConnecting connectingSceneSession: UISceneSession,
+                     options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+        if let item = options.shortcutItem { QuickAction.handle(item) }
+        let config = UISceneConfiguration(name: nil, sessionRole: connectingSceneSession.role)
+        config.delegateClass = QuickActionSceneDelegate.self
+        return config
+    }
+}
+
+/// Quick actions picked while Matinee is already running.
+final class QuickActionSceneDelegate: NSObject, UIWindowSceneDelegate {
+    func windowScene(_ windowScene: UIWindowScene, performActionFor shortcutItem: UIApplicationShortcutItem,
+                     completionHandler: @escaping (Bool) -> Void) {
+        QuickAction.handle(shortcutItem)
+        completionHandler(true)
+    }
+}
+
+@MainActor
+enum QuickAction {
+    /// Hands the action to the router; RootView runs it once the opening titles and sign-in are out of the way.
+    static func handle(_ item: UIApplicationShortcutItem) {
+        let action: TourAction?
+        switch item.type {
+        case "log": action = .quickLog
+        case "random": action = .randomPick
+        case "scan": action = .scanTicket
+        case "find": action = .finder
+        default: action = nil
+        }
+        Router.shared.pendingAction = action
     }
 }
 
@@ -105,6 +148,8 @@ final class Router {
     /// The welcome tour or What's New, shown full screen.
     var tour: TourMode?
     var sheet: SheetRoute?
+    /// A Home Screen quick action waiting for the app to be ready.
+    var pendingAction: TourAction?
     var filmsPath = NavigationPath()
     var diaryPath = NavigationPath()
     var libraryPath = NavigationPath()
