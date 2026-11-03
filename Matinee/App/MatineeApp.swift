@@ -47,6 +47,7 @@ struct MatineeApp: App {
                     await library.reconcileWithCloud()
                     await Reminders.refresh(library)
                     await Social.shared.refreshFollowing()
+                    await Availability.shared.refresh(library)
                 }
             }
         }

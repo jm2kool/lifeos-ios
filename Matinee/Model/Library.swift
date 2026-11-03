@@ -55,7 +55,7 @@ final class Library {
         }
         // Signed in before the library remembered its account: it's already that account's library.
         if owner == nil, let id = Auth.shared.session?.userID { owner = id }
-        WatchlistWidget.publish(doc.watchlist)
+        WatchlistWidget.publish(widgetWatchlist)
     }
 
     // MARK: Reading
@@ -449,6 +449,42 @@ final class Library {
         mutate(n.map { "Goal set: \($0) films this year" }, symbol: "target") { d in d.yearGoal = n.flatMap { $0 > 0 ? $0 : nil } }
     }
 
+    /// The streaming services you pay for (TMDB provider ids), for "On my services".
+    var services: [Int] { doc.services ?? [] }
+    func setServices(_ ids: [Int]) { mutate { d in d.services = ids.isEmpty ? nil : ids } }
+
+    /// A poster you picked for a film, used everywhere it appears.
+    func posterOverride(_ id: String) -> URL? { doc.posters?[id] }
+    func setPoster(_ url: URL?, for film: FilmRef) {
+        mutate(url == nil ? "Back to the original poster" : "Poster changed", symbol: "photo") { d in
+            var all = d.posters ?? [:]
+            all[film.id] = url
+            d.posters = all.isEmpty ? nil : all
+        }
+    }
+
+    /// The watchlist as the widget should draw it: with any posters you picked.
+    private var widgetWatchlist: [FilmRef] {
+        guard let picked = doc.posters, !picked.isEmpty else { return doc.watchlist }
+        return doc.watchlist.map { f in
+            var f = f
+            if let p = picked[f.id] { f.poster = p }
+            return f
+        }
+    }
+
+    /// A copy of a list, to rework without touching the original.
+    @discardableResult
+    func duplicateList(_ l: FilmList) -> FilmList {
+        var copy = FilmList(name: "\(l.name) (copy)", note: l.note, ranked: l.ranked)
+        copy.films = l.films
+        mutate("Copied “\(l.name)”", symbol: "plus.square.on.square") { d in
+            let at = (d.lists.firstIndex { $0.id == l.id } ?? -1) + 1
+            d.lists.insert(copy, at: at)
+        }
+        return copy
+    }
+
     var blocked: [String] { doc.blocked ?? [] }
     func isBlocked(_ userID: String) -> Bool { blocked.contains(userID) }
 
@@ -477,7 +513,7 @@ final class Library {
     // MARK: Persistence & sync
 
     private func persist(sync: Bool = true) {
-        WatchlistWidget.publish(doc.watchlist)
+        WatchlistWidget.publish(widgetWatchlist)
         Spotlight.schedule(self)
         let data = try? Self.encoder.encode(doc)
         if let data { try? data.write(to: Self.fileURL, options: .atomic) }

@@ -272,7 +272,7 @@ struct GenreView: View {
                 if failed { EmptyState(symbol: "film", title: "Nothing here yet", message: "Couldn't load \(genre) films.") }
                 else { ProgressView().padding(.top, 80) }
             } else {
-                PosterGrid(films: films, columns: 3).padding(16)
+                PosterGrid(films: films, columns: 3, marksSeen: true).padding(16)
             }
         }
         .ambientBackground(Array(films.prefix(3)))
@@ -294,7 +294,7 @@ struct CollectionView: View {
 
     private var action: DeckAction {
         switch route {
-        case .watchlist: return .tonight
+        case .watchlist, .onServices: return .tonight
         case .watched, .liked, .rated, .tag, .shows: return .like
         default: return .watchlist
         }
@@ -310,6 +310,7 @@ struct CollectionView: View {
         case .rated(let b): return FilmRatingStyle.current == .stars ? Stars.text(Double(b + 1) / 2) : "Scored \(b * 10 + 1)–\(b * 10 + 10)"
         case .forYou: return homeMedia == .all ? "Picked for you" : homeMedia == .shows ? "Shows you'd like" : "Films you'd like"
         case .shows: return "Shows"
+        case .onServices: return "On your services"
         }
     }
 
@@ -325,6 +326,7 @@ struct CollectionView: View {
         case .rated(let b): return library.watchedFilms.filter { !$0.isShow && library.rating($0.id).map { Library.band($0) == b } == true }
         case .forYou: return taste.picks.filter(homeMedia.includes)
         case .shows: return library.showsInProgress + library.watchedFilms.filter(\.isShow)
+        case .onServices: return library.doc.watchlist.filter { !Availability.shared.services(for: $0.id).isEmpty }
         }
     }
 
@@ -336,7 +338,7 @@ struct CollectionView: View {
                 ScrollView {
                     if films.isEmpty, case .shelf = route { ProgressView().padding(.top, 80) }
                     else if films.isEmpty { EmptyState(symbol: "film.stack", title: "Nothing here yet", message: "Films you add will show up here.").padding(.top, 60) }
-                    else { PosterGrid(films: films, columns: 4).padding(16) }
+                    else { PosterGrid(films: films, columns: 4, marksSeen: route.isBrowse).padding(16) }
                 }
             }
         }

@@ -21,6 +21,7 @@ struct SettingsView: View {
     @State private var cacheBytes = 0
     @AppStorage(FilmRatingStyle.key) private var filmStyle: FilmRatingStyle = .score
     @AppStorage(Catalog.regionKey) private var region = ""
+    @AppStorage("fadeSeen") private var fadeSeen = false
 
     /// Countries JustWatch covers, for "Where to watch".
     private static let regions = ["AE", "AR", "AT", "AU", "BE", "BR", "CA", "CH", "CL", "CO", "CZ", "DE", "DK", "EG", "ES", "FI", "FR",
@@ -69,6 +70,11 @@ struct SettingsView: View {
                         Catalog.setToken(tmdb)
                         library.toast = Toast(text: Catalog.hasToken ? "TMDB connected" : "TMDB token removed", symbol: "film")
                     }
+                    NavigationLink { ServicesPicker() } label: {
+                        LabeledContent { Text(library.services.isEmpty ? "None" : "\(library.services.count)") } label: {
+                            Label("My streaming services", systemImage: "play.tv")
+                        }
+                    }
                     Picker(selection: $region) {
                         Text("Automatic · \(Catalog.regionName(Locale.current.region?.identifier ?? "US"))").tag("")
                         ForEach(Self.regions, id: \.self) { Text(Catalog.regionName($0)).tag($0) }
@@ -95,8 +101,9 @@ struct SettingsView: View {
                         Text("Stars 1–5").tag(FilmRatingStyle.stars)
                     }
                     .pickerStyle(.segmented)
-                } header: { Text("Ratings") } footer: {
-                    Text("Films, shows, seasons and episodes all use this. Ratings are kept as a score out of 100, so you can switch any time. In stars, each half star is 10 points (★★★★ = 80).")
+                    Toggle(isOn: $fadeSeen) { Label("Fade films I've seen", systemImage: "eye.slash") }
+                } header: { Text("Ratings and browsing") } footer: {
+                    Text("Films, shows, seasons and episodes all use this. Ratings are kept as a score out of 100, so you can switch any time. In stars, each half star is 10 points (★★★★ = 80). Films you've seen always get a small eye in trending, genre and “more like this” shelves; fading dims them too.")
                 }
 
                 Section {
@@ -301,22 +308,25 @@ struct NotificationSettingsSection: View {
     @Environment(Library.self) private var library
     @AppStorage(Reminders.episodesKey) private var episodes = true
     @AppStorage(Reminders.releasesKey) private var releases = true
+    @AppStorage(Availability.alertsKey) private var streaming = true
     @State private var allowed = true
 
     var body: some View {
         Section {
             Toggle(isOn: $episodes) { Label("New episodes", systemImage: "tv") }
             Toggle(isOn: $releases) { Label("Watchlist releases", systemImage: "film") }
+            Toggle(isOn: $streaming) { Label("Watchlist arrivals on my services", systemImage: "play.tv") }
             if !allowed {
                 Button { if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) } } label: {
                     Label("Notifications are off for Matinee — turn them on", systemImage: "bell.slash")
                 }
             }
         } header: { Text("Notifications") } footer: {
-            Text("The day a new episode airs for shows you're watching (at 6pm), and the day films on your watchlist or with a reminder come out (at 10am).")
+            Text("The day a new episode airs for shows you're watching (at 6pm), the day films on your watchlist or with a reminder come out (at 10am), and when a watchlist title starts streaming on one of your services.")
         }
         .onChange(of: episodes) { _, _ in Task { await Reminders.refresh(library, force: true, ask: true); allowed = await Reminders.authorized } }
         .onChange(of: releases) { _, _ in Task { await Reminders.refresh(library, force: true, ask: true); allowed = await Reminders.authorized } }
+        .onChange(of: streaming) { _, on in if on { Task { await Reminders.requestPermission(); allowed = await Reminders.authorized } } }
         .task {
             let s = await UNUserNotificationCenter.current().notificationSettings()
             allowed = s.authorizationStatus != .denied

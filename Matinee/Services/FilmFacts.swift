@@ -9,6 +9,8 @@ struct FilmFacts: Codable, Hashable {
     var countries: [String] = []
     var runtime: Int?                // minutes; for a show, a typical episode
     var year: Int?
+    var crowd: Double?               // TMDB members' average, 0–10 (nil in facts saved before 1.4)
+    var votes: Int?
 
     init(_ d: FilmDetail) {
         genres = d.genres
@@ -17,6 +19,8 @@ struct FilmFacts: Codable, Hashable {
         countries = d.countries
         runtime = d.runtimeMinutes
         year = d.ref.year
+        crowd = d.communityRating ?? 0
+        votes = d.voteCount ?? 0
     }
 }
 
@@ -49,16 +53,19 @@ final class FactStore {
         saveSoon()
     }
 
-    /// Look up the films that have no facts yet, a few at a time. Returns once they're all in (or failed).
+    /// Look up the films that have no facts yet (or facts from before the crowd's rating was kept), a few at a time.
+    /// Returns once they're all in (or failed).
     func fill(_ films: [FilmRef], limit: Int = 500) async {
-        let missing = Array(films.filter { facts[$0.id] == nil && TMDB.path($0.id) != nil }.prefix(limit))
+        let missing = Array(films.filter { (facts[$0.id] == nil || facts[$0.id]?.crowd == nil) && TMDB.path($0.id) != nil }.prefix(limit))
         guard !missing.isEmpty, filling == nil, Catalog.hasToken else { return }
         filling = (0, missing.count)
         defer { filling = nil }
         for start in stride(from: 0, to: missing.count, by: 6) {
             let chunk = missing[start..<min(start + 6, missing.count)]
-            await withTaskGroup(of: Void.self) { g in
-                for f in chunk { g.addTask { _ = try? await Catalog.detail(f.id) } }
+            await withTaskGroup(of: FilmDetail?.self) { g in
+                for f in chunk { g.addTask { try? await Catalog.detail(f.id) } }
+                // Details already in memory skip the usual recording, so record them here.
+                for await d in g { if let d { record(d) } }
             }
             filling = (min(start + 6, missing.count), missing.count)
             if Task.isCancelled { break }

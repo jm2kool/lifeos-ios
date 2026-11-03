@@ -48,6 +48,9 @@ struct FilmDetail: Codable, Hashable {
     var releaseDate: Date?
     var directorPeople: [Person] = []    // for shows, the creators
     var crew: [Person] = []              // writers, producers, composer, cinematographer, editor — role is their jobs
+    // Films that belong to a series ("The Dune Collection").
+    var collectionID: Int?
+    var collectionName: String?
 
     /// Seasons that count towards finishing a show: everything except the specials.
     var regularSeasons: [SeasonInfo] { seasons.filter { $0.number > 0 && $0.episodeCount > 0 } }
@@ -136,6 +139,8 @@ struct LogEntry: Codable, Hashable, Identifiable {
     var season: Int?
     var episode: Int?
     var episodeTitle: String?
+    /// The review gives away the plot: friends see it hidden until they tap.
+    var spoilers: Bool?
 
     var isEpisode: Bool { season != nil && episode != nil }
     /// "S1 E3", "Season 2", or nil for a film or a whole show.
@@ -194,6 +199,8 @@ struct LibraryDoc: Codable {
     var reminders: [ReleaseReminder]?         // films you asked to be told about when they come out
     var yearGoal: Int?                        // how many films you mean to watch this year
     var blocked: [String]?                    // account ids of people whose posts and profile you don't want to see
+    var services: [Int]?                      // TMDB ids of the streaming services you pay for
+    var posters: [String: URL]?               // a poster you picked for a film, by film id
 
     /// Favourite films and shows together, in your order. Older libraries kept them apart, films first.
     var allFavorites: [FilmRef] { topFavorites ?? (favorites + (favoriteShows ?? [])) }
@@ -250,6 +257,9 @@ struct LibraryDoc: Codable {
         var blocked = d.blocked ?? []
         for id in other.blocked ?? [] where !blocked.contains(id) { blocked.append(id) }
         if !blocked.isEmpty { d.blocked = blocked }
+        if d.services == nil { d.services = other.services }
+        let posters = (other.posters ?? [:]).merging(d.posters ?? [:]) { _, mine in mine }
+        if !posters.isEmpty { d.posters = posters }
         d.updatedAt = .now
         return d
     }

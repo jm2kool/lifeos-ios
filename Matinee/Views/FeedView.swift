@@ -67,6 +67,7 @@ struct FeedRow: View {
     let item: FeedItem
     let person: PublicProfile?
     @Environment(Library.self) private var library
+    @State private var showSpoilers = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -112,7 +113,15 @@ struct FeedRow: View {
                                 }
                             }
                             if !item.review.isEmpty {
-                                Text(item.review).font(.subheadline).foregroundStyle(.white.opacity(0.85)).lineLimit(5).multilineTextAlignment(.leading)
+                                if item.spoilers == true && !showSpoilers && !library.isWatched(item.film.id) {
+                                    Button { withAnimation(.smooth) { showSpoilers = true } } label: {
+                                        Label("Contains spoilers — tap to read", systemImage: "eye.trianglebadge.exclamationmark")
+                                            .font(.footnote.weight(.semibold)).foregroundStyle(Theme.star)
+                                    }
+                                    .buttonStyle(.plain)
+                                } else {
+                                    Text(item.review).font(.subheadline).foregroundStyle(.white.opacity(0.85)).lineLimit(5).multilineTextAlignment(.leading)
+                                }
                             }
                         }
                         Spacer(minLength: 0)

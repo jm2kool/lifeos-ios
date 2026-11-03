@@ -67,6 +67,19 @@ struct WatchProviders: Hashable {
     var rent: [WatchProvider] = []
     var buy: [WatchProvider] = []
     var isEmpty: Bool { stream.isEmpty && free.isEmpty && rent.isEmpty && buy.isEmpty }
+
+    /// Which of your services carry it to watch now (streaming, free or with ads) — not to rent or buy.
+    func onServices(_ ids: Set<Int>) -> [WatchProvider] {
+        var seen = Set<Int>()
+        return (stream + free).filter { ids.contains($0.id) && seen.insert($0.id).inserted }
+    }
+}
+
+/// A film series on TMDB ("The Lord of the Rings Collection"), its films in release order.
+struct FilmCollection: Hashable {
+    var id: Int
+    var name: String
+    var films: [FilmRef]
 }
 
 /// One title in someone's filmography, with every job they did on it ("Director, Writer").
@@ -99,7 +112,7 @@ struct PersonCredits: Hashable {
 }
 
 enum HomeShelf: String, CaseIterable, Identifiable {
-    case trending, topRated, newReleases, trendingShows, topRatedShows
+    case trending, topRated, newReleases, upcoming, trendingShows, topRatedShows
     var id: String { rawValue }
     var isShows: Bool { self == .trendingShows || self == .topRatedShows }
     var title: String {
@@ -107,6 +120,7 @@ enum HomeShelf: String, CaseIterable, Identifiable {
         case .trending: return "Popular this week"
         case .topRated: return "All-time greats"
         case .newReleases: return "New & noteworthy"
+        case .upcoming: return "Coming soon"
         case .trendingShows: return "Shows everyone's watching"
         case .topRatedShows: return "Landmark TV"
         }
@@ -326,6 +340,61 @@ enum Catalog {
         return out
     }
 
+    private static var serviceCache: [String: [WatchProvider]] = [:]
+
+    /// Every streaming service TMDB knows in a country, the biggest first — for Settings → My services.
+    static func allServices(region: String? = nil) async -> [WatchProvider] {
+        let region = region ?? watchRegion
+        if let hit = serviceCache[region] { return hit }
+        var byID: [Int: (WatchProvider, Int)] = [:]
+        for kind in ["movie", "tv"] {
+            guard let j = try? await TMDB.call("/watch/providers/\(kind)", ["watch_region": region]) else { continue }
+            for p in j["results"].array {
+                guard let id = p["provider_id"].int, let name = p["provider_name"].str else { continue }
+                let rank = p["display_priorities"][region].int ?? p["display_priority"].int ?? 999
+                if byID[id] == nil || rank < byID[id]!.1 {
+                    byID[id] = (WatchProvider(id: id, name: name, logo: TMDB.img(p["logo_path"].str, "w154")), rank)
+                }
+            }
+        }
+        let list = byID.values.sorted { ($0.1, $0.0.name) < ($1.1, $1.0.name) }.map(\.0)
+        if !list.isEmpty { serviceCache[region] = list }
+        return list
+    }
+
+    private static var posterCache: [String: [URL]] = [:]
+
+    /// The posters TMDB has for a film or show — the original first, then the best-liked alternatives.
+    static func posters(_ id: String) async -> [URL] {
+        guard let path = TMDB.path(id) else { return [] }
+        if let hit = posterCache[id] { return hit }
+        guard let j = try? await TMDB.call("\(path)/images", ["include_image_language": "en,null"]) else { return [] }
+        let ranked = j["posters"].array
+            .sorted { ($0["vote_average"].double ?? 0, $0["vote_count"].double ?? 0) > ($1["vote_average"].double ?? 0, $1["vote_count"].double ?? 0) }
+            .compactMap { TMDB.img($0["file_path"].str, "w500") }
+        var seen = Set<URL>()
+        let list = Array(ranked.filter { seen.insert($0).inserted }.prefix(48))
+        posterCache[id] = list
+        return list
+    }
+
+    private static var collectionCache: [Int: FilmCollection] = [:]
+
+    /// A film series and every film in it, oldest first (unreleased ones last).
+    static func collection(_ id: Int) async -> FilmCollection? {
+        if let hit = collectionCache[id] { return hit }
+        guard let j = try? await TMDB.call("/collection/\(id)"), let name = j["name"].str else { return nil }
+        let films = j["parts"].array.compactMap { m -> FilmRef? in
+            guard let id = m["id"].int, let title = m["title"].str ?? m["original_title"].str else { return nil }
+            return FilmRef(id: "tmdb-\(id)", title: title, year: m["release_date"].str.flatMap { Int($0.prefix(4)) },
+                           poster: TMDB.img(m["poster_path"].str, "w500"), backdrop: TMDB.img(m["backdrop_path"].str, "w1280"))
+        }
+        .sorted { ($0.year ?? 9999) < ($1.year ?? 9999) }
+        let c = FilmCollection(id: id, name: name, films: films)
+        collectionCache[id] = c
+        return c
+    }
+
     /// Films often have several logos on TMDB — a coloured original plus white and black versions.
     /// Prefer the coloured one: check the best-rated English logos (small thumbnails) and take the
     /// first that has real colour in it. nil when every version is plain white or black.
@@ -523,6 +592,7 @@ enum TMDB {
         case .trending: return try await list("/trending/movie/week", fresh: fresh)
         case .topRated: return try await list("/movie/top_rated", fresh: fresh)
         case .newReleases: return try await list("/movie/now_playing", ["region": Catalog.watchRegion], fresh: fresh)
+        case .upcoming: return try await list("/movie/upcoming", ["region": Catalog.watchRegion], fresh: fresh)
         case .trendingShows: return try await list("/trending/tv/week", fresh: fresh)
         case .topRatedShows: return try await list("/tv/top_rated", fresh: fresh)
         }
@@ -606,6 +676,8 @@ enum TMDB {
             return Person(id: "tmdbp-\(pid)", name: name, role: "Director", photo: img(c["profile_path"].str, "w185"))
         }
         d.releaseDate = m["release_date"].str.flatMap { airDate.date(from: $0) }
+        d.collectionID = m["belongs_to_collection"]["id"].int
+        d.collectionName = m["belongs_to_collection"]["name"].str
         d.crew = crew(m["credits"]["crew"].array)
         d.cast = m["credits"]["cast"].array.prefix(30).compactMap { c in
             guard let pid = c["id"].int, let name = c["name"].str else { return nil }

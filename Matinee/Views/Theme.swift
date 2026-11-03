@@ -63,34 +63,53 @@ struct RemoteImage: View {
     }
 }
 
-/// A poster with Letterboxd-style 2:3 proportions. Fetches its own artwork if the ref has none.
+/// A poster with Letterboxd-style 2:3 proportions. Fetches its own artwork if the ref has none, and shows the
+/// poster you picked for the film when there is one.
 struct PosterView: View {
     let film: FilmRef
     var width: CGFloat? = nil
     var corner: CGFloat = 8
     var showTitleFallback = true
     var glows = true
+    /// In browse shelves: a small eye on films you've seen, and a fade if you chose that in Settings.
+    var marksSeen = false
     @State private var fetched: URL?
     @State private var glow: Color?
     @Environment(Library.self) private var library
+    @AppStorage("fadeSeen") private var fadeSeen = false
+
+    private var url: URL? { library.posterOverride(film.id) ?? film.poster ?? fetched }
+    private var seen: Bool { marksSeen && library.isWatched(film.id) }
 
     var body: some View {
         ZStack {
             Rectangle().fill(Theme.card)
-            if film.poster == nil && fetched == nil && showTitleFallback {
+            if url == nil && showTitleFallback {
                 Text(film.title).font(.caption2.weight(.semibold)).multilineTextAlignment(.center)
                     .foregroundStyle(.white.opacity(0.6)).padding(6)
             }
-            RemoteImage(url: film.poster ?? fetched).opacity(film.poster ?? fetched == nil ? 0 : 1)
+            RemoteImage(url: url).opacity(url == nil ? 0 : 1)
         }
         .aspectRatio(2/3, contentMode: .fit)
         .frame(width: width)
         .clipShape(.rect(cornerRadius: corner))
         .overlay(RoundedRectangle(cornerRadius: corner).strokeBorder(Theme.line, lineWidth: 0.5))
+        .overlay(alignment: .topTrailing) {
+            if seen {
+                Image(systemName: "eye.fill")
+                    .font(.system(size: max(8, (width ?? 90) * 0.09), weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(4)
+                    .background(Theme.watch, in: .circle)
+                    .padding(5)
+                    .accessibilityLabel("Seen")
+            }
+        }
+        .opacity(seen && fadeSeen ? 0.4 : 1)
         // Each poster casts a soft halo in its own colour.
         .shadow(color: (glow ?? .clear).opacity(0.55), radius: max(6, (width ?? 90) * 0.14), y: max(2, (width ?? 90) * 0.05))
-        .task(id: film.poster ?? fetched) {
-            guard glows, let url = film.poster ?? fetched else { return }
+        .task(id: url) {
+            guard glows, let url else { return }
             if let hit = Palette.cached(url) { glow = hit.glow; return }
             if let p = await Palette.of(url) { withAnimation(.easeOut(duration: 0.5)) { glow = p.glow } }
         }
@@ -562,11 +581,13 @@ extension SectionHeader where Trailing == EmptyView {
 struct PosterRow: View {
     let films: [FilmRef]
     var width: CGFloat = 112
+    /// Browse shelves mark films you've already seen.
+    var marksSeen = false
     var body: some View {
         ScrollView(.horizontal) {
             LazyHStack(spacing: 10) {
                 ForEach(films) { f in
-                    NavigationLink(value: f) { PosterView(film: f, width: width) }
+                    NavigationLink(value: f) { PosterView(film: f, width: width, marksSeen: marksSeen) }
                         .buttonStyle(.plain)
                         .filmContextMenu(f)
                 }
@@ -581,10 +602,11 @@ struct PosterRow: View {
 struct PosterGrid: View {
     let films: [FilmRef]
     var columns = 4
+    var marksSeen = false
     var body: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: columns), spacing: 8) {
             ForEach(films) { f in
-                NavigationLink(value: f) { PosterView(film: f, corner: 6) }.buttonStyle(.plain).filmContextMenu(f)
+                NavigationLink(value: f) { PosterView(film: f, corner: 6, marksSeen: marksSeen) }.buttonStyle(.plain).filmContextMenu(f)
             }
         }
     }
@@ -712,6 +734,69 @@ struct TitleArt: View {
             try? await Task.sleep(for: .seconds(5))
             guard !Task.isCancelled else { return }
             withAnimation(.easeOut(duration: 0.3)) { waitedTooLong = true }
+        }
+    }
+}
+
+/// Pick the poster you'd rather see for a film or show, from every one TMDB has. It's used everywhere the title appears.
+struct PosterChooser: View {
+    let film: FilmRef
+    @Environment(Library.self) private var library
+    @Environment(\.dismiss) private var dismiss
+    @State private var posters: [URL] = []
+    @State private var loaded = false
+
+    var body: some View {
+        let current = library.posterOverride(film.id) ?? film.poster
+        NavigationStack {
+            ScrollView {
+                if !loaded {
+                    ProgressView().padding(.top, 80)
+                } else if posters.count < 2 {
+                    EmptyState(symbol: "photo.on.rectangle", title: "No other posters",
+                               message: "TMDB only has the one for this \(film.isShow ? "show" : "film").")
+                        .padding(.top, 60)
+                }
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
+                    ForEach(posters, id: \.self) { url in
+                        let on = current == url
+                        Button {
+                            library.setPoster(url == film.poster ? nil : url, for: film)
+                            UISelectionFeedbackGenerator().selectionChanged()
+                            dismiss()
+                        } label: {
+                            Color.clear.aspectRatio(2 / 3, contentMode: .fit)
+                                .overlay { RemoteImage(url: url) }
+                                .clipShape(.rect(cornerRadius: 8))
+                                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(on ? Theme.accent : Theme.line, lineWidth: on ? 3 : 0.5))
+                                .overlay(alignment: .topTrailing) {
+                                    if on { Image(systemName: "checkmark.circle.fill").font(.title3).foregroundStyle(.white, Theme.accent).padding(6) }
+                                }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(on ? "Current poster" : "Use this poster")
+                    }
+                }
+                .padding(16)
+            }
+            .oledBackground()
+            .navigationTitle("Choose a poster")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel", systemImage: "xmark") { dismiss() } }
+                if library.posterOverride(film.id) != nil {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Original") { library.setPoster(nil, for: film); dismiss() }
+                    }
+                }
+            }
+            .task {
+                var list = await Catalog.posters(film.id)
+                // The poster the app shows by default always comes first.
+                if let p = film.poster { list.removeAll { $0 == p }; list.insert(p, at: 0) }
+                posters = list
+                loaded = true
+            }
         }
     }
 }

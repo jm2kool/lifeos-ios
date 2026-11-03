@@ -24,7 +24,17 @@ private func tallyPeople(_ people: [Person], top: Int) -> [Tally] {
         .prefix(top).map { $0 }
 }
 
-/// Everything on the Stats page, worked out from your films and what Matinee knows about them.
+/// A film you scored well away from what TMDB members gave it.
+struct HotTake: Identifiable, Hashable {
+    var film: FilmRef
+    var mine: Double                   // 1–100
+    var crowd: Double                  // TMDB average, as a score out of 100
+    var diff: Double { mine - crowd }
+    var id: String { film.id }
+}
+
+/// Everything on the Stats page, worked out from your films and what Matinee knows about them —
+/// for all time, or for one year of your diary.
 struct LibraryStats {
     var films: [FilmRef]
     var known: Int                     // how many of them have facts yet
@@ -35,15 +45,24 @@ struct LibraryStats {
     var directors: [Tally]
     var actors: [Tally]
     var episodes: Int
-    var showsFinished: Int
+    var shows: Int                     // finished (all time), or watched that year
+    var takes: [HotTake]               // where your score and the crowd's differ most
+    var vsCrowd: Double?               // your average minus the crowd's, in points out of 100
 
-    @MainActor init(_ library: Library, facts: FactStore) {
-        let films = library.watchedFilms.filter { !$0.isShow }
+    @MainActor init(_ library: Library, facts: FactStore, year: Int? = nil) {
+        let inYear: (Date) -> Bool = { d in year.map { d.year == $0 } ?? true }
+        // Each viewing counts toward time watched, rewatches included.
+        let viewings = library.doc.entries.filter { !$0.film.isShow && inYear($0.watchedOn) }
+        let films: [FilmRef]
+        if year == nil {
+            films = library.watchedFilms.filter { !$0.isShow }
+        } else {
+            var seenIDs = Set<String>()
+            films = viewings.sorted { $0.watchedOn > $1.watchedOn }.map(\.film).filter { seenIDs.insert($0.id).inserted }
+        }
         self.films = films
         let f = films.compactMap { facts[$0.id] }
         known = f.count
-        // Each viewing counts toward time watched, rewatches included.
-        let viewings = library.doc.entries.filter { !$0.film.isShow }
         let viewed = Set(viewings.map(\.film.id))
         var minutes = viewings.reduce(0) { $0 + (facts[$1.film.id]?.runtime ?? 0) }
             + films.filter { !viewed.contains($0.id) }.reduce(0) { $0 + (facts[$1.id]?.runtime ?? 0) }
@@ -53,11 +72,19 @@ struct LibraryStats {
         countries = tally(f.flatMap { $0.countries.prefix(1) }, top: 8)
         directors = tallyPeople(f.flatMap(\.directors), top: 10)
         actors = tallyPeople(f.flatMap { $0.cast.prefix(5) }, top: 12)
-        let shows = (library.doc.shows ?? [:]).values
-        episodes = shows.reduce(0) { $0 + $1.seen.count }
-        showsFinished = library.watchedFilms.filter(\.isShow).count
-        minutes += shows.reduce(0) { $0 + $1.seen.count * (facts[$1.show.id]?.runtime ?? 0) }
+        let progress = (library.doc.shows ?? [:]).values
+        episodes = progress.reduce(0) { $0 + $1.seen.values.filter(inYear).count }
+        shows = year == nil ? library.watchedFilms.filter(\.isShow).count : progress.filter { $0.seen.values.contains(where: inYear) }.count
+        minutes += progress.reduce(0) { $0 + $1.seen.values.filter(inYear).count * (facts[$1.show.id]?.runtime ?? 0) }
         self.minutes = minutes
+        // You against TMDB's members, on films enough of them have rated.
+        var pairs: [HotTake] = []
+        for film in films {
+            guard let mine = library.rating(film.id), mine > 0, let x = facts[film.id], let c = x.crowd, c > 0, (x.votes ?? 0) >= 50 else { continue }
+            pairs.append(HotTake(film: film, mine: mine, crowd: c * 10))
+        }
+        vsCrowd = pairs.count >= 5 ? pairs.map(\.diff).reduce(0, +) / Double(pairs.count) : nil
+        takes = Array(pairs.filter { abs($0.diff) >= 15 }.sorted { abs($0.diff) > abs($1.diff) }.prefix(8))
     }
 }
 

@@ -58,6 +58,7 @@ struct HomeView: View {
                     CurrentlyWatchingSection(shows: library.currentlyWatching)
                 }
                 IntermissionShelf(media: media)
+                ReadyToStreamSection(media: media)
                 OnThisDaySection(media: media)
                 if YearInReviewBanner.inSeason && !library.doc.entries.isEmpty { YearInReviewBanner() }
                 AskMatineeCard()
@@ -70,6 +71,7 @@ struct HomeView: View {
                         ShowProgressRow(shows: continueWatching)
                     }
                 }
+                if connected { ComingUpSection(media: media) }
                 if connected { forYou }
                 if !watchlist.isEmpty {
                     VStack(alignment: .leading, spacing: 14) {
@@ -84,7 +86,7 @@ struct HomeView: View {
                         VStack(alignment: .leading, spacing: 14) {
                             SectionHeader(title: s.title) { NavigationLink("See all", value: CollectionRoute.shelf(s)) }
                             // The hero already shows the first few trending films.
-                            PosterRow(films: s == .trending && media == .movies ? Array(films.dropFirst(min(3, films.count))) : films)
+                            PosterRow(films: s == .trending && media == .movies ? Array(films.dropFirst(min(3, films.count))) : films, marksSeen: true)
                         }
                     }
                 }

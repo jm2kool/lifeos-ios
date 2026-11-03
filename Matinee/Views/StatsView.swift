@@ -5,10 +5,13 @@ import Charts
 struct StatsView: View {
     @Environment(Library.self) private var library
     @Environment(Router.self) private var router
+    @State private var year: Int?
     private var facts: FactStore { FactStore.shared }
 
+    private var years: [Int] { Set(library.doc.entries.map(\.watchedOn.year)).sorted(by: >) }
+
     var body: some View {
-        let s = LibraryStats(library, facts: facts)
+        let s = LibraryStats(library, facts: facts, year: year)
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
                 totals(s)
@@ -25,6 +28,7 @@ struct StatsView: View {
                 if !s.directors.isEmpty { people("Directors", s.directors, unit: "film") }
                 if !s.actors.isEmpty { people("Actors", s.actors, unit: "film") }
                 if !s.countries.isEmpty { bars("Countries", s.countries, color: Theme.list) }
+                if !s.takes.isEmpty || s.vsCrowd != nil { crowd(s) }
                 if s.films.isEmpty {
                     EmptyState(symbol: "chart.bar", title: "No films yet", message: "Log or mark films as watched and your stats build up here.")
                 }
@@ -33,9 +37,57 @@ struct StatsView: View {
             .padding(.bottom, 30)
         }
         .ambientBackground(Array(library.allFavorites.prefix(3)))
-        .navigationTitle("Stats")
+        .navigationTitle(year.map { "Stats · \(String($0))" } ?? "Stats")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if years.count > 0 {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Picker("Period", selection: $year) {
+                            Text("All time").tag(Int?.none)
+                            ForEach(years, id: \.self) { Text(String($0)).tag(Int?.some($0)) }
+                        }
+                    } label: { Label(year.map { String($0) } ?? "All time", systemImage: "calendar").labelStyle(.titleAndIcon) }
+                }
+            }
+        }
         .task { await facts.fill(library.watchedFilms) }
+    }
+
+    /// You against TMDB's members: on average, and the films where you differ most.
+    private func crowd(_ s: LibraryStats) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeader("You vs the crowd", subtitle: s.vsCrowd.map(crowdLine) ?? "Where your score and TMDB members' differ most")
+            VStack(spacing: 10) {
+                ForEach(s.takes) { t in
+                    NavigationLink(value: t.film) {
+                        HStack(spacing: 12) {
+                            PosterView(film: t.film, width: 40, corner: 4, glows: false)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(t.film.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                                Text(t.diff > 0 ? "You liked it more than most" : "Most people liked it more")
+                                    .font(.caption).foregroundStyle(t.diff > 0 ? Theme.watch : Theme.heart)
+                            }
+                            Spacer(minLength: 0)
+                            VStack(alignment: .trailing, spacing: 2) {
+                                RatingValue(score: t.mine, font: .headline)
+                                Text("crowd \(Score.describe(t.crowd))").font(.caption2).foregroundStyle(Theme.dim)
+                            }
+                        }
+                        .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 20)
+        }
+    }
+
+    private func crowdLine(_ d: Double) -> String {
+        let stars = FilmRatingStyle.current == .stars
+        let size = stars ? "\((abs(d) / 20).formatted(.number.precision(.fractionLength(1))))★" : "\(Int(abs(d).rounded())) points"
+        if abs(d) < (stars ? 2 : 3) { return "You score films about the same as TMDB members" }
+        return "You score films \(size) \(d > 0 ? "higher" : "lower") than TMDB members, on average"
     }
 
     private func totals(_ s: LibraryStats) -> some View {
@@ -47,8 +99,8 @@ struct StatsView: View {
                 stat("\(s.episodes)", "episodes")
             }
             HStack(spacing: 0) {
-                stat("\(s.showsFinished)", "shows finished")
-                stat("\(library.doc.entries.filter(\.rewatch).count)", "rewatches")
+                stat("\(s.shows)", year == nil ? "shows finished" : "shows watched")
+                stat("\(library.doc.entries.filter { $0.rewatch && (year == nil || $0.watchedOn.year == year) }.count)", "rewatches")
                 stat(library.averageRating.map { FilmRatingStyle.current == .stars ? Score.toStars($0).formatted(.number.precision(.fractionLength(1))) + "★" : Score.text($0) } ?? "–", "average")
             }
             if s.known < s.films.count && facts.filling == nil {

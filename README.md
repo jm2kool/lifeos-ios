@@ -54,6 +54,15 @@ Matinee is not affiliated with Letterboxd.
 | — | **Quick actions** | Press and hold the app icon: Log a film, Random pick, Scan a ticket, What's this from? |
 | — | **Your account, your call** | Delete your account in Settings. Block people from their profile or a post. Turning off diary sharing offers to take down what you shared. |
 | — | **Accessible** | Reduce Motion skips the flickering opening titles and stills the moving backgrounds. |
+| Streaming services filter (Pro) | **My streaming services** | Tick the services you pay for (Settings → Film data). The watchlist filters to what's on them, Home shows **Ready to stream**, film pages put your services first, and a notification says when a watchlist title arrives on one. Data from JustWatch via TMDB. |
+| — | **Coming up** | A calendar of the next episode of every show you follow and release days of watchlist films and reminders, grouped by day, with the next few on Home. |
+| Custom posters (Patron) | **Pick your poster** | ••• → Choose poster… on any film or show: any poster TMDB has. Used everywhere, the widget included, and synced. |
+| Spoilers, drafts | **Spoiler warnings and review drafts** | Flag a review as a spoiler and friends' feeds hide it until tapped (unless they've seen the film). An unsaved review is kept and restored next time you log that title. |
+| — | **Series progress** | A film's page shows the series it belongs to (TMDB collections) and how much of it you've seen. |
+| — | **Coming soon** | A Home shelf of films about to open in your country. |
+| Stats (Pro) | **Stats by year, and you vs the crowd** | Pick any year of your diary, and see how your scores compare with TMDB members': on average, and your hottest takes. |
+| Fade watched films | **See what you've seen** | Browse shelves mark films you've watched with an eye, and can fade them. |
+| Clone lists | **Duplicate a list** | Long-press a list (or ••• on it) → Duplicate. |
 
 ## Install
 
@@ -144,6 +153,7 @@ Following, the friends feed, a shared watchlist for Blend and watch parties need
 - `activity`: diary entries you choose to share (off until you switch on **Share my diary with followers**)
 - `parties`: watch-party timers, found by their six-character code
 - `watchlist` and `persona` columns on `profiles`: your watchlist is published only if you switch on **Show my watchlist for Blend**
+- `spoilers` column on `activity`: your spoiler flag travels with what you share (older servers just show the review)
 - `delete_my_account()`: lets **Settings → Delete my account** remove the sign-in itself. Every table above (and `libraries`, `profiles`) is tied to the account and goes with it. Without the function, the app deletes your rows and signs you out, and the sign-in has to be removed in the Supabase dashboard.
 
 Older servers without these columns keep working: the app falls back to publishing the profile without them.

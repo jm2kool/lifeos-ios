@@ -71,6 +71,7 @@ struct WatchProvidersSection: View {
     @State private var providers: WatchProviders?
     @State private var loaded = false
     @Environment(\.openURL) private var openURL
+    @Environment(Library.self) private var library
     @AppStorage(Catalog.regionKey) private var chosenRegion = ""
 
     private var region: String { Catalog.watchRegion }
@@ -78,7 +79,7 @@ struct WatchProvidersSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader("Where to watch", subtitle: "In \(place)")
+            SectionHeader("Where to watch", subtitle: yours.isEmpty ? "In \(place)" : "On \(yours.prefix(2).map(\.name).joined(separator: " and ")) — yours")
             Group {
                 if let p = providers, !p.isEmpty {
                     VStack(alignment: .leading, spacing: 14) {
@@ -112,6 +113,9 @@ struct WatchProvidersSection: View {
         }
     }
 
+    /// Your services that carry it to watch now.
+    private var yours: [WatchProvider] { providers?.onServices(Set(library.services)) ?? [] }
+
     /// JustWatch's own search, in your country (it calls the UK "uk").
     private var justWatch: URL? {
         let cc = region == "GB" ? "uk" : region.lowercased()
@@ -124,10 +128,18 @@ struct WatchProvidersSection: View {
                 Text(label.uppercased()).font(.caption2.weight(.heavy)).tracking(1.2).foregroundStyle(.white.opacity(0.6))
                 ScrollView(.horizontal) {
                     HStack(spacing: 12) {
-                        ForEach(list) { p in
+                        // Services you pay for come first, with a tick.
+                        let mine = Set(library.services)
+                        ForEach(list.filter { mine.contains($0.id) } + list.filter { !mine.contains($0.id) }) { p in
                             Button { open(p) } label: {
                                 VStack(spacing: 5) {
                                     RemoteImage(url: p.logo).frame(width: 52, height: 52).clipShape(.rect(cornerRadius: 12))
+                                        .overlay(alignment: .bottomTrailing) {
+                                            if mine.contains(p.id) {
+                                                Image(systemName: "checkmark.circle.fill").font(.system(size: 16)).foregroundStyle(.white, Theme.watch)
+                                                    .offset(x: 5, y: 5)
+                                            }
+                                        }
                                     Text(p.name).font(.caption2.weight(.semibold)).lineLimit(1).frame(width: 64)
                                 }
                             }

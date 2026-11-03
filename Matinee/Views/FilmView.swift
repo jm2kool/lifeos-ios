@@ -17,6 +17,7 @@ struct FilmView: View {
     @State private var showTrailer = false
     @State private var shareImage: UIImage?
     @State private var hosting = false
+    @State private var choosingPoster = false
     @Environment(Auth.self) private var auth
     @AppStorage(FilmRatingStyle.key) private var ratingStyle: FilmRatingStyle = .score
 
@@ -78,6 +79,7 @@ struct FilmView: View {
                         }
                     }
                     Button { router.sheet = .addToList(ref) } label: { Label("Add to list…", systemImage: "text.badge.plus") }
+                    Button { choosingPoster = true } label: { Label("Choose poster…", systemImage: "photo.on.rectangle") }
                     if library.isFavorite(ref.id) {
                         Button { library.removeFavorite(ref) } label: { Label("Remove from favourites", systemImage: "star.slash") }
                     } else {
@@ -92,6 +94,7 @@ struct FilmView: View {
                 } label: { Image(systemName: "ellipsis") }
             }
         }
+        .sheet(isPresented: $choosingPoster) { PosterChooser(film: ref).environment(library).preferredColorScheme(.dark) }
         .fullScreenCover(isPresented: $showTrailer) {
             if let k = trailerKey { TrailerView(key: k, title: ref.title) }
         }
@@ -515,10 +518,12 @@ struct FilmView: View {
             }
         }
 
+        if let cid = d.collectionID { FranchiseSection(collectionID: cid, surface: surface) }
+
         if !d.similar.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 SectionHeader("More like this")
-                PosterRow(films: d.similar, width: 104)
+                PosterRow(films: d.similar, width: 104, marksSeen: true)
             }
         }
     }

@@ -16,6 +16,8 @@ struct LogSheet: View {
     @State private var liked = false
     @State private var rewatch = false
     @State private var review = ""
+    @State private var spoilers = false
+    @State private var draftRestored = false
     @State private var tags: [String] = []
     @State private var tagDraft = ""
     @State private var showCalendar = false
@@ -133,6 +135,16 @@ struct LogSheet: View {
                             .focused($reviewFocused)
                             .padding(14)
                             .background(surface, in: .rect(cornerRadius: 18))
+                        if draftRestored {
+                            Label("Your unsaved review from last time", systemImage: "clock.arrow.circlepath")
+                                .font(.caption).foregroundStyle(.white.opacity(0.6))
+                        }
+                        if !review.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Toggle(isOn: $spoilers) {
+                                Label("Contains spoilers", systemImage: "eye.trianglebadge.exclamationmark")
+                            }
+                            .tint(Theme.star)
+                        }
                         if Intelligence.isAvailable { writeItUp }
                     }
 
@@ -199,6 +211,8 @@ struct LogSheet: View {
             if palette == nil, let p = await Palette.of((art?.poster) ?? url) { palette = p }
         }
         .onAppear(perform: prefill)
+        // A review in progress is kept if you close the sheet, and comes back next time you log this.
+        .onChange(of: review) { _, text in if existing == nil { ReviewDrafts.set(text, for: draftKey) } }
     }
 
     /// Apple Intelligence turns quick notes into a short review in your own words, on the phone.
@@ -269,6 +283,7 @@ struct LogSheet: View {
         comfort = library.isComfort(film.id)
         if let e = existing {
             date = e.watchedOn; rating = e.rating; liked = e.liked; rewatch = e.rewatch; review = e.review; tags = e.tags
+            spoilers = e.spoilers ?? false
         } else if let d = draft, let s = d.season {
             if let n = d.episode { rating = d.rating ?? library.progress(film.id)?.episodeRatings[EpisodeKey.make(s, n)] }
             else { rating = d.rating ?? library.seasonRating(film.id, s) }
@@ -284,6 +299,10 @@ struct LogSheet: View {
             if !Calendar.current.isDateInToday(date) && !Calendar.current.isDateInYesterday(date) { showCalendar = false }
             if tags.isEmpty { tags = d.tags }
         }
+        if existing == nil, review.isEmpty, let saved = ReviewDrafts.get(draftKey) {
+            review = saved
+            draftRestored = true
+        }
     }
 
     private func save() {
@@ -292,11 +311,33 @@ struct LogSheet: View {
         library.setComfort(film, comfort)
         e.watchedOn = date; e.rating = comfort ? nil : rating; e.liked = liked; e.rewatch = rewatch
         e.review = review.trimmingCharacters(in: .whitespacesAndNewlines); e.tags = tags
+        e.spoilers = spoilers && !e.review.isEmpty ? true : nil
+        ReviewDrafts.set("", for: draftKey)
         library.log(e)
         // Liking an episode is about the episode; only whole films and shows touch your likes.
         if !isPart && !liked && library.isLiked(film.id) { library.toggleLike(film) }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         dismiss()
+    }
+}
+
+extension LogSheet {
+    /// One draft per film, or per episode or season of a show.
+    var draftKey: String { "\(film.id)|\(context?.episodeLabel ?? "")" }
+}
+
+/// Reviews you started but didn't save, kept on this iPhone until you log the film.
+@MainActor
+enum ReviewDrafts {
+    private static let key = "reviewDrafts"
+    static func get(_ id: String) -> String? {
+        (UserDefaults.standard.dictionary(forKey: key) as? [String: String])?[id]
+    }
+    static func set(_ text: String, for id: String) {
+        var all = (UserDefaults.standard.dictionary(forKey: key) as? [String: String]) ?? [:]
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.isEmpty { all[id] = nil } else { all[id] = text }
+        UserDefaults.standard.set(all, forKey: key)
     }
 }
 

@@ -9,6 +9,7 @@ struct LibraryView: View {
     @AppStorage("watchlistOrder") private var watchlistOrder: ListOrder = .added
     @AppStorage("filmsOrder") private var filmsOrder: ListOrder = .added
     @AppStorage("watchlistMedia") private var watchlistMedia: MediaFilter = .all
+    @AppStorage("watchlistOnServices") private var onlyMine = false
     @State private var importer = Importer()
     @State private var importingWatchlist = false
 
@@ -83,13 +84,19 @@ struct LibraryView: View {
 
     @ViewBuilder private var watchlist: some View {
         let all = watchlistOrder.sort(library.doc.watchlist) { library.rating($0) }
-        let list = all.filter(watchlistMedia.includes)
+        let mineOnly = onlyMine && !library.services.isEmpty
+        let list = all.filter { watchlistMedia.includes($0) && (!mineOnly || !Availability.shared.services(for: $0.id).isEmpty) }
         if importer.running || importer.summary != nil { importStatus }
         if !all.isEmpty {
             MediaFilterBar(selection: $watchlistMedia)
                 .frame(maxWidth: .infinity)
+            servicesFilter
         }
-        if list.isEmpty && !all.isEmpty {
+        if list.isEmpty && mineOnly && !all.isEmpty {
+            EmptyState(symbol: "play.tv", title: Availability.shared.checking == nil ? "Nothing on your services" : "Checking your services…",
+                       message: "None of these are streaming on the services you picked right now. Matinee will tell you when one arrives.")
+                .padding(.top, 30)
+        } else if list.isEmpty && !all.isEmpty {
             EmptyState(symbol: watchlistMedia == .shows ? "tv" : "film",
                        title: watchlistMedia == .shows ? "No shows saved" : "No films saved",
                        message: "Tap the clock on any \(watchlistMedia == .shows ? "show" : "film") to save it for later.")
@@ -115,6 +122,34 @@ struct LibraryView: View {
             Text("Tip: shake your phone or double-tap Library for a random pick too.")
                 .font(.caption).foregroundStyle(Theme.dim).padding(.horizontal, 20)
             PosterGrid(films: list).padding(.horizontal, 16)
+        }
+    }
+
+    /// "On my services": only what you can watch tonight on a service you already pay for.
+    @ViewBuilder private var servicesFilter: some View {
+        if library.services.isEmpty {
+            NavigationLink { ServicesPicker() } label: {
+                Label("Pick your streaming services to see what's on them", systemImage: "play.tv")
+                    .font(.footnote.weight(.semibold)).foregroundStyle(Theme.accent)
+            }
+            .frame(maxWidth: .infinity)
+        } else {
+            HStack(spacing: 10) {
+                Toggle(isOn: $onlyMine.animation(.smooth)) {
+                    Label("On my services", systemImage: "play.tv.fill").font(.subheadline.weight(.semibold))
+                }
+                .toggleStyle(.button)
+                .buttonStyle(.glass)
+                .tint(onlyMine ? Theme.accent : nil)
+                if let c = Availability.shared.checking, onlyMine {
+                    ProgressView(value: Double(c.done), total: Double(max(c.total, 1))).tint(Theme.accent).frame(width: 70)
+                }
+                NavigationLink { ServicesPicker() } label: { Image(systemName: "slider.horizontal.3") }
+                    .buttonStyle(.glass)
+                    .accessibilityLabel("Choose services")
+            }
+            .frame(maxWidth: .infinity)
+            .task(id: "\(onlyMine)|\(library.services)") { if onlyMine { await Availability.shared.refresh(library) } }
         }
     }
 
@@ -224,6 +259,7 @@ struct LibraryView: View {
                     NavigationLink(value: l) { ListCard(list: l) }.buttonStyle(.plain)
                         .contextMenu {
                             Button { router.sheet = .editList(l) } label: { Label("Edit", systemImage: "pencil") }
+                            Button { library.duplicateList(l) } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
                             Button(role: .destructive) { library.deleteList(l) } label: { Label("Delete", systemImage: "trash") }
                         }
                 }
@@ -359,6 +395,7 @@ struct ListDetailView: View {
                         Menu {
                             Button { router.sheet = .editList(list) } label: { Label("Edit details", systemImage: "pencil") }
                             ShareLink(item: shareText(list))
+                            Button { library.duplicateList(list) } label: { Label("Duplicate list", systemImage: "plus.square.on.square") }
                             Button(role: .destructive) { library.deleteList(list); dismiss() } label: { Label("Delete list", systemImage: "trash") }
                         } label: { Image(systemName: "ellipsis") }
                     }

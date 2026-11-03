@@ -245,6 +245,7 @@ extension View {
             .navigationDestination(for: FeedRoute.self) { _ in FeedView() }
             .navigationDestination(for: BlendRoute.self) { BlendView(profile: $0.profile) }
             .navigationDestination(for: FollowListRoute.self) { FollowListView(route: $0) }
+            .navigationDestination(for: UpcomingRoute.self) { _ in UpcomingView() }
     }
 }
 
@@ -256,7 +257,9 @@ struct BlendRoute: Hashable { let profile: PublicProfile }
 struct FollowListRoute: Hashable { let userID: String; let followers: Bool; let title: String }
 
 enum CollectionRoute: Hashable {
-    case shelf(HomeShelf), watched, liked, watchlist, tag(String), rated(Int), forYou, shows
+    case shelf(HomeShelf), watched, liked, watchlist, tag(String), rated(Int), forYou, shows, onServices
+    /// Films from TMDB rather than from your own library, where "seen" marks help.
+    var isBrowse: Bool { if case .shelf = self { return true }; return false }
 }
 
 struct SheetHost: View {

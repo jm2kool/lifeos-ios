@@ -40,9 +40,11 @@ struct FeedItem: Codable, Identifiable, Hashable {
     var episode: String?
     var watchedOn: Date
     var createdAt: Date
+    var spoilers: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id, userID = "user_id", film, rating, liked, rewatch, review, episode, watchedOn = "watched_on", createdAt = "created_at"
+        case spoilers
     }
 }
 
@@ -158,6 +160,9 @@ final class Social {
 
     // MARK: Sharing your own diary
 
+    /// Off once the server turns down the spoilers column (set up before it existed), until next launch.
+    @ObservationIgnored private var sendsSpoilers = true
+
     /// Share a diary entry with your followers (only when you've switched that on). Logging the same
     /// entry again after editing it updates the shared copy.
     func post(_ e: LogEntry) async {
@@ -169,9 +174,16 @@ final class Social {
         ]
         row["rating"] = (e.rating as Any?) ?? NSNull()
         row["episode"] = (e.episodeLabel as Any?) ?? NSNull()
-        if let r = await Auth.shared.rest("POST", "activity", query: ["on_conflict": "id"], body: row,
-                                          prefer: "resolution=merge-duplicates,return=minimal"),
-           Supa.missingTable(r.status, r.data) { needsSetup = true }
+        if sendsSpoilers { row["spoilers"] = e.spoilers == true }
+        guard let r = await Auth.shared.rest("POST", "activity", query: ["on_conflict": "id"], body: row,
+                                             prefer: "resolution=merge-duplicates,return=minimal") else { return }
+        if r.status == 400, sendsSpoilers, String(decoding: r.data, as: UTF8.self).contains("spoilers") {
+            // An older server without the column: share without it (the review shows as usual).
+            sendsSpoilers = false
+            await post(e)
+            return
+        }
+        if Supa.missingTable(r.status, r.data) { needsSetup = true }
     }
 
     func unpost(_ e: LogEntry) async {
@@ -235,6 +247,7 @@ final class Social {
       created_at timestamptz not null default now()
     );
     create index if not exists activity_user_time on public.activity (user_id, created_at desc);
+    alter table public.activity add column if not exists spoilers boolean not null default false;
     alter table public.activity enable row level security;
     drop policy if exists "activity is public" on public.activity;
     create policy "activity is public" on public.activity for select to anon, authenticated using (true);
