@@ -198,6 +198,13 @@ enum Catalog {
         return try await TMDB.search(q)
     }
 
+    /// Films only, in a given year when there is one — for matching imported titles.
+    static func searchMovies(_ q: String, year: Int?) async throws -> [FilmRef] {
+        let q = q.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return [] }
+        return try await TMDB.searchMovies(q, year: year)
+    }
+
     /// Films, shows and people in one search.
     static func searchAll(_ q: String) async throws -> (films: [FilmRef], people: [Person]) {
         let q = q.trimmingCharacters(in: .whitespaces)
