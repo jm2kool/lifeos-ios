@@ -7,6 +7,11 @@ on:
   pull_request:
     branches: [lumen]
   workflow_dispatch:
+    inputs:
+      screenshots:
+        description: Also take simulator screenshots
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -114,8 +119,9 @@ jobs:
           if [ "$PUBLIC_REPO" = "true" ]; then FLAGS="--draft"; else FLAGS="--latest=false"; fi
           gh release create $TAG Lumen.ipa Lumen-no-push.ipa --title "$NAME" --target $GITHUB_SHA --notes "$NOTES" $FLAGS
 
-      # Simulator screenshots on the same Mac (sample data, no account), for checking the UI after each change.
+      # Simulator screenshots (sample data, no account): only when started by hand with "screenshots" ticked.
       - name: Build for the simulator
+        if: ${{ inputs.screenshots }}
         continue-on-error: true
         timeout-minutes: 15
         run: |
@@ -124,6 +130,7 @@ jobs:
           test -d simbuild/Debug-iphonesimulator/Lumen.app
 
       - name: Boot an iPhone
+        if: ${{ inputs.screenshots }}
         continue-on-error: true
         timeout-minutes: 8
         run: |
@@ -137,6 +144,7 @@ jobs:
           xcrun simctl install "$UDID" simbuild/Debug-iphonesimulator/Lumen.app
 
       - name: Screenshots
+        if: ${{ inputs.screenshots }}
         continue-on-error: true
         timeout-minutes: 8
         run: |
@@ -163,7 +171,7 @@ jobs:
           ls -lh screens
 
       - name: Collect crash reports
-        if: always()
+        if: ${{ always() && inputs.screenshots }}
         continue-on-error: true
         run: |
           mkdir -p screens/crashes
@@ -171,7 +179,7 @@ jobs:
           ls screens/crashes
 
       - name: Upload screenshots
-        if: always()
+        if: ${{ always() && inputs.screenshots }}
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
