@@ -110,6 +110,7 @@ jobs:
       # Simulator screenshots on the same Mac (sample data, no account), for checking the UI after each change.
       - name: Build for the simulator
         continue-on-error: true
+        timeout-minutes: 15
         run: |
           xcodebuild -project Lumen.xcodeproj -target Lumen -configuration Debug -sdk iphonesimulator \
             CODE_SIGNING_ALLOWED=NO SYMROOT="$PWD/simbuild" build > sim.log 2>&1 || { grep -E "error:" sim.log | sort -u | head -60 | while IFS= read -r l; do echo "::error::${l#$PWD/}"; done; exit 1; }
@@ -117,6 +118,7 @@ jobs:
 
       - name: Boot an iPhone
         continue-on-error: true
+        timeout-minutes: 8
         run: |
           UDID=$(xcrun simctl list devices available | grep -E "iPhone 1[67] Pro \(" | head -1 | grep -oE '[0-9A-F-]{36}')
           [ -z "$UDID" ] && UDID=$(xcrun simctl list devices available | grep "iPhone" | head -1 | grep -oE '[0-9A-F-]{36}')
@@ -129,13 +131,15 @@ jobs:
 
       - name: Screenshots
         continue-on-error: true
+        timeout-minutes: 8
         run: |
           APP=com.jm2kool.lumen
           mkdir -p screens
           shot() { sleep "$1"; xcrun simctl io "$UDID" screenshot "screens/$2.png" >/dev/null; }
           run() { name=$1; shift; env "$@" xcrun simctl launch --terminate-running-process "$UDID" $APP >/dev/null; }
           SIMCTL_CHILD_LUMEN_SIGNIN=1 xcrun simctl launch "$UDID" $APP >/dev/null; shot 8 00-sign-in
-          run today SIMCTL_CHILD_LUMEN_DEMO=1; shot 9 01-today
+          run seed SIMCTL_CHILD_LUMEN_DEMO=1; shot 9 01a-first-launch
+          run today SIMCTL_CHILD_LUMEN_DEMO=1; shot 6 01-today
           run planner SIMCTL_CHILD_LUMEN_DEMO=1 SIMCTL_CHILD_LUMEN_TAB=planner; shot 6 02-planner
           run plannerA SIMCTL_CHILD_LUMEN_DEMO=1 SIMCTL_CHILD_LUMEN_TAB=planner SIMCTL_CHILD_LUMEN_PLANNER=assignments; shot 6 03-assignments
           run plannerB SIMCTL_CHILD_LUMEN_DEMO=1 SIMCTL_CHILD_LUMEN_TAB=planner SIMCTL_CHILD_LUMEN_PLANNER=activity; shot 6 04-activity
@@ -149,6 +153,14 @@ jobs:
           run settings SIMCTL_CHILD_LUMEN_DEMO=1 SIMCTL_CHILD_LUMEN_SHEET=settings; shot 7 12-settings
           run generate SIMCTL_CHILD_LUMEN_DEMO=1 SIMCTL_CHILD_LUMEN_TAB=cards SIMCTL_CHILD_LUMEN_SHEET=generate; shot 7 13-generate
           ls -lh screens
+
+      - name: Collect crash reports
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p screens/crashes
+          find ~/Library/Logs/DiagnosticReports -name 'Lumen*' -newer build.log -exec cp {} screens/crashes/ \; 2>/dev/null || true
+          ls screens/crashes
 
       - name: Upload screenshots
         if: always()

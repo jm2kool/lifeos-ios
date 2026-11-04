@@ -632,7 +632,8 @@ extension Proposal: Synced {
     var batchID: UUID?
     var actor: String = "instinct"
     var action: String = "updated"
-    var entity: String?
+    /// The table it changed ("entity" itself is reserved by Core Data, which SwiftData sits on).
+    var entityName: String?
     var entityID: UUID?
     var summary: String = ""
     var beforeJSON: Data?
@@ -651,7 +652,7 @@ extension Proposal: Synced {
 extension ActivityItem: Synced {
     static var table: String { "activity" }
     func fields() -> [String: Any] {
-        ["at": ISO.string(at), "batch_id": batchID.json, "actor": actor, "action": action, "entity": entity.json,
+        ["at": ISO.string(at), "batch_id": batchID.json, "actor": actor, "action": action, "entity": entityName.json,
          "entity_id": entityID.json, "summary": summary,
          "before": beforeJSON.flatMap { try? JSONSerialization.jsonObject(with: $0) } ?? NSNull(),
          "after": afterJSON.flatMap { try? JSONSerialization.jsonObject(with: $0) } ?? NSNull(),
@@ -662,7 +663,7 @@ extension ActivityItem: Synced {
         batchID = r.uuid("batch_id")
         actor = r.str("actor") ?? actor
         action = r.str("action") ?? action
-        entity = r.str("entity")
+        entityName = r.str("entity")
         entityID = r.uuid("entity_id")
         summary = r.str("summary") ?? ""
         beforeJSON = r.json("before")

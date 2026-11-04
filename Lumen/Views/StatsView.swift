@@ -53,7 +53,7 @@ struct StatsSection: View {
                     .pickerStyle(.segmented).frame(width: 170)
             }
             HStack(spacing: 10) {
-                StatTile(value: Fmt.minutes(total), label: "in \(range.rawValue)", symbol: "clock", color: Theme.accent)
+                StatTile(value: Fmt.compact(total), label: "in \(range.rawValue)", symbol: "clock", color: Theme.accent)
                 StatTile(value: "\(store.streak)", label: "day streak", symbol: "flame.fill", color: Theme.warn)
                 StatTile(value: adherence.map { "\(Int($0 * 100))%" } ?? "–", label: "plan kept", symbol: "checkmark.seal", color: Theme.good)
             }

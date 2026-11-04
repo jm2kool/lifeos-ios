@@ -223,7 +223,9 @@ struct BlockRow: View {
                 Text(Fmt.time(block.startAt)).font(.subheadline.weight(.semibold).monospacedDigit())
                 Text(Fmt.time(block.endAt)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
             }
-            .frame(width: 58, alignment: .trailing)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .frame(width: 70, alignment: .trailing)
             RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 4).shadow(color: color, radius: 3)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {

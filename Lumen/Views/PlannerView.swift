@@ -395,7 +395,7 @@ struct ActivityGroupCard: View {
             if let reason { Text(reason).font(.caption).foregroundStyle(Theme.instinct) }
             let shown = expanded ? items : Array(items.prefix(4))
             ForEach(shown) { i in
-                Label(i.summary.isEmpty ? "\(i.action.capitalized) \(i.entity ?? "")" : i.summary, systemImage: symbol(i.action))
+                Label(i.summary.isEmpty ? "\(i.action.capitalized) \(i.entityName ?? "")" : i.summary, systemImage: symbol(i.action))
                     .font(.caption).foregroundStyle(i.undoneAt == nil ? .primary : .secondary)
                     .strikethrough(i.undoneAt != nil)
             }
@@ -416,7 +416,7 @@ struct ActivityGroupCard: View {
         if created > 0 { parts.append("added \(created)") }
         if updated > 0 { parts.append("changed \(updated)") }
         if deleted > 0 { parts.append("removed \(deleted)") }
-        let things = Set(items.compactMap(\.entity)).count == 1 ? noun(items[0].entity, plural: items.count != 1) : "items"
+        let things = Set(items.compactMap(\.entityName)).count == 1 ? noun(items[0].entityName, plural: items.count != 1) : "items"
         return parts.isEmpty ? (items[0].summary) : (parts.joined(separator: ", ").capitalizedFirst + " " + things)
     }
 

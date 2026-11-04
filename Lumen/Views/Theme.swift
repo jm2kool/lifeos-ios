@@ -255,6 +255,11 @@ enum Fmt {
         let h = m / 60, r = m % 60
         return r == 0 ? "\(h) h" : "\(h) h \(r) min"
     }
+    /// "8h 5m" — for tight spaces like stat tiles.
+    static func compact(_ m: Int) -> String {
+        if m < 60 { return "\(m)m" }
+        return m % 60 == 0 ? "\(m / 60)h" : "\(m / 60)h \(m % 60)m"
+    }
     static func hours(_ h: Double) -> String {
         h < 1 ? "\(Int((h * 60).rounded())) min" : (h == h.rounded() ? "\(Int(h)) h" : String(format: "%.1f h", h))
     }

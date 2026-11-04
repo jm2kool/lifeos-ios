@@ -22,7 +22,11 @@ struct SettingsView: View {
                         Button("Sign out", role: .destructive) { confirmSignOut = true }
                     } else {
                         Text("Using Lumen on this iPhone only.").foregroundStyle(.secondary)
-                        Button("Sign in with Google") { auth.offline = false }
+                        Button("Sign in with Google") {
+                            // The sign-in screen covers everything, so the sheet goes first.
+                            dismiss()
+                            Task { try? await Task.sleep(for: .seconds(0.6)); auth.offline = false }
+                        }
                     }
                 } header: { Text("Account") }
 
@@ -63,12 +67,15 @@ struct SettingsView: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .confirmationDialog("Sign out?", isPresented: $confirmSignOut) {
                 Button("Sign out and clear this iPhone", role: .destructive) {
-                    Realtime.shared.disconnect()
-                    auth.signOut()
-                    store.wipeLocal()
-                    SyncEngine.shared.resetCursors()
-                    UserDefaults.standard.removeObject(forKey: "auth.lastUser")
                     dismiss()
+                    Task {
+                        try? await Task.sleep(for: .seconds(0.6))
+                        Realtime.shared.disconnect()
+                        SyncEngine.shared.resetCursors()
+                        auth.signOut()
+                        store.wipeLocal()
+                        UserDefaults.standard.removeObject(forKey: "auth.lastUser")
+                    }
                 }
             } message: { Text("Everything is safe in your account and comes back when you sign in again.") }
         }

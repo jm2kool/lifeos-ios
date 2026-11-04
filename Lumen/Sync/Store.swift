@@ -300,7 +300,7 @@ final class Store {
         a.batchID = batch
         a.actor = actor.rawValue
         a.action = action
-        a.entity = entity
+        a.entityName = entity
         a.entityID = id
         a.summary = summary
         a.beforeJSON = before.flatMap { try? JSONSerialization.data(withJSONObject: $0) }
@@ -325,7 +325,7 @@ final class Store {
     }
 
     private func revert(_ item: ActivityItem) {
-        guard let table = item.entity, let id = item.entityID else { return }
+        guard let table = item.entityName, let id = item.entityID else { return }
         let before = item.beforeJSON.flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] }
         func restore<T: PersistentModel & Synced>(_ type: T.Type) {
             if let before {

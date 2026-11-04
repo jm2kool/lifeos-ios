@@ -159,7 +159,7 @@ enum Demo {
         let batch = UUID()
         for (i, s) in ["Planned study Thu 16:00 · Results and graphs", "Planned revision Thu 17:00 · Completing the square", "Removed block Thu 19:30"].enumerated() {
             let a = ActivityItem(id: UUID()); a.at = now.addingTimeInterval(-20 * 3600 + Double(i)); a.batchID = batch; a.actor = "instinct"
-            a.action = i == 2 ? "deleted" : "created"; a.entity = "blocks"; a.summary = s; a.reason = "Replanned after your missed block."
+            a.action = i == 2 ? "deleted" : "created"; a.entityName = "blocks"; a.summary = s; a.reason = "Replanned after your missed block."
             store.insert(a, by: .instinct)
         }
         let p2 = store.prefs
