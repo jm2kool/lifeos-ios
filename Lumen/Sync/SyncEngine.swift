@@ -33,16 +33,17 @@ final class SyncEngine {
     private init() {
         lastSync = UserDefaults.standard.object(forKey: "sync.last") as? Date
         tables = [
-            Self.table(UserPrefs.self), Self.table(StudySubject.self), Self.table(Chapter.self), Self.table(Topic.self),
+            Self.table(UserPrefs.self, pushIf: { item, user in item.id.lower == user }), Self.table(StudySubject.self), Self.table(Chapter.self), Self.table(Topic.self),
             Self.table(Assignment.self), Self.table(FileAttachment.self), Self.table(StudyBlock.self), Self.table(FocusSession.self),
             Self.table(AvailabilityWindow.self), Self.table(BusySlot.self), Self.table(Proposal.self), Self.table(ActivityItem.self),
             Self.table(Deck.self), Self.table(Card.self), Self.table(ReviewLog.self),
         ]
     }
 
-    private static func table<T: PersistentModel & Synced>(_ type: T.Type) -> Table {
+    /// `pushIf` holds back rows that mustn't go up yet (preferences made before signing in, until they take your account id).
+    private static func table<T: PersistentModel & Synced>(_ type: T.Type, pushIf: ((T, String) -> Bool)? = nil) -> Table {
         Table(name: T.table, push: { ctx, user in
-            let dirty = ((try? ctx.fetch(FetchDescriptor<T>())) ?? []).filter { $0.dirty }
+            let dirty = ((try? ctx.fetch(FetchDescriptor<T>())) ?? []).filter { $0.dirty && (pushIf?($0, user) ?? true) }
             guard !dirty.isEmpty else { return 0 }
             var start = 0
             while start < dirty.count {
@@ -114,7 +115,6 @@ final class SyncEngine {
             do {
                 let ctx = Store.shared.context
                 try? ctx.save()
-                adoptPreferences(user: user)
                 for t in tables { _ = try await t.push(ctx, user) }
                 if pull {
                     _ = try? await API.rpc("sweep_missed", [:])
@@ -126,6 +126,8 @@ final class SyncEngine {
                         pulled += r.count
                     }
                     lastSync = Date()
+                    // Only now, knowing what the account already has, do preferences made on this iPhone take its id.
+                    if adoptPreferences(user: user) { for t in tables where t.name == UserPrefs.table { _ = try await t.push(ctx, user) } }
                 }
                 try? ctx.save()
                 state = .idle
@@ -155,21 +157,22 @@ final class SyncEngine {
         for t in tables { UserDefaults.standard.removeObject(forKey: cursorKey(t.name, user: user)) }
     }
 
-    /// Preferences use your account id as their id (one row each). Made before signing in, they take that id now,
-    /// unless the account already has some, which then win.
-    private func adoptPreferences(user: String) {
-        guard let mine = UUID(uuidString: user) else { return }
+    /// Preferences use your account id as their id (one row each). Made before signing in, they take that id after
+    /// the first pull, unless the account already has some, which then win. Returns whether local ones were adopted.
+    private func adoptPreferences(user: String) -> Bool {
+        guard let mine = UUID(uuidString: user) else { return false }
         let ctx = Store.shared.context
         let rows = (try? ctx.fetch(FetchDescriptor<UserPrefs>())) ?? []
         guard !rows.contains(where: { $0.id == mine }) else {
             for r in rows where r.id != mine { ctx.delete(r) }
-            return
+            return false
         }
-        if let local = rows.first {
-            local.id = mine
-            local.touch()
-            for r in rows.dropFirst() { ctx.delete(r) }
-        }
+        guard let local = rows.first else { return false }
+        local.id = mine
+        local.touch()
+        for r in rows.dropFirst() { ctx.delete(r) }
+        try? ctx.save()
+        return true
     }
 
     /// Called once you're signed in: everything made on this iPhone so far is marked to go up.

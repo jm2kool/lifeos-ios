@@ -1,0 +1,575 @@
+openapi: 3.1.0
+info:
+  title: Lumen agent API
+  version: "1.0"
+  description: |
+    The API an assistant (Instinct / FRIDAY) uses to read a student's study data, add work, plan study blocks
+    and react to what happened. It runs as the Supabase Edge Function `lumen-agent`.
+
+    Every request needs a Lumen access key, made in the app under Settings → Instinct → Assistants & access keys:
+    `Authorization: Bearer lmn_…`. A key belongs to one person and only ever sees that person's data.
+
+    Times are ISO 8601. Send them with an offset (`2026-11-05T16:00:00Z`, `2026-11-05T16:00:00+00:00`); a time
+    without an offset (`2026-11-05T16:00`) or a bare date (`2026-11-05`) is read in the user's time zone
+    (`preferences.timezone`). Responses give instants in UTC plus `*_local` copies in the user's zone.
+
+    Everything you create or change is marked `created_by`/`updated_by: "instinct"`, shows an Instinct badge in the
+    app, and lands in the activity feed with your `reason` and a one-tap Undo.
+servers:
+  - url: https://{project}.supabase.co/functions/v1/lumen-agent
+    variables:
+      project:
+        default: your-project-ref
+        description: Your Supabase project reference
+security:
+  - accessKey: []
+tags:
+  - name: Planning
+  - name: Assignments
+  - name: Blocks
+  - name: Flashcards
+  - name: Syllabus
+  - name: Feed
+
+paths:
+  /:
+    get:
+      summary: Who am I — the key's name, scopes and the endpoint list
+      operationId: about
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /context:
+    get:
+      tags: [Planning]
+      summary: Everything needed to plan, in one call
+      description: |
+        Preferences, weekly availability, busy slots (calendar, manual and weekly busy windows expanded into real times),
+        **free_slots** (study time that's actually free: free windows minus busy times and existing blocks, within the
+        earliest/latest limits, skipping no-study days and the past), assignments with logged/remaining minutes,
+        upcoming blocks, recent block outcomes, syllabus progress, due card counts and focus stats.
+        Planned blocks whose time passed more than 30 minutes ago are marked `missed` first.
+      operationId: getContext
+      parameters:
+        - { name: from, in: query, schema: { type: string }, description: "Start of the range (date or date-time). Default: start of today." }
+        - { name: to, in: query, schema: { type: string }, description: "End of the range; a bare date includes that whole day. Default: from + 14 days. At most 62 days." }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Context" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /plan:
+    post:
+      tags: [Planning]
+      summary: Submit a plan for a date range
+      description: |
+        Checks every block (no overlap with busy times, weekly busy windows, kept blocks or each other), then either
+        applies it straight away or saves it as a proposal on the Today screen, depending on the user's setting
+        (`preferences.plan_mode`, overridable with `mode`). Applying replaces the still-planned future blocks in the
+        range that Instinct or the auto-planner made (`replace: "instinct"`, the default) — never the user's own blocks
+        unless you say `replace: "all"`. A plan that clashes gets a 422 with the conflicts; fix them, or send
+        `drop_conflicts: true` to leave those blocks out. Preference breaks (outside free windows, over the daily
+        maximum, on a no-study day, after a deadline) come back as warnings.
+      operationId: submitPlan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlanRequest" }
+            example:
+              from: "2026-11-05"
+              to: "2026-11-08"
+              reasoning: "Physics is due Friday, so it goes first; the quadratics test gets two spaced revision sessions."
+              blocks:
+                - { start_at: "2026-11-05T16:00:00Z", end_at: "2026-11-05T16:50:00Z", kind: study, assignment_id: "8e1c…", goal: "Questions 7–12", reason: "Due tomorrow 08:00, 50 min left" }
+                - { start_at: "2026-11-05T20:30:00Z", end_at: "2026-11-05T20:45:00Z", kind: review, deck_id: "1a2b…", goal: "18 due cards" }
+      responses:
+        "200":
+          description: Applied, proposed, or (with dry_run) valid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlanResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422":
+          description: The plan clashes with busy times or other blocks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                  details:
+                    type: object
+                    properties:
+                      conflicts: { type: array, items: { $ref: "#/components/schemas/Conflict" } }
+                      warnings: { type: array, items: { type: string } }
+
+  /events:
+    get:
+      tags: [Feed]
+      summary: What happened since a cursor or a time
+      description: |
+        Blocks completed, partly done, missed or skipped (with the student's note), focus time logged, assignments
+        added or finished by the student, topic status changes, proposals accepted or rejected (with feedback),
+        and preference or availability changes. Your own changes are left out unless `include_own=true`.
+        Keep the returned `cursor` and pass it back as `since` next time.
+      operationId: getEvents
+      parameters:
+        - { name: since, in: query, schema: { type: string }, description: "An event id cursor (digits) or an ISO date-time. Default: the last 24 hours." }
+        - { name: limit, in: query, schema: { type: integer, default: 100, maximum: 500 } }
+        - { name: types, in: query, schema: { type: string }, description: "Comma-separated event types; `block.*` matches a family." }
+        - { name: include_own, in: query, schema: { type: boolean, default: false } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events: { type: array, items: { $ref: "#/components/schemas/Event" } }
+                  cursor: { type: [string, "null"], description: Pass back as `since` }
+                  next_since: { type: [string, "null"], format: date-time }
+                  has_more: { type: boolean }
+
+  /activity:
+    get:
+      tags: [Feed]
+      summary: What you (and the planners) changed, newest first
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 50 } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { activity: { type: array, items: { type: object } } } } } } }
+
+  /undo:
+    post:
+      tags: [Feed]
+      summary: Undo one of your batches (every write returns a batch_id)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [batch_id], properties: { batch_id: { type: string, format: uuid } } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { undone: { type: integer } } } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /proposals:
+    get:
+      tags: [Planning]
+      summary: The last 10 proposals and what the student decided
+      responses:
+        "200": { description: OK }
+
+  /preferences:
+    get:
+      tags: [Planning]
+      summary: The student's planning preferences
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { preferences: { $ref: "#/components/schemas/Preferences" } } } } } }
+
+  /availability:
+    get:
+      tags: [Planning]
+      summary: Weekly windows, busy times and free slots for a range (default 7 days)
+      parameters:
+        - { name: from, in: query, schema: { type: string } }
+        - { name: to, in: query, schema: { type: string } }
+      responses:
+        "200": { description: OK }
+
+  /assignments:
+    get:
+      tags: [Assignments]
+      summary: List assignments and exams
+      parameters:
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/AssignmentStatus" } }
+        - { name: subject_id, in: query, schema: { type: string, format: uuid } }
+        - { name: kind, in: query, schema: { $ref: "#/components/schemas/AssignmentKind" } }
+        - { name: due_before, in: query, schema: { type: string, format: date-time } }
+        - { name: due_after, in: query, schema: { type: string, format: date-time } }
+        - { $ref: "#/components/parameters/IncludeDeleted" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { assignments: { type: array, items: { $ref: "#/components/schemas/Assignment" } } } } } } }
+    post:
+      tags: [Assignments]
+      summary: 'Add one assignment, or several (array or {"items": [...]}). Scope write:assignments.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AssignmentInput" }
+            example: { title: "Chemistry lab report", kind: project, subject_id: "5c0f…", due_at: "2026-11-13T17:00", estimated_hours: 3, priority: high, reason: "From Ms Patel's email" }
+      responses:
+        "200": { $ref: "#/components/responses/Written" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /assignments/{id}:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get: { tags: [Assignments], summary: One assignment, responses: { "200": { description: OK }, "404": { $ref: "#/components/responses/NotFound" } } }
+    patch:
+      tags: [Assignments]
+      summary: Change fields (send only what changes, plus an optional reason)
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/AssignmentInput" } } } }
+      responses: { "200": { $ref: "#/components/responses/Written" } }
+    delete:
+      tags: [Assignments]
+      summary: Delete (soft; undoable)
+      responses: { "200": { $ref: "#/components/responses/Written" } }
+
+  /blocks:
+    get:
+      tags: [Blocks]
+      summary: List study blocks
+      parameters:
+        - { name: from, in: query, schema: { type: string } }
+        - { name: to, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/BlockStatus" } }
+        - { name: assignment_id, in: query, schema: { type: string, format: uuid } }
+        - { name: subject_id, in: query, schema: { type: string, format: uuid } }
+        - { $ref: "#/components/parameters/IncludeDeleted" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { blocks: { type: array, items: { $ref: "#/components/schemas/Block" } } } } } } }
+    post:
+      tags: [Blocks]
+      summary: Add a block directly (refused with 409 over a busy time unless ?allow_overlap=true). Scope write:plan.
+      parameters: [{ name: allow_overlap, in: query, schema: { type: boolean } }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/BlockInput" } } } }
+      responses:
+        "200": { $ref: "#/components/responses/Written" }
+        "409": { description: Overlaps a busy time }
+  /blocks/{id}:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get: { tags: [Blocks], summary: One block, responses: { "200": { description: OK } } }
+    patch:
+      tags: [Blocks]
+      summary: Move or change a block (e.g. replan a missed one)
+      requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/BlockInput" } } } }
+      responses: { "200": { $ref: "#/components/responses/Written" }, "409": { description: Overlaps a busy time } }
+    delete: { tags: [Blocks], summary: Delete a block, responses: { "200": { $ref: "#/components/responses/Written" } } }
+
+  /decks:
+    get: { tags: [Flashcards], summary: List decks, responses: { "200": { description: OK } } }
+    post:
+      tags: [Flashcards]
+      summary: Make a deck, optionally with its cards. Scope write:cards.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - { $ref: "#/components/schemas/DeckInput" }
+                - type: object
+                  properties:
+                    cards: { type: array, items: { type: object, required: [front], properties: { front: { type: string }, back: { type: string } } } }
+            example: { name: "Waves", subject_id: "…", cards: [{ front: "Wave speed equation", back: "$v = f\\lambda$" }], reason: "Chapter 6 starts Monday" }
+      responses: { "200": { $ref: "#/components/responses/Written" } }
+  /decks/{id}:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get: { tags: [Flashcards], summary: One deck, responses: { "200": { description: OK } } }
+    patch: { tags: [Flashcards], summary: Rename or relink a deck, requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/DeckInput" } } } }, responses: { "200": { $ref: "#/components/responses/Written" } } }
+    delete: { tags: [Flashcards], summary: Delete a deck and its cards, responses: { "200": { $ref: "#/components/responses/Written" } } }
+
+  /cards:
+    get:
+      tags: [Flashcards]
+      summary: List cards
+      parameters:
+        - { name: deck_id, in: query, schema: { type: string, format: uuid } }
+        - { name: due, in: query, schema: { type: boolean }, description: Only cards due now }
+      responses: { "200": { description: OK } }
+    post:
+      tags: [Flashcards]
+      summary: 'Add cards (one, an array, or {"items":[...]}; up to 500). Scheduling is handled by the app (FSRS).'
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/CardInput" } } } }
+      responses: { "200": { $ref: "#/components/responses/Written" } }
+  /cards/{id}:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    get: { tags: [Flashcards], summary: One card, responses: { "200": { description: OK } } }
+    patch: { tags: [Flashcards], summary: Edit a card, requestBody: { content: { application/json: { schema: { $ref: "#/components/schemas/CardInput" } } } }, responses: { "200": { $ref: "#/components/responses/Written" } } }
+    delete: { tags: [Flashcards], summary: Delete a card, responses: { "200": { $ref: "#/components/responses/Written" } } }
+
+  /syllabus:
+    get:
+      tags: [Syllabus]
+      summary: Subjects → chapters → topics with progress
+      responses: { "200": { description: OK } }
+    post:
+      tags: [Syllabus]
+      summary: Import a subject's chapters and topics in one go (matches existing ones by name/number). Scope write:syllabus.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subject_id: { type: string, format: uuid }
+                subject: { $ref: "#/components/schemas/SubjectInput" }
+                chapters:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      number: { type: integer }
+                      title: { type: string }
+                      topics: { type: array, items: { oneOf: [{ type: string }, { $ref: "#/components/schemas/TopicInput" }] } }
+                reason: { type: string }
+            example: { subject: { name: "Biology" }, chapters: [{ number: 1, title: "Cells", topics: ["Organelles", "Diffusion", "Osmosis"] }] }
+      responses: { "200": { description: OK } }
+  /syllabus/subjects: { $ref: "#/components/pathItems/SyllabusCollection" }
+  /syllabus/subjects/{id}: { $ref: "#/components/pathItems/SyllabusItem" }
+  /syllabus/chapters: { $ref: "#/components/pathItems/SyllabusCollection" }
+  /syllabus/chapters/{id}: { $ref: "#/components/pathItems/SyllabusItem" }
+  /syllabus/topics: { $ref: "#/components/pathItems/SyllabusCollection" }
+  /syllabus/topics/{id}: { $ref: "#/components/pathItems/SyllabusItem" }
+
+components:
+  securitySchemes:
+    accessKey:
+      type: http
+      scheme: bearer
+      description: A Lumen access key (lmn_…). Only its SHA-256 hash is stored; scopes are read, write:assignments, write:plan, write:cards, write:syllabus.
+
+  parameters:
+    Id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    IncludeDeleted: { name: include_deleted, in: query, schema: { type: boolean, default: false } }
+    Limit: { name: limit, in: query, schema: { type: integer, default: 500, maximum: 2000 } }
+
+  pathItems:
+    SyllabusCollection:
+      parameters: []
+      get: { tags: [Syllabus], summary: "List (filters: subject_id, chapter_id, status)", responses: { "200": { description: OK } } }
+      post: { tags: [Syllabus], summary: Add (subjects need name; chapters need subject_id; topics need chapter_id and title), responses: { "200": { $ref: "#/components/responses/Written" } } }
+    SyllabusItem:
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      get: { tags: [Syllabus], summary: One item, responses: { "200": { description: OK } } }
+      patch: { tags: [Syllabus], summary: "Change (e.g. a topic's status: not_started, learning, revised, mastered)", responses: { "200": { $ref: "#/components/responses/Written" } } }
+      delete: { tags: [Syllabus], summary: Delete (a chapter takes its topics), responses: { "200": { $ref: "#/components/responses/Written" } } }
+
+  responses:
+    Written:
+      description: Done. `batch_id` undoes it.
+      content:
+        application/json:
+          schema: { type: object, properties: { batch_id: { type: string, format: uuid }, id: { type: string, format: uuid } }, additionalProperties: true }
+    BadRequest: { description: Invalid input, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    Unauthorized: { description: Missing, wrong or revoked key, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    Forbidden: { description: The key lacks the scope, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    NotFound: { description: Not found, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  schemas:
+    Error:
+      type: object
+      properties: { error: { type: string }, details: {} }
+    Actor: { type: string, enum: [me, instinct, auto, system] }
+    AssignmentKind: { type: string, enum: [homework, project, test, exam, revision] }
+    AssignmentStatus: { type: string, enum: [todo, in_progress, done] }
+    Priority: { type: string, enum: [low, medium, high, urgent] }
+    BlockKind: { type: string, enum: [study, revision, review, practice] }
+    BlockStatus: { type: string, enum: [planned, done, partial, missed, skipped] }
+    TopicStatus: { type: string, enum: [not_started, learning, revised, mastered] }
+
+    AssignmentInput:
+      type: object
+      properties:
+        title: { type: string, maxLength: 300 }
+        kind: { $ref: "#/components/schemas/AssignmentKind" }
+        subject_id: { type: [string, "null"], format: uuid }
+        chapter_ids: { type: array, items: { type: string, format: uuid } }
+        due_at: { type: [string, "null"], format: date-time }
+        estimated_hours: { type: number, minimum: 0.05 }
+        priority: { $ref: "#/components/schemas/Priority" }
+        status: { $ref: "#/components/schemas/AssignmentStatus" }
+        notes: { type: string }
+        reason: { type: string, description: Shown to the student in the activity feed }
+    Assignment:
+      allOf:
+        - { $ref: "#/components/schemas/AssignmentInput" }
+        - type: object
+          properties:
+            id: { type: string, format: uuid }
+            created_by: { $ref: "#/components/schemas/Actor" }
+            updated_by: { $ref: "#/components/schemas/Actor" }
+            completed_at: { type: [string, "null"], format: date-time }
+            updated_at: { type: string, format: date-time }
+            deleted: { type: boolean }
+
+    BlockInput:
+      type: object
+      properties:
+        id: { type: string, format: uuid, description: Optional — choose the id yourself }
+        start_at: { type: string, format: date-time }
+        end_at: { type: string, format: date-time }
+        kind: { $ref: "#/components/schemas/BlockKind" }
+        subject_id: { type: [string, "null"], format: uuid, description: Filled from the assignment or deck if left out }
+        assignment_id: { type: [string, "null"], format: uuid }
+        deck_id: { type: [string, "null"], format: uuid, description: For review blocks }
+        chapter_ids: { type: array, items: { type: string, format: uuid } }
+        topic_ids: { type: array, items: { type: string, format: uuid } }
+        goal: { type: string, description: What this block should achieve — the student sees it in the timer }
+        status: { $ref: "#/components/schemas/BlockStatus" }
+        outcome_note: { type: string }
+        reason: { type: string }
+    Block:
+      allOf:
+        - { $ref: "#/components/schemas/BlockInput" }
+        - type: object
+          properties:
+            created_by: { $ref: "#/components/schemas/Actor" }
+            start_local: { type: string }
+            end_local: { type: string }
+            minutes: { type: integer }
+            logged_minutes: { type: integer }
+
+    PlanRequest:
+      type: object
+      required: [blocks]
+      properties:
+        from: { type: string, description: "Range start (default: the day of the first block)" }
+        to: { type: string, description: "Range end (default: the end of the day of the last block)" }
+        blocks: { type: array, maxItems: 300, items: { $ref: "#/components/schemas/BlockInput" } }
+        reasoning: { type: string, description: Why this plan — shown on the proposal card and in the feed }
+        replace: { type: string, enum: [instinct, all, none], default: instinct }
+        mode: { type: string, enum: [auto, ask], description: "Override the student's setting (rarely needed)" }
+        drop_conflicts: { type: boolean, default: false }
+        dry_run: { type: boolean, default: false }
+    PlanResult:
+      type: object
+      properties:
+        status: { type: string, enum: [applied, proposed, valid] }
+        mode: { type: string, enum: [auto, ask] }
+        proposal_id: { type: string, format: uuid }
+        batch_id: { type: string, format: uuid }
+        created: { type: array, items: { type: string, format: uuid } }
+        removed: { type: array, items: { type: string, format: uuid } }
+        blocks: { type: integer }
+        minutes: { type: integer }
+        replaces: { type: integer }
+        warnings: { type: array, items: { type: string } }
+        dropped: { type: array, items: { type: integer } }
+    Conflict:
+      type: object
+      properties:
+        index: { type: integer, description: Position in your blocks array }
+        reason: { type: string, enum: [busy, weekly_busy, existing_block, plan_overlap, unknown_assignment, unknown_deck] }
+        message: { type: string }
+
+    Event:
+      type: object
+      properties:
+        id: { type: integer }
+        at: { type: string, format: date-time }
+        at_local: { type: string }
+        type:
+          type: string
+          description: |
+            block.completed · block.partial · block.missed · block.skipped · block.moved · block.added · block.deleted ·
+            focus.logged · assignment.added · assignment.updated · assignment.status · assignment.done · assignment.deleted ·
+            topic.status · proposal.accepted · proposal.rejected · preferences.changed · availability.changed
+        entity: { type: string }
+        entity_id: { type: string, format: uuid }
+        actor: { $ref: "#/components/schemas/Actor" }
+        data: { type: object }
+
+    DeckInput:
+      type: object
+      properties:
+        name: { type: string }
+        subject_id: { type: [string, "null"], format: uuid }
+        chapter_id: { type: [string, "null"], format: uuid }
+        notes: { type: string }
+        reason: { type: string }
+    CardInput:
+      type: object
+      properties:
+        deck_id: { type: string, format: uuid }
+        front: { type: string, description: "Question. Formulas between $…$ (LaTeX shorthand)." }
+        back: { type: string }
+        reason: { type: string }
+    SubjectInput:
+      type: object
+      properties: { name: { type: string }, color: { type: string, example: "#7C8CFF" }, icon: { type: string, description: SF Symbol name }, exam_at: { type: string, format: date-time } }
+    TopicInput:
+      type: object
+      properties: { title: { type: string }, status: { $ref: "#/components/schemas/TopicStatus" }, notes: { type: string } }
+
+    Preferences:
+      type: object
+      properties:
+        timezone: { type: string, example: Europe/London }
+        max_hours_per_day: { type: number }
+        block_minutes: { type: integer }
+        break_minutes: { type: integer }
+        no_study_days: { type: array, items: { type: integer, minimum: 0, maximum: 6 }, description: "0 = Sunday … 6 = Saturday" }
+        earliest_time: { type: string, example: "08:00" }
+        latest_time: { type: string, example: "22:00" }
+        plan_mode: { type: string, enum: [auto, ask] }
+        daily_goal_minutes: { type: integer }
+        new_cards_per_day: { type: integer }
+        review_time: { type: string }
+        pomodoro_focus: { type: integer }
+
+    Context:
+      type: object
+      properties:
+        now: { type: string, format: date-time }
+        now_local: { type: string }
+        timezone: { type: string }
+        range: { type: object }
+        preferences: { $ref: "#/components/schemas/Preferences" }
+        availability:
+          type: object
+          properties:
+            weekly: { type: array, items: { type: object, properties: { weekday: { type: integer }, start_time: { type: string }, end_time: { type: string }, kind: { type: string, enum: [free, busy] }, label: { type: string } } } }
+            busy_slots: { type: array, items: { type: object, properties: { start_at: { type: string }, end_at: { type: string }, source: { type: string, enum: [calendar, manual, weekly] }, title: { type: [string, "null"] } } } }
+            free_slots: { type: array, items: { type: object, properties: { start_at: { type: string }, end_at: { type: string }, start_local: { type: string }, end_local: { type: string }, minutes: { type: integer } } } }
+            free_minutes_by_day: { type: object, additionalProperties: { type: integer } }
+        subjects: { type: array, items: { type: object } }
+        assignments:
+          type: array
+          items:
+            allOf:
+              - { $ref: "#/components/schemas/Assignment" }
+              - type: object
+                properties:
+                  subject: { type: [string, "null"] }
+                  chapters: { type: array, items: { type: string } }
+                  due_local: { type: [string, "null"] }
+                  overdue: { type: boolean }
+                  estimated_minutes: { type: integer }
+                  logged_minutes: { type: integer }
+                  planned_minutes: { type: integer, description: Minutes in future planned blocks }
+                  remaining_minutes: { type: integer, description: estimate − logged }
+                  progress: { type: number }
+        blocks:
+          type: object
+          properties:
+            upcoming: { type: array, items: { $ref: "#/components/schemas/Block" } }
+            recent_outcomes: { type: array, items: { $ref: "#/components/schemas/Block" }, description: Last 14 days, newest first }
+        syllabus: { type: array, items: { type: object } }
+        cards:
+          type: object
+          properties:
+            due_now: { type: integer }
+            due_today: { type: integer }
+            new_available: { type: integer }
+            by_deck: { type: array, items: { type: object } }
+        focus:
+          type: object
+          properties:
+            minutes_today: { type: integer }
+            daily_goal_minutes: { type: integer }
+            last_7_days: { type: object, additionalProperties: { type: integer } }
+            minutes_7d: { type: integer }
+            minutes_30d: { type: integer }
+            by_subject_7d: { type: object, additionalProperties: { type: integer } }
+            streak_days: { type: integer }
+            plan_adherence_14d: { type: [number, "null"] }
+        pending_proposal: { type: [object, "null"] }
