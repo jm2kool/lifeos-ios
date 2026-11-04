@@ -1,0 +1,8 @@
+// Build settings shared by the app and the widget extension.
+// Secrets.xcconfig is written by the GitHub Actions workflow from repository secrets and is never committed.
+// To build locally, copy Secrets.example.xcconfig to Secrets.xcconfig and fill it in.
+
+LUMEN_SUPABASE_URL =
+LUMEN_SUPABASE_ANON_KEY =
+
+#include? "Secrets.xcconfig"

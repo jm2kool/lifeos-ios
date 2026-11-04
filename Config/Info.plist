@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.jm2kool.lumen.auth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>lumen</string>
+			</array>
+		</dict>
+	</array>
+	<!-- Filled from Config/Secrets.xcconfig, which CI writes from GitHub Secrets.
+	     Left empty, the app asks for them in Settings → Account. -->
+	<key>LumenSupabaseURL</key>
+	<string>$(LUMEN_SUPABASE_URL)</string>
+	<key>LumenSupabaseAnonKey</key>
+	<string>$(LUMEN_SUPABASE_ANON_KEY)</string>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.jm2kool.lumen.refresh</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
+	<key>UIApplicationShortcutItems</key>
+	<array>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>focus</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Start focus</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>timer</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>add</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Quick add</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>plus.circle</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>review</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Review cards</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>rectangle.on.rectangle.angled</string>
+		</dict>
+	</array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>UIUserInterfaceStyle</key>
+	<string>Dark</string>
+</dict>
+</plist>

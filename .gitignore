@@ -1,0 +1,11 @@
+build/
+simbuild/
+*.xcodeproj/
+DerivedData/
+.DS_Store
+Payload/
+*.ipa
+Config/Secrets.xcconfig
+supabase/.temp/
+supabase/.branches/
+node_modules/
