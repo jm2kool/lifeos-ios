@@ -62,18 +62,23 @@ jobs:
           test -d build/Release-iphoneos/Lumen.app
           /usr/libexec/PlistBuddy -c "Print :LumenSupabaseURL" build/Release-iphoneos/Lumen.app/Info.plist | sed 's#//.*#//…#'
 
-      - name: Package .ipa
+      - name: Package the .ipa files
         run: |
-          rm -rf Payload && mkdir Payload
-          cp -R build/Release-iphoneos/Lumen.app Payload/
-          # Ad-hoc sign with entitlements so the re-signing tool sees the App Group the widget shares with the app.
-          if [ -d Payload/Lumen.app/PlugIns/LumenWidgets.appex ]; then
-            codesign --force --sign - --entitlements Config/LumenWidgets.entitlements Payload/Lumen.app/PlugIns/LumenWidgets.appex || true
-          fi
-          codesign --force --sign - --entitlements Config/Lumen.entitlements Payload/Lumen.app || true
+          # Two builds of the same app: Lumen.ipa asks for push (needs an Apple ID with push, i.e. a paid developer
+          # account); Lumen-no-push.ipa doesn't, for a free Apple ID. Both carry the App Group the widget shares.
+          package() {
+            rm -rf Payload && mkdir Payload
+            cp -R build/Release-iphoneos/Lumen.app Payload/
+            if [ -d Payload/Lumen.app/PlugIns/LumenWidgets.appex ]; then
+              codesign --force --sign - --entitlements Config/LumenWidgets.entitlements Payload/Lumen.app/PlugIns/LumenWidgets.appex || true
+            fi
+            codesign --force --sign - --entitlements "$1" Payload/Lumen.app || true
+            zip -qry "$2" Payload
+            ls -lh "$2"
+          }
+          package Config/Lumen-push.entitlements Lumen.ipa
+          package Config/Lumen.entitlements Lumen-no-push.ipa
           ls Payload/Lumen.app/PlugIns || true
-          zip -qry Lumen.ipa Payload
-          ls -lh Lumen.ipa
 
       - name: Upload build log
         if: always()
@@ -87,7 +92,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Lumen-ipa
-          path: Lumen.ipa
+          path: |
+            Lumen.ipa
+            Lumen-no-push.ipa
 
       - name: Publish the release
         if: github.event_name != 'pull_request'
@@ -98,14 +105,14 @@ jobs:
         run: |
           NAME="Lumen (latest build)"
           if [ "$OWN_REPO" = "true" ]; then TAG=latest; else TAG=lumen-latest; fi
-          NOTES="Unsigned build of ${GITHUB_SHA::7}. Install with Sideloadly or AltStore using your Apple ID — see README → Install."
+          NOTES="Unsigned build of ${GITHUB_SHA::7}. Lumen.ipa has push notifications (needs an Apple ID with push, i.e. a paid developer account); Lumen-no-push.ipa is for a free Apple ID. Install with Sideloadly or AltStore — see README → Install."
           for id in $(gh api repos/$GITHUB_REPOSITORY/releases --jq ".[] | select(.name==\"$NAME\") | .id"); do
             gh api -X DELETE repos/$GITHUB_REPOSITORY/releases/$id >/dev/null || true
           done
           git push origin ":refs/tags/$TAG" 2>/dev/null || true
           # The .ipa carries your Supabase address and anon key, so in a public repo it goes into a draft only you can see.
           if [ "$PUBLIC_REPO" = "true" ]; then FLAGS="--draft"; else FLAGS="--latest=false"; fi
-          gh release create $TAG Lumen.ipa --title "$NAME" --target $GITHUB_SHA --notes "$NOTES" $FLAGS
+          gh release create $TAG Lumen.ipa Lumen-no-push.ipa --title "$NAME" --target $GITHUB_SHA --notes "$NOTES" $FLAGS
 
       # Simulator screenshots on the same Mac (sample data, no account), for checking the UI after each change.
       - name: Build for the simulator
@@ -152,6 +159,7 @@ jobs:
           run assignment SIMCTL_CHILD_LUMEN_DEMO=1 SIMCTL_CHILD_LUMEN_SHEET=assignment; shot 7 11-assignment
           run settings SIMCTL_CHILD_LUMEN_DEMO=1 SIMCTL_CHILD_LUMEN_SHEET=settings; shot 7 12-settings
           run generate SIMCTL_CHILD_LUMEN_DEMO=1 SIMCTL_CHILD_LUMEN_TAB=cards SIMCTL_CHILD_LUMEN_SHEET=generate; shot 7 13-generate
+          run lock SIMCTL_CHILD_LUMEN_DEMO=1 SIMCTL_CHILD_LUMEN_SHEET=lock; shot 7 14-study-lock
           ls -lh screens
 
       - name: Collect crash reports

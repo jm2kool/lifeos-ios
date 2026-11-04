@@ -1,5 +1,5 @@
 // An in-memory stand-in for the PostgREST calls lumen-agent makes, for tests.
-import type { Db, Query, Row } from '../functions/lumen-agent/db.ts';
+import type { Db, Query, Row } from '../functions/_shared/db.ts';
 
 const DEFAULTS: Record<string, Row> = {
   assignments: { kind: 'homework', chapter_ids: [], estimated_hours: 1, priority: 'medium', status: 'todo', notes: null, completed_at: null },

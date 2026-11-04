@@ -22,6 +22,9 @@ This guide is plain English. The exact request and response formats are in `open
 (`2026-11-05T16:00`) or a bare date (`2026-11-05`) is read in the student's time zone. Every response includes the
 student's `timezone`, and `*_local` copies of times in that zone — think and talk in local time.
 
+**Notifications.** When you propose or apply a plan, add assignments or make flashcards, the student's iPhone gets a
+push straight away (and a silent one for other changes, so reminders stay in step). You don't need to do anything.
+
 **Your marks.** Everything you create or change is labelled "Instinct" with a sparkle in the app and appears in the
 student's activity feed with an **Undo** button. Always include a short, specific `reason` on writes — the student
 reads it ("Due Friday; 2 h left", "Moved because you missed Wednesday's block"), so make it human.

@@ -18,8 +18,10 @@ look at the screenshots after UI changes.
   step, and never hard-delete synced rows (set `trashed` and `touch()`).
 - Writes go through `Store` (`insert`, `touch`, `save`) so sync, notifications and widgets follow.
 - Anything Instinct made or changed shows `InstinctBadge` (`byInstinct`).
-- Apple Intelligence goes through `CardMaker`, behind `#if canImport(FoundationModels)` and an availability check,
-  with a non-AI fallback.
+- AI goes through `CardMaker`: Claude first (`lumen-ai-cards`), then Apple Intelligence (behind
+  `#if canImport(FoundationModels)` and an availability check), then plain rules.
+- Push, Screen Time and other profile-dependent features check `Provisioning` and step aside when the install's
+  profile lacks the entitlement (a free Apple ID). `docs/INSTINCT-PROMPT.md` is generated from `InstinctPrompt.swift`.
 - Logic that doesn't need UIKit/SwiftUI lives in `Lumen/Services/Core/` and is tested on Linux (`tests/core`).
 - The agent API (`supabase/functions/lumen-agent`) must keep `docs/openapi.yaml` and `docs/INSTINCT.md` in step, and
   its tests (`deno test supabase/tests/`) green.

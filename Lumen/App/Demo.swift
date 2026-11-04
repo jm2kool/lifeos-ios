@@ -2,7 +2,7 @@ import Foundation
 import SwiftData
 
 /// Sample data for simulator screenshots (CI launches with LUMEN_DEMO=1). Never runs in normal use.
-///   LUMEN_TAB=today|planner|focus|cards|syllabus   LUMEN_SHEET=settings|proposal|review|outcome|assignment|generate|assistants
+///   LUMEN_TAB=today|planner|focus|cards|syllabus   LUMEN_SHEET=settings|proposal|review|outcome|assignment|generate|lock
 ///   LUMEN_PLANNER=schedule|assignments|activity     LUMEN_FOCUS=1 starts a focus session
 @MainActor
 enum Demo {
@@ -30,6 +30,7 @@ enum Demo {
             case "review": router.openReview()
             case "assignment": if let a = store.live(Assignment.self).first(where: { $0.title.hasPrefix("Chemistry") }) { router.sheet = .assignment(a.id) }
             case "generate": router.sheet = .generateCards(nil)
+            case "lock": router.showLock()
             case "outcome":
                 FocusTimer.shared.finished = .init(context: .init(title: "Physics worksheet", subjectID: store.subjects.first?.id, goal: "Questions 1–6 on Newton's laws"),
                                                    start: Date().addingTimeInterval(-3000), end: Date(), minutes: 48)

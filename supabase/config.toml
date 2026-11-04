@@ -8,3 +8,7 @@ verify_jwt = false
 [functions.lumen-ai-cards]
 # Only signed-in Lumen users can make cards.
 verify_jwt = true
+
+[functions.lumen-push]
+# Called by pg_cron with the x-lumen-cron secret, not a Supabase JWT.
+verify_jwt = false

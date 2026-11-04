@@ -231,9 +231,10 @@ struct KeyRevealSheet: View {
                         }
                         .controlSize(.large)
                     }
-                    Text("“Copy setup” gives you a short note for \(revealed.name) with the address, the key and how to start. The full guide is docs/INSTINCT.md in the repo.")
+                    Text("“Copy setup” copies the whole message to paste into \(revealed.name): the address, this key and how to plan.")
                         .font(.caption).foregroundStyle(.secondary)
-                    Text(setup).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                    Text(setup).font(.caption2.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                        .lineLimit(12)
                         .glassCard(radius: 16, padding: 12)
                 }
                 .padding()
@@ -245,19 +246,8 @@ struct KeyRevealSheet: View {
         .interactiveDismissDisabled(!copied)
     }
 
-    private var setup: String {
-        """
-        Lumen study planner API
-        Base URL: \(agentURL)
-        Header: Authorization: Bearer \(revealed.key)
-
-        Start every planning run with GET /context?from=<today>&to=<+14 days>.
-        Submit plans with POST /plan; follow up on GET /events?since=<cursor>.
-        Never plan over busy_slots or outside free_slots, keep to the preferences,
-        spread work before deadlines and replan missed blocks.
-        Full reference: docs/INSTINCT.md and docs/openapi.yaml in the Lumen repo.
-        """
-    }
+    /// Everything Instinct needs, with this key filled in.
+    private var setup: String { InstinctPrompt.text(apiURL: agentURL, key: revealed.key) }
 
     private func flash() {
         Haptics.success()

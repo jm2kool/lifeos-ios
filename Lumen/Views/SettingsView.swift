@@ -49,13 +49,15 @@ struct SettingsView: View {
                 }
 
                 Section("Focus & cards") {
-                    NavigationLink { FocusSettings(prefs: store.prefs) } label: { Label("Pomodoro", systemImage: "timer") }
+                    NavigationLink { FocusSettings(prefs: store.prefs) } label: { Label("Pomodoro & blocking apps", systemImage: "timer") }
+                    NavigationLink { StudyLockGuide() } label: { Label("Study lock", systemImage: "lock") }
                     NavigationLink { CardSettings(prefs: store.prefs) } label: { Label("Flashcards", systemImage: "rectangle.on.rectangle.angled") }
                     NavigationLink { NotificationSettings() } label: { Label("Notifications", systemImage: "bell.badge") }
                 }
 
                 Section("About") {
                     LabeledContent("Version", value: "\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""))")
+                    LabeledContent("AI cards", value: "Claude, then Apple Intelligence")
                     LabeledContent("Apple Intelligence", value: CardMaker.onDeviceStatus)
                     LabeledContent("Widgets", value: SharedStore.hasSharedFolder ? "Shared folder" : "Through the server")
                     NavigationLink { ServerSettings() } label: { Label("Supabase project", systemImage: "server.rack") }
@@ -388,10 +390,17 @@ struct FocusSettings: View {
                     if shield.authorized { ShieldPicker() }
                     #endif
                 } else {
-                    Text("Blocking apps needs Apple's Screen Time entitlement, which this build doesn't have (it can't be added with a free Apple ID).")
+                    Text("Screen Time blocking needs Apple's Family Controls entitlement, which this build doesn't have (it can't be added with a free Apple ID). Use the study lock below instead.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-            } header: { Text("Focus shield") }
+            } header: { Text("Screen Time shield") }
+            Section {
+                NavigationLink { StudyLockGuide() } label: {
+                    LabeledContent("Study lock", value: StudyLock.enabled ? "On" : "Off")
+                }
+            } header: { Text("Study lock") } footer: {
+                Text("Works with a free Apple ID: a Shortcuts automation brings you back to Lumen when you open a distracting app during study time.")
+            }
         }
         .glassForm()
         .navigationTitle("Focus")
@@ -439,6 +448,13 @@ struct NotificationSettings: View {
                     Toggle(k.label, isOn: Binding(get: { _ = tick; return Notifier.shared.isOn(k) }, set: { Notifier.shared.set(k, $0); tick += 1 }))
                 }
             } footer: { Text("Block notifications have a Start focus button. They update by themselves when Instinct changes the plan.") }
+            Section {
+                Label(Push.shared.summary, systemImage: Push.shared.state == .on ? "bell.and.waves.left.and.right" : "bell.slash")
+                    .font(.subheadline)
+                if let env = Push.shared.environment { LabeledContent("APNs", value: env) }
+            } header: { Text("Push from the server") } footer: {
+                Text("Pushes tell you when Instinct has a new plan or adds work, keep reminders in step, and start the study block Live Activity before each block.")
+            }
         }
         .glassForm()
         .navigationTitle("Notifications")

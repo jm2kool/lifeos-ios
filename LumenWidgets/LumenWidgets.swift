@@ -10,6 +10,7 @@ struct LumenWidgets: WidgetBundle {
         TodayWidget()
         DeadlineWidget()
         FocusLiveActivity()
+        StudyBlockLiveActivity()
     }
 }
 
@@ -392,6 +393,188 @@ private struct Controls: View {
                 .accessibilityLabel("End")
         }
         .font(.system(size: 14, weight: .bold))
+    }
+}
+
+// MARK: - Study block Live Activity
+
+/// A study block on the Lock Screen and in the Dynamic Island: before it starts, while it's on, at the break after it.
+struct StudyBlockLiveActivity: Widget {
+    var body: some WidgetConfiguration {
+        ActivityConfiguration(for: StudyBlockAttributes.self) { context in
+            StudyLockScreen(id: context.attributes.blockID, state: context.state, stale: context.isStale)
+                .activityBackgroundTint(Color.black.opacity(0.4))
+                .activitySystemActionForegroundColor(.white)
+                .widgetURL(URL(string: "lumen://focus?block=\(context.attributes.blockID)"))
+        } dynamicIsland: { context in
+            let s = context.state
+            let id = context.attributes.blockID
+            let phase = s.shown(at: Date(), stale: context.isStale)
+            let color = Color(hex: s.colorHex)
+            return DynamicIsland {
+                DynamicIslandExpandedRegion(.leading) {
+                    Label(s.subject.isEmpty ? StudyText.heading(phase) : s.subject, systemImage: StudyText.symbol(phase, kind: s.kind))
+                        .font(.caption.weight(.semibold)).foregroundStyle(color).lineLimit(1).padding(.leading, 4)
+                }
+                DynamicIslandExpandedRegion(.trailing) {
+                    StudyClock(state: s, phase: phase).font(.title3.weight(.semibold).monospacedDigit()).foregroundStyle(color).padding(.trailing, 4)
+                }
+                DynamicIslandExpandedRegion(.center) {
+                    Text(StudyText.heading(phase)).font(.caption2).foregroundStyle(.secondary)
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(s.title).font(.headline).lineLimit(1)
+                        if !s.goal.isEmpty { Label(s.goal, systemImage: "target").font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                        StudyBar(state: s, phase: phase, color: color)
+                        StudyButtons(id: id, phase: phase, kind: s.kind, color: color)
+                    }
+                    .padding(.horizontal, 4)
+                }
+            } compactLeading: {
+                Image(systemName: StudyText.symbol(phase, kind: s.kind)).foregroundStyle(color)
+            } compactTrailing: {
+                StudyClock(state: s, phase: phase).monospacedDigit().frame(maxWidth: 52).foregroundStyle(color)
+            } minimal: {
+                StudyRing(state: s, phase: phase, color: color)
+            }
+            .keylineTint(color)
+            .widgetURL(URL(string: "lumen://focus?block=\(id)"))
+        }
+    }
+}
+
+private enum StudyText {
+    static func heading(_ p: StudyBlockAttributes.Phase) -> String {
+        switch p {
+        case .upcoming: return "Starts soon"
+        case .during: return "Study time"
+        case .rest: return "Break"
+        case .ended: return "Block done"
+        }
+    }
+    static func symbol(_ p: StudyBlockAttributes.Phase, kind: String) -> String {
+        switch p {
+        case .upcoming: return kind == "review" ? "rectangle.on.rectangle.angled" : "book.closed"
+        case .during: return kind == "review" ? "rectangle.on.rectangle.angled.fill" : "book.fill"
+        case .rest: return "cup.and.saucer.fill"
+        case .ended: return "checkmark.circle.fill"
+        }
+    }
+}
+
+private struct StudyLockScreen: View {
+    let id: String
+    let state: StudyBlockAttributes.ContentState
+    let stale: Bool
+    var body: some View {
+        let phase = state.shown(at: Date(), stale: stale)
+        let color = Color(hex: state.colorHex)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 14) {
+                StudyRing(state: state, phase: phase, color: color).frame(width: 46, height: 46)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(StudyText.heading(phase))\(state.subject.isEmpty ? "" : " · \(state.subject)")")
+                        .font(.caption.weight(.semibold)).foregroundStyle(color).lineLimit(1)
+                    Text(state.title).font(.headline).lineLimit(1)
+                    HStack(spacing: 4) {
+                        switch phase {
+                        case .upcoming, .rest:
+                            Text(state.note.isEmpty ? "starts in" : "\(state.note) · in")
+                            Text(timerInterval: Date()...max(Date(), state.start), countsDown: true).monospacedDigit()
+                        case .during:
+                            Text(timerInterval: Date()...max(Date(), state.end), countsDown: true).monospacedDigit()
+                            Text("left")
+                        case .ended:
+                            Text(state.note.isEmpty ? "Nice work." : state.note)
+                        }
+                    }
+                    .font(.subheadline.weight(.semibold))
+                }
+                Spacer(minLength: 0)
+            }
+            if phase != .ended { StudyButtons(id: id, phase: phase, kind: state.kind, color: color) }
+        }
+        .padding(16)
+    }
+}
+
+private struct StudyClock: View {
+    let state: StudyBlockAttributes.ContentState
+    let phase: StudyBlockAttributes.Phase
+    var body: some View {
+        switch phase {
+        case .upcoming, .rest: Text(timerInterval: Date()...max(Date(), state.start), countsDown: true)
+        case .during: Text(timerInterval: Date()...max(Date(), state.end), countsDown: true)
+        case .ended: Image(systemName: "checkmark")
+        }
+    }
+}
+
+private struct StudyBar: View {
+    let state: StudyBlockAttributes.ContentState
+    let phase: StudyBlockAttributes.Phase
+    let color: Color
+    var body: some View {
+        Group {
+            if phase == .during {
+                ProgressView(timerInterval: state.start...max(state.start.addingTimeInterval(1), state.end), countsDown: false) { EmptyView() } currentValueLabel: { EmptyView() }
+            } else {
+                ProgressView(value: phase == .ended ? 1 : 0)
+            }
+        }
+        .tint(color)
+    }
+}
+
+private struct StudyRing: View {
+    let state: StudyBlockAttributes.ContentState
+    let phase: StudyBlockAttributes.Phase
+    let color: Color
+    var body: some View {
+        Group {
+            if phase == .during {
+                ProgressView(timerInterval: state.start...max(state.start.addingTimeInterval(1), state.end), countsDown: false) {
+                    Image(systemName: StudyText.symbol(phase, kind: state.kind)).font(.system(size: 9, weight: .bold))
+                } currentValueLabel: { EmptyView() }
+            } else {
+                ProgressView(value: phase == .ended ? 1 : 0) {
+                    Image(systemName: StudyText.symbol(phase, kind: state.kind)).font(.system(size: 9, weight: .bold))
+                }
+            }
+        }
+        .progressViewStyle(.circular)
+        .tint(color)
+    }
+}
+
+/// Start focus opens Lumen on the timer; Done and Skip work without opening it.
+private struct StudyButtons: View {
+    let id: String
+    let phase: StudyBlockAttributes.Phase
+    let kind: String
+    let color: Color
+    var body: some View {
+        HStack(spacing: 8) {
+            Link(destination: URL(string: kind == "review" ? "lumen://review" : "lumen://focus?block=\(id)")!) {
+                Label(kind == "review" ? "Review" : "Start focus", systemImage: "play.fill")
+                    .font(.caption.weight(.bold)).frame(maxWidth: .infinity).padding(.vertical, 8)
+                    .background(color.opacity(0.35), in: .capsule)
+            }
+            if phase == .during {
+                Button(intent: MarkStudyBlockIntent(blockID: id, status: "done")) {
+                    Label("Done", systemImage: "checkmark").font(.caption.weight(.bold)).padding(.vertical, 8).padding(.horizontal, 12)
+                        .background(.white.opacity(0.16), in: .capsule)
+                }
+                .buttonStyle(.plain)
+            }
+            Button(intent: MarkStudyBlockIntent(blockID: id, status: "skipped")) {
+                Label("Skip", systemImage: "forward.end").font(.caption.weight(.bold)).padding(.vertical, 8).padding(.horizontal, 12)
+                    .background(.white.opacity(0.16), in: .capsule)
+            }
+            .buttonStyle(.plain)
+        }
+        .foregroundStyle(.white)
     }
 }
 

@@ -36,6 +36,7 @@ enum WidgetBridge {
     }
 
     static func refresh() async {
+        StudyActivity.refresh()
         let s = snapshot()
         SharedStore.save(s)
         WidgetCenter.shared.reloadAllTimelines()

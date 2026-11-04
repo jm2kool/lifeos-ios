@@ -6,9 +6,10 @@ here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../.." && pwd)
 psql -v ON_ERROR_STOP=1 -q -c "drop database if exists lumen_test" -c "create database lumen_test"
 psql -d lumen_test -v ON_ERROR_STOP=1 -q -f "$here/00_supabase_stubs.sql" 2>/dev/null
-sed 's/create extension if not exists pg_net;/-- pg_net stubbed/' "$root/supabase/migrations/20261104000000_lumen.sql" > /tmp/lumen_migration.sql
+# Every migration, in order, twice.
+cat "$root"/supabase/migrations/*.sql | sed 's/create extension if not exists pg_net;/-- pg_net stubbed/' > /tmp/lumen_migration.sql
 psql -d lumen_test -v ON_ERROR_STOP=1 -q -f /tmp/lumen_migration.sql > /dev/null 2>&1 || psql -d lumen_test -v ON_ERROR_STOP=1 -q -f /tmp/lumen_migration.sql
-psql -d lumen_test -v ON_ERROR_STOP=1 -q -f /tmp/lumen_migration.sql > /dev/null 2>&1
+psql -d lumen_test -v ON_ERROR_STOP=1 -q -f /tmp/lumen_migration.sql > /dev/null 2>&1 || psql -d lumen_test -v ON_ERROR_STOP=1 -q -f /tmp/lumen_migration.sql
 out=$(psql -d lumen_test -At -f "$here/behaviour.sql" 2>&1 | grep -E '^(lww|upsert|rls|instinct|swept|missed|phone|apply|events|webhooks|widget)')
 echo "$out"
 expect() { echo "$out" | grep -qF "$1" || { echo "FAILED: expected '$1'"; exit 1; }; }

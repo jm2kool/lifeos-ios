@@ -42,6 +42,7 @@ jobs:
         run: |
           deno check supabase/functions/lumen-agent/index.ts
           deno check supabase/functions/lumen-ai-cards/index.ts
+          deno check supabase/functions/lumen-push/index.ts
       - name: Agent API tests
         run: deno test supabase/tests/
 

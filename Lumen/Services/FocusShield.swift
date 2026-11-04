@@ -26,7 +26,7 @@ final class FocusShield {
     #endif
 
     private init() {
-        available = Self.hasEntitlement("com.apple.developer.family-controls")
+        available = Provisioning.has("com.apple.developer.family-controls")
         enabled = UserDefaults.standard.bool(forKey: "shield.enabled")
         #if canImport(FamilyControls)
         if let d = UserDefaults.standard.data(forKey: "shield.selection"), let s = try? JSONDecoder().decode(FamilyActivitySelection.self, from: d) {
@@ -71,24 +71,6 @@ final class FocusShield {
         guard available else { return }
         #if canImport(FamilyControls)
         settings.clearAllSettings()
-        #endif
-    }
-
-    /// Looks for an entitlement in embedded.mobileprovision. A build without a profile (or without the
-    /// entitlement) gets false, so Screen Time is never touched.
-    static func hasEntitlement(_ key: String) -> Bool {
-        #if targetEnvironment(simulator)
-        return false
-        #else
-        guard let url = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision"),
-              let data = try? Data(contentsOf: url),
-              let text = String(data: data, encoding: .isoLatin1),
-              let start = text.range(of: "<?xml"), let end = text.range(of: "</plist>") else { return false }
-        let xml = String(text[start.lowerBound..<end.upperBound])
-        guard let plist = try? PropertyListSerialization.propertyList(from: Data(xml.utf8), format: nil) as? [String: Any],
-              let ent = plist["Entitlements"] as? [String: Any] else { return false }
-        if let b = ent[key] as? Bool { return b }
-        return ent[key] != nil
         #endif
     }
 }

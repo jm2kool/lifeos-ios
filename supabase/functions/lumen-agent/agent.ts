@@ -1,9 +1,15 @@
 // The Lumen agent API: what Instinct (or any assistant with an access key) uses to read your study data,
 // add work, plan blocks and react to what happened. See docs/INSTINCT.md and docs/openapi.yaml.
-import { Db, DbError, Query, Row, sha256Hex } from './db.ts';
-import * as T from './time.ts';
+import { Db, DbError, Query, Row, sha256Hex } from '../_shared/db.ts';
+import * as T from '../_shared/time.ts';
+import type { Notice } from '../_shared/apns.ts';
 
-export interface Ctx { db: Db; now?: () => Date }
+export interface Ctx {
+  db: Db;
+  now?: () => Date;
+  /** Tells the student's iPhones about a change (push). Left out in tests. */
+  notify?: (userId: string, notice: Notice) => void;
+}
 
 interface Caller { keyId: string; userId: string; name: string; scopes: Set<string> }
 
@@ -197,7 +203,9 @@ export async function handle(req: Request, ctx: Ctx): Promise<Response> {
     const caller = await authenticate(req, ctx);
     const body = ['POST', 'PATCH', 'PUT'].includes(req.method) ? await readBody(req) : {};
     const api = new Api(ctx, caller, url.searchParams);
-    return json(200, await api.route(req.method, path, body));
+    const result = await api.route(req.method, path, body);
+    if (api.notice && ctx.notify) ctx.notify(caller.userId, api.notice);
+    return json(200, result);
   } catch (e) {
     if (e instanceof HttpError) return json(e.status, { error: e.message, ...(e.details ? { details: e.details } : {}) });
     if (e instanceof DbError) {
@@ -237,6 +245,8 @@ class Api {
   private db: Db;
   private now: Date;
   private prefsCache?: Row;
+  /** What to push to the student after this request: a visible notice, or a silent one that just makes the app sync. */
+  notice?: Notice;
 
   constructor(ctx: Ctx, private caller: Caller, private q: URLSearchParams) {
     this.db = ctx.db;
@@ -639,6 +649,7 @@ class Api {
         p_user: this.caller.userId, p_from: from.toISOString(), p_to: to.toISOString(), p_replace: replace, p_blocks: final,
         p_actor: 'instinct', p_reason: reasoning, p_batch: batch, p_proposal: null,
       });
+      this.notice = { title: 'Instinct updated your plan', body: `${summary.blocks} block${summary.blocks === 1 ? '' : 's'} · ${Math.round(summary.minutes / 6) / 10} h${removing.length ? `, ${removing.length} moved or removed` : ''}${reasoning ? `. ${reasoning.slice(0, 120)}` : ''}`, open: 'lumen://planner', thread: 'plan' };
       return { status: 'applied', mode, batch_id: batch, created: r?.created ?? [], removed: r?.removed ?? [], ...summary, warnings, dropped };
     }
 
@@ -650,6 +661,8 @@ class Api {
     });
     await this.log(crypto.randomUUID(), [{ action: 'plan_proposed', entity: 'proposals', id: proposal.id, before: null, after: null,
       summary: `Suggested a plan: ${final.length} blocks, ${Math.round(summary.minutes / 6) / 10} h` }], reasoning);
+    const days = new Set(final.map((b) => T.dayKey(new Date(b.start_at), tz))).size;
+    this.notice = { title: 'Instinct has a new plan', body: `${final.length} block${final.length === 1 ? '' : 's'} · ${Math.round(summary.minutes / 6) / 10} h over ${days} day${days === 1 ? '' : 's'}. Tap to review.`, open: 'lumen://today', thread: 'plan' };
     return { status: 'proposed', mode, proposal_id: proposal.id, ...summary, warnings, dropped };
   }
 
@@ -772,6 +785,7 @@ class Api {
       }
     }
     await this.log(batch, entries, body.reason);
+    this.notice = {};
     return { subject_id: subjectId, batch_id: batch, created: entries.length };
   }
 
@@ -846,6 +860,17 @@ class Api {
       }
       await this.log(batch, entries, reason);
       const out = made.map(strip);
+      if (res.table === 'assignments') {
+        const first = out[0];
+        this.notice = out.length === 1
+          ? { title: `Instinct added ${first.title}`, body: `${String(first.kind ?? 'homework').replace(/^./, (c: string) => c.toUpperCase())}${first.due_at ? ` · due ${T.label(new Date(first.due_at), tz)}` : ''}${typeof reason === 'string' ? ` · ${reason.slice(0, 80)}` : ''}`, open: `lumen://assignment?id=${first.id}`, thread: 'work' }
+          : { title: `Instinct added ${out.length} assignments`, body: out.slice(0, 3).map((a) => a.title).join(', '), open: 'lumen://planner', thread: 'work' };
+      } else if (res.table === 'decks' || res.table === 'cards') {
+        const cards = res.table === 'cards' ? out.length : (out[0]?.cards?.length ?? 0);
+        this.notice = cards ? { title: 'Instinct made flashcards', body: `${cards} new card${cards === 1 ? '' : 's'}${res.table === 'decks' ? ` in ${out[0].name}` : ''}.`, open: 'lumen://review', thread: 'cards' } : {};
+      } else {
+        this.notice = {};
+      }
       return { batch_id: batch, [res.table]: out, ...(out.length === 1 ? { id: out[0].id } : {}) };
     }
 
@@ -861,6 +886,7 @@ class Api {
       await this.check(res, [{ ...before, ...values }], tz, before);
       const [after] = await this.db.update(res.table, this.mine({ id: `eq.${id}` }), { ...values, updated_by: 'instinct', reason: typeof reason === 'string' ? reason.slice(0, 2000) : before.reason, updated_at: this.now.toISOString() });
       await this.log(batch, [{ action: 'updated', entity: res.table, id, before, after, summary: `Changed ${res.title(after ?? before, tz)}` }], reason);
+      this.notice = {};
       return { batch_id: batch, [res.table.replace(/s$/, '')]: strip(after ?? before) };
     }
 
@@ -878,6 +904,7 @@ class Api {
         for (const k of kids) await gone(children[0], k);
       }
       await this.log(batch, entries, reason);
+      this.notice = {};
       return { batch_id: batch, deleted: entries.map((e) => ({ entity: e.entity, id: e.id })) };
     }
     throw new HttpError(405, 'Use GET, POST, PATCH or DELETE.');
@@ -936,6 +963,7 @@ class Api {
       await this.db.update('activity', this.mine({ id: `eq.${it.id}` }), { undone_at: this.now.toISOString(), updated_by: 'instinct', updated_at: this.now.toISOString() });
       restored++;
     }
+    this.notice = {};
     return { undone: restored };
   }
 

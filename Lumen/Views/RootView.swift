@@ -50,6 +50,10 @@ struct RootView: View {
                 .environment(store).environment(router)
                 .preferredColorScheme(.dark)
         }
+        .fullScreenCover(isPresented: $router.lockShown) {
+            StudyLockView()
+                .environment(store).environment(router).environment(timer)
+        }
         .fullScreenCover(isPresented: Binding(get: { auth.needsSignIn }, set: { _ in })) {
             SignInView().environment(auth).environment(store).preferredColorScheme(.dark)
         }
@@ -86,6 +90,8 @@ struct RootView: View {
                 Realtime.shared.connect()
                 _ = await Notifier.shared.requestPermission()
                 await Notifier.shared.reschedule()
+                Push.shared.register()
+                await Push.shared.uploadQueued()
             }
         }
         .task {

@@ -130,6 +130,7 @@ final class FocusTimer {
                 Store.shared.save()
             }
             FocusShield.shared.engage()
+            StudyActivity.endAll()
         }
         waiting = false
         phaseEnd = now.addingTimeInterval(pausedRemaining)
@@ -207,6 +208,7 @@ final class FocusTimer {
         FocusShield.shared.release()
         FocusActivity.end()
         persist()
+        StudyActivity.refresh()
     }
 
     /// Catches up after time away: finished focus phases are banked, their breaks run on, and after a break it waits.

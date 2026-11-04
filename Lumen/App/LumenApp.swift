@@ -50,6 +50,7 @@ enum Lifecycle {
     static func becameActive() {
         FocusTimer.shared.tick()
         _ = Store.shared.prefs
+        Push.shared.register()
         Task {
             await CalendarSync.shared.run()
             await SyncEngine.shared.sync()
@@ -86,8 +87,27 @@ enum Lifecycle {
 
 final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-        MainActor.assumeIsolated { Notifier.shared.setUp() }
+        MainActor.assumeIsolated {
+            Notifier.shared.setUp()
+            Push.shared.register()
+        }
         return true
+    }
+
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        MainActor.assumeIsolated { Push.shared.didRegister(deviceToken) }
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        MainActor.assumeIsolated { Push.shared.didFail(error) }
+    }
+
+    /// Silent pushes (and alerts with content-available) wake Lumen to sync.
+    func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+                     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        Task { @MainActor in
+            completionHandler(await Push.shared.handle(userInfo))
+        }
     }
 
     func application(_ application: UIApplication, configurationForConnecting connectingSceneSession: UISceneSession,

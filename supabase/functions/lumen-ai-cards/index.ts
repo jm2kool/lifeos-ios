@@ -1,10 +1,10 @@
-// Supabase Edge Function: lumen-ai-cards — turns study notes into flashcards for the app when Apple
-// Intelligence isn't available on the iPhone. Signed-in users only.
+// Supabase Edge Function: lumen-ai-cards — turns study notes into flashcards for the app.
+// Claude is Lumen's main AI; Apple Intelligence on the iPhone is the fallback. Signed-in users only.
 //
 // Secrets (Supabase → Edge Functions → Secrets):
-//   ANTHROPIC_API_KEY   uses Claude (default model claude-opus-5-5)
-//   GEMINI_API_KEY      used instead when there's no Anthropic key (default model gemini-2.5-flash)
-//   LUMEN_AI_MODEL      optional: a different model id for whichever provider is used
+//   ANTHROPIC_API_KEY   required: Claude writes the cards (default model claude-opus-5-5)
+//   LUMEN_AI_MODEL      optional: a different Claude model id
+// If this can't be reached, the app falls back to Apple Intelligence on the iPhone.
 import Anthropic from 'npm:@anthropic-ai/sdk@1.4.0';
 
 const CORS = {
@@ -94,30 +94,6 @@ async function withClaude(key: string, notes: string, count: number, subject: st
   return { cards: clean(parsed.cards).slice(0, count), model: response.model ?? model };
 }
 
-async function withGemini(key: string, notes: string, count: number, subject: string): Promise<{ cards: Card[]; model: string }> {
-  const model = Deno.env.get('LUMEN_AI_MODEL') || 'gemini-2.5-flash';
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: SYSTEM }] },
-      contents: [{ role: 'user', parts: [{ text: `${subject ? `Subject: ${subject}\n` : ''}Write up to ${count} flashcards from these notes:\n\n${notes}` }] }],
-      generationConfig: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: 'OBJECT',
-          properties: { cards: { type: 'ARRAY', items: { type: 'OBJECT', properties: { front: { type: 'STRING' }, back: { type: 'STRING' } }, required: ['front', 'back'] } } },
-          required: ['cards'],
-        },
-      },
-    }),
-  });
-  const body = await res.json();
-  if (!res.ok) throw new Error(body?.error?.message ?? `Gemini error ${res.status}`);
-  const text = body?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? '').join('') ?? '';
-  return { cards: clean(JSON.parse(text || '{}').cards).slice(0, count), model };
-}
-
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   if (req.method !== 'POST') return json(405, { error: 'Use POST.' });
@@ -133,11 +109,10 @@ Deno.serve(async (req) => {
   const subject = typeof body.subject === 'string' ? body.subject.slice(0, 80) : '';
 
   const anthropic = Deno.env.get('ANTHROPIC_API_KEY');
-  const gemini = Deno.env.get('GEMINI_API_KEY');
-  if (!anthropic && !gemini) return json(503, { error: 'Lumen AI is not set up: add ANTHROPIC_API_KEY (or GEMINI_API_KEY) in Supabase → Edge Functions → Secrets.' });
+  if (!anthropic) return json(503, { error: 'Claude is not set up: add ANTHROPIC_API_KEY in Supabase → Edge Functions → Secrets.' });
   try {
-    const result = anthropic ? await withClaude(anthropic, notes, count, subject) : await withGemini(gemini!, notes, count, subject);
-    return json(200, { cards: result.cards, model: result.model, provider: anthropic ? 'anthropic' : 'gemini' });
+    const result = await withClaude(anthropic, notes, count, subject);
+    return json(200, { cards: result.cards, model: result.model, provider: 'anthropic' });
   } catch (e) {
     console.error('lumen-ai-cards', e instanceof Error ? e.message : e);
     const message = e instanceof Anthropic.RateLimitError ? 'The AI is busy — try again in a minute.'

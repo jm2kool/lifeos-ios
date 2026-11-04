@@ -1,7 +1,7 @@
 // deno test supabase/tests — exercises lumen-agent against an in-memory database.
 import { handle } from '../functions/lumen-agent/agent.ts';
-import { sha256Hex } from '../functions/lumen-agent/db.ts';
-import * as T from '../functions/lumen-agent/time.ts';
+import { sha256Hex } from '../functions/_shared/db.ts';
+import * as T from '../functions/_shared/time.ts';
 import { FakeDb } from './fake_db.ts';
 
 function assert(cond: unknown, msg = 'assertion failed'): asserts cond { if (!cond) throw new Error(msg); }

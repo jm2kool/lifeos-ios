@@ -46,6 +46,21 @@ final class Router {
     var review: ReviewTarget?
     var plannerMode: PlannerView.Mode = .schedule
     var focusQuickAdd = false
+    /// The study lock screen, over everything.
+    var lockShown = false
+
+    /// Brings up the study lock, closing whatever else is open first.
+    func showLock() {
+        guard !lockShown else { return }
+        let busy = sheet != nil || review != nil
+        sheet = nil
+        review = nil
+        if busy {
+            Task { try? await Task.sleep(for: .seconds(0.5)); lockShown = true }
+        } else {
+            lockShown = true
+        }
+    }
 
     func openFocus(block id: UUID) {
         if let b = Store.shared.find(StudyBlock.self, id) { FocusTimer.shared.prepare(block: b) }
@@ -76,6 +91,8 @@ final class Router {
         case "block": if let id { sheet = .block(id) }
         case "planner": sheet = nil; tab = .planner
         case "assignment": if let id { sheet = .assignment(id) }
+        case "lock": showLock()
+        case "today": sheet = nil; tab = .today
         default: break
         }
     }

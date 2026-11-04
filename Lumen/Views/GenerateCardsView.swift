@@ -45,9 +45,9 @@ struct GenerateCardsView: View {
                     .buttonStyle(.borderless)
                     if reading { HStack { ProgressView(); Text("Reading…").foregroundStyle(.secondary) } }
                 } header: { Text("Notes") } footer: {
-                    Text(CardMaker.onDeviceAvailable ? "Cards are written by Apple Intelligence on this iPhone." :
-                            Auth.shared.signedIn ? "Cards are written by Lumen AI (your Supabase function)." :
-                            "Without AI, lines like \"term: meaning\" become cards.")
+                    Text(Auth.shared.signedIn ? "Cards are written by Claude\(CardMaker.onDeviceAvailable ? ", with Apple Intelligence on this iPhone if Claude can't be reached" : "")." :
+                            CardMaker.onDeviceAvailable ? "Sign in to use Claude. Until then, Apple Intelligence on this iPhone writes them." :
+                            "Sign in to use Claude. Without AI, lines like \"term: meaning\" become cards.")
                 }
                 Section("Cards") {
                     Stepper("About \(count) cards", value: $count, in: 5...60, step: 5)

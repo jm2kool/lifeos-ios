@@ -11,12 +11,14 @@ with per-assistant access keys. Built as an unsigned `.ipa` by GitHub Actions fo
 |---|---|
 | **Today** | The next block with Start focus, Instinct's proposed plan (Accept / Edit / Reject), outcomes to fill in, today's timeline, what's due, cards due, minutes and streak, and a quick-add bar that understands "physics worksheet ch 3 due fri 2h". |
 | **Planner** | A week strip and day timeline with blocks laid over busy times, every assignment by due date, and the activity feed of everything Instinct added, moved or deleted, each batch with Undo. The wand runs the built-in auto-planner (deadline + priority + effort) when Instinct is offline. |
-| **Focus** | Pomodoro with your lengths, pre-filled from a block. At the end: done / partly / not done and a note, which goes to Instinct. Live Activity and Dynamic Island, stats (minutes per day, subject and week, streak, plan kept) and an optional Screen Time shield. |
-| **Cards** | Decks per subject and chapter, text, images and formulas (`$E = mc^2$`), FSRS spaced repetition with Again / Hard / Good / Easy, and AI cards from pasted notes, a PDF, a photo or a page scan (Apple Intelligence on the iPhone, otherwise the `lumen-ai-cards` function). |
+| **Focus** | Pomodoro with your lengths, pre-filled from a block. At the end: done / partly / not done and a note, which goes to Instinct. Live Activity and Dynamic Island, stats (minutes per day, subject and week, streak, plan kept). |
+| **Study lock** | LifeOS's way of blocking apps: a Shortcuts automation runs *Study lock check* when you open a distracting app, and during a study block or focus round you're sent straight back to a full-screen lock (with a five-minute break button). Works with a free Apple ID. A Screen Time shield is there too for builds that have Apple's entitlement. |
+| **Dynamic Island** | Two Live Activities: the focus timer (pause / end), and your **study block** — from 10 minutes before (countdown), during (goal and time left), the break after, and done — with Start focus, Done and Skip buttons. The app starts it when it runs; with push, the server starts it before each block even if Lumen hasn't been opened; a *Show next study block* Shortcut does it without push. |
+| **Cards** | Decks per subject and chapter, text, images and formulas (`$E = mc^2$`), FSRS spaced repetition with Again / Hard / Good / Easy, and AI cards from pasted notes, a PDF, a photo or a page scan — written by **Claude** (the `lumen-ai-cards` function), falling back to Apple Intelligence on the iPhone. |
 | **Syllabus** | Subjects → chapters → topics with not started / learning / revised / mastered and progress rings, linked to assignments, decks and focus time. |
 | **Settings** | Account and sync, subjects, planning preferences (max hours a day, block and break length, no-study days, earliest/latest), free and busy times, iPhone calendar (busy times only unless you allow titles), Instinct's plan mode (auto-apply or ask first), access keys, webhook, Pomodoro, flashcards and notifications. |
 | **Widgets** | Up next, Today (minutes, streak, cards due) and Next deadline, on the Home and Lock Screens. |
-| **Notifications** | Block starts (with a Start focus button), a 10-minute warning, deadlines a day and 2 hours before, and a daily review reminder — rescheduled whenever the plan changes. |
+| **Notifications** | Block starts (with a Start focus button), a 10-minute warning, deadlines a day and 2 hours before, and a daily review reminder — rescheduled whenever the plan changes. **Push** (APNs): when Instinct has a new plan or adds work you get a notification straight away, and silent pushes keep reminders in step. |
 | **Instinct API** | `lumen-agent`: one-call context, plans with validation, CRUD for assignments, blocks, decks, cards and syllabus, an events feed and an outgoing webhook. See [docs/INSTINCT.md](docs/INSTINCT.md) and [docs/openapi.yaml](docs/openapi.yaml). |
 
 ## How it fits together
@@ -53,14 +55,33 @@ You're reusing the Supabase project from Matinee, so Google sign-in is already s
    supabase link --project-ref <your-project-ref>
    supabase functions deploy lumen-agent --no-verify-jwt   # Instinct uses Lumen keys, not Supabase JWTs
    supabase functions deploy lumen-ai-cards
-   supabase secrets set ANTHROPIC_API_KEY=sk-ant-…          # or GEMINI_API_KEY=… ; optional LUMEN_AI_MODEL=…
+   supabase secrets set ANTHROPIC_API_KEY=sk-ant-…          # optional LUMEN_AI_MODEL=…
    ```
    (Or in the dashboard: *Edge Functions → Deploy a new function*, paste the files, and turn **Verify JWT off** for
-   `lumen-agent`.) `lumen-ai-cards` uses Claude (`claude-opus-5-5`) when `ANTHROPIC_API_KEY` is set, with Anthropic's
-   server-side refusal fallback switched on; otherwise Gemini with `GEMINI_API_KEY`. It's only needed on iPhones
-   without Apple Intelligence.
+   `lumen-agent`.) `lumen-ai-cards` is Lumen's main AI: Claude (`claude-opus-5-5`), with Anthropic's server-side refusal
+   fallback switched on. If it can't be reached (offline, signed out, no key), the app uses Apple Intelligence on the
+   iPhone, and with neither, simple "term: meaning" rules.
 5. **Realtime** is turned on for the Lumen tables by the SQL. If you ever see "realtime for …" notices, check
    *Database → Publications → supabase_realtime* includes the `lumen` tables.
+
+### 1b. Push notifications (optional — needs a paid Apple Developer account)
+
+APNs only delivers to an app whose provisioning profile includes push, and only with a key from a paid Apple Developer
+account. A free Apple ID can't do either, so Lumen falls back to Realtime and Background App Refresh.
+
+1. In SQL Editor run [`supabase/migrations/20261104120000_lumen_push.sql`](supabase/migrations/20261104120000_lumen_push.sql).
+2. developer.apple.com → *Certificates, IDs & Profiles → Keys → +* → tick **Apple Push Notifications service (APNs)** →
+   download the `.p8`. Note the **Key ID** and your **Team ID** (top right).
+3. ```bash
+   supabase secrets set APNS_KEY_ID=XXXXXXXXXX APNS_TEAM_ID=YYYYYYYYYY APNS_KEY_P8="$(cat AuthKey_XXXXXXXXXX.p8)"
+   supabase secrets set LUMEN_CRON_SECRET=$(openssl rand -hex 24)
+   supabase functions deploy lumen-agent --no-verify-jwt
+   supabase functions deploy lumen-push --no-verify-jwt
+   ```
+4. For the study-block Live Activity before each block, open [`supabase/push_cron.sql`](supabase/push_cron.sql), put your
+   `LUMEN_CRON_SECRET` in place of the placeholder and run it (it calls `lumen-push` every minute with pg_cron).
+5. Install **`Lumen.ipa`** (it asks for push) with the paid Apple ID. Settings → Notifications → *Push from the server*
+   shows whether it's on. Each iPhone reports its own bundle id and APNs environment, so re-signed bundle ids work.
 
 ### 2. Google Cloud
 
@@ -87,7 +108,8 @@ migration on Postgres, the Edge Functions with Deno, and the planner, quick-add 
 
 ### 4. Install the app
 
-1. GitHub → **Releases** → **Lumen (latest build)** → download `Lumen.ipa`.
+1. GitHub → **Releases** → **Lumen (latest build)** → download **`Lumen.ipa`** if your Apple ID has push (a paid developer
+   account), or **`Lumen-no-push.ipa`** for a free Apple ID.
    This repository is public, so the release is a **draft** that only you can see (the `.ipa` contains your Supabase
    address and anon key). It's also on the run's page under *Artifacts → Lumen-ipa*.
 2. Install with [Sideloadly](https://sideloadly.io) (or AltStore) and your Apple ID.
@@ -97,13 +119,21 @@ migration on Postgres, the Edge Functions with Deno, and the planner, quick-add 
 4. Open Lumen → **Continue with Google**. Allow notifications. Add your subjects (Syllabus → +) and your free times
    (Settings → When you're free), and switch on the iPhone calendar if you want class and plans kept clear.
 
-### 5. Connect Instinct
+### 5. Study lock (blocking apps)
+
+Settings → Focus → **Study lock** walks you through it: Shortcuts → Automation → **App** → pick the distracting apps →
+*Is Opened* → *Run Immediately* → add Lumen's **Study lock check**. During a study block or focus round, opening one of
+those apps brings you straight back to Lumen's lock screen; outside study time nothing happens. For the Dynamic Island
+without push, add a *Time of Day* automation that runs **Show next study block** shortly before your usual blocks.
+
+### 6. Connect Instinct
 
 1. Lumen → Settings → **Instinct → Assistants & access keys → New access key**. Name it "Instinct", choose what it may
    do, and **copy the key** — it's shown once (Lumen stores only its SHA-256 hash). *Copy setup* gives you a short note
    with the address and key.
-2. Give Instinct the key, the address `https://<ref>.supabase.co/functions/v1/lumen-agent`, and
-   [docs/INSTINCT.md](docs/INSTINCT.md) (plus [docs/openapi.yaml](docs/openapi.yaml) if it reads OpenAPI).
+2. Paste the message from **Copy setup** (or [docs/INSTINCT-PROMPT.md](docs/INSTINCT-PROMPT.md) with your key filled in)
+   into Instinct. The address is `https://pryljjakjcswekcwxcog.supabase.co/functions/v1/lumen-agent`; the full guide is
+   [docs/INSTINCT.md](docs/INSTINCT.md) and [docs/openapi.yaml](docs/openapi.yaml).
 3. Choose **Auto-apply** or **Ask me first** under Settings → Instinct.
 4. Optional: Settings → Instinct → **Webhook** — an address that receives each event as it happens, signed with
    `X-Lumen-Signature: sha256=<HMAC-SHA256 of the body with your secret>`.
@@ -116,14 +146,13 @@ Revoke a key by swiping it in the same list; it stops working immediately.
   and in the app). At most 3 sideloaded apps at once, and each app plus its widget extension uses 2 of your 10 App IDs a week.
 - **App Group** (`group.com.jm2kool.lumen`) is how the widgets read your plan. Sideloadly usually keeps it; if a
   re-signer drops it, the widgets fall back to fetching the same snapshot from Supabase (Settings → About shows which).
-- **Live Activities, notifications, Background App Refresh, calendar access** all work with a free Apple ID.
-  There are no push notifications (no APNs for sideloaded apps), so the plan refreshes via Realtime while the app is
-  open and Background App Refresh otherwise — make sure it's on for Lumen.
+- **Live Activities, local notifications, Background App Refresh, calendar access and the study lock** all work with a
+  free Apple ID. **Push** needs a paid one (see 1b); without it the plan refreshes via Realtime while the app is open
+  and Background App Refresh otherwise — make sure it's on for Lumen — and use `Lumen-no-push.ipa`.
 - **Focus shield (Screen Time)** needs Apple's Family Controls entitlement, which free accounts can't get. Lumen reads
-  its own provisioning profile at launch and hides the option when the entitlement isn't there, so nothing breaks. With
-  a paid account and Apple's approval, add `com.apple.developer.family-controls` to `Config/Lumen.entitlements`.
-- **Apple Intelligence** card writing needs an iPhone 15 Pro or newer with Apple Intelligence on; otherwise the
-  Supabase function is used.
+  its own provisioning profile at launch and hides the option when the entitlement isn't there, so nothing breaks. The
+  study lock does the same job without it.
+- **Apple Intelligence** is the fallback for AI cards when Claude can't be reached; it needs an iPhone 15 Pro or newer.
 
 ## Project layout
 
@@ -139,10 +168,10 @@ Lumen/Views/                    Today, Planner, Focus, Cards, Syllabus, Settings
 LumenWidgets/                   Widgets and the focus Live Activity
 Shared/                         Code shared by the app and widgets
 supabase/migrations/            The SQL migration
-supabase/functions/             lumen-agent (Instinct API) and lumen-ai-cards
+supabase/functions/             lumen-agent (Instinct API), lumen-ai-cards (Claude), lumen-push (Live Activities by push), _shared
 supabase/tests/                 Agent API tests (Deno) and SQL checks
 tests/core/                     Swift tests for the plain logic
-docs/                           INSTINCT.md and openapi.yaml
+docs/                           INSTINCT.md, INSTINCT-PROMPT.md (the message to paste) and openapi.yaml
 ```
 
 ## Developing

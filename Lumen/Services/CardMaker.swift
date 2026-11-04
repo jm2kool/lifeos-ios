@@ -22,8 +22,8 @@ struct GeneratedCard {
 }
 #endif
 
-/// Makes flashcards from notes. Apple Intelligence on the iPhone first (nothing leaves it); otherwise the
-/// `lumen-ai-cards` Edge Function; and with neither, "term: definition" lines become cards.
+/// Makes flashcards from notes. Claude first, through the `lumen-ai-cards` Edge Function; if that can't be reached (offline,
+/// signed out, not set up), Apple Intelligence on the iPhone; and with neither, "term: definition" lines become cards.
 @MainActor
 enum CardMaker {
     struct Draft: Identifiable, Hashable {
@@ -33,7 +33,7 @@ enum CardMaker {
         var keep = true
     }
 
-    enum Source: String { case onDevice = "Apple Intelligence", server = "Lumen AI", rules = "Simple rules" }
+    enum Source: String { case server = "Claude", onDevice = "Apple Intelligence", rules = "Simple rules" }
 
     static var onDeviceAvailable: Bool {
         #if canImport(FoundationModels)
@@ -56,15 +56,11 @@ enum CardMaker {
         #endif
     }
 
-    static func make(from text: String, count: Int, subject: String?, preferServer: Bool = false) async -> (cards: [Draft], source: Source, note: String?) {
+    static func make(from text: String, count: Int, subject: String?) async -> (cards: [Draft], source: Source, note: String?) {
         let notes = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !notes.isEmpty else { return ([], .rules, "Add some notes first.") }
         var note: String?
-        if !preferServer, onDeviceAvailable {
-            let cards = await onDevice(notes, count: count, subject: subject)
-            if !cards.isEmpty { return (cards, .onDevice, nil) }
-            note = "Apple Intelligence couldn't make cards from that, so the server tried."
-        }
+        // Claude first, through your Supabase function.
         if Auth.shared.signedIn {
             do {
                 let r = try await API.function("lumen-ai-cards", body: ["text": String(notes.prefix(60_000)), "count": count, "subject": subject ?? ""])
@@ -72,11 +68,19 @@ enum CardMaker {
                     guard let f = c["front"] as? String, let b = c["back"] as? String, !f.isEmpty, !b.isEmpty else { return nil }
                     return Draft(front: f, back: b)
                 }
-                if !cards.isEmpty { return (cards, .server, note) }
-                note = (r["error"] as? String) ?? "The server didn't return any cards."
+                if !cards.isEmpty { return (cards, .server, nil) }
+                note = (r["error"] as? String) ?? "Claude didn't return any cards."
             } catch {
-                note = "Lumen AI isn't reachable (\(error.localizedDescription)). Used simple rules instead."
+                note = "Claude isn't reachable right now (\(error.localizedDescription))."
             }
+        } else {
+            note = "Sign in to use Claude."
+        }
+        // Then Apple Intelligence, on this iPhone.
+        if onDeviceAvailable {
+            let cards = await onDevice(notes, count: count, subject: subject)
+            if !cards.isEmpty { return (cards, .onDevice, note.map { "\($0) Made with Apple Intelligence instead." }) }
+            note = (note.map { $0 + " " } ?? "") + "Apple Intelligence couldn't make cards from that either."
         }
         let simple = rules(notes)
         return (simple, .rules, simple.isEmpty ? (note ?? "Write notes as \"term: meaning\" lines, one per line, to make cards without AI.") : note)

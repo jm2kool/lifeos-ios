@@ -133,7 +133,9 @@ extension Notifier: UNUserNotificationCenterDelegate {
         let assignment = info["assignment"] as? String
         let open = info["open"] as? String
         Task { @MainActor in
-            if let block, let id = UUID(uuidString: block) {
+            if let open, open.hasPrefix("lumen://"), let url = URL(string: open) {
+                Router.shared.handle(url)   // pushes from the server say where to go
+            } else if let block, let id = UUID(uuidString: block) {
                 Router.shared.openFocus(block: id)
             } else if let assignment, let id = UUID(uuidString: assignment) {
                 Router.shared.openAssignment(id)
