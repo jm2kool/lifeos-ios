@@ -380,7 +380,7 @@ struct QuickAddBar: View {
                 HStack(spacing: 8) {
                     HStack(spacing: 8) {
                         Image(systemName: "plus.circle.fill").foregroundStyle(Theme.accent)
-                        TextField("physics worksheet ch 3 due fri 2h", text: $text)
+                        TextField("maths hw ch 2 due fri 1h", text: $text)
                             .focused($focused)
                             .submitLabel(.done)
                             .onSubmit(add)
@@ -405,7 +405,14 @@ struct QuickAddBar: View {
             }
         }
         .padding(.horizontal)
+        .padding(.top, 14)
         .padding(.bottom, 8)
+        .background {
+            // A soft fade so whatever scrolls underneath doesn't fight with the text.
+            LinearGradient(colors: [.black.opacity(0), .black.opacity(0.75)], startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+        }
         .animation(.spring(duration: 0.35), value: focused)
         .animation(.spring(duration: 0.35), value: text.isEmpty)
         .onChange(of: router.focusQuickAdd) { _, go in if go { focused = true; router.focusQuickAdd = false } }
