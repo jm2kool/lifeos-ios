@@ -18,7 +18,7 @@ with per-assistant access keys. Built as an unsigned `.ipa` by GitHub Actions fo
 | **Syllabus** | Subjects → chapters → topics with not started / learning / revised / mastered and progress rings, linked to assignments, decks and focus time. |
 | **Settings** | Account and sync, subjects, planning preferences (max hours a day, block and break length, no-study days, earliest/latest), free and busy times, iPhone calendar (busy times only unless you allow titles), Instinct's plan mode (auto-apply or ask first), access keys, webhook, Pomodoro, flashcards and notifications. |
 | **Widgets** | Up next, Today (minutes, streak, cards due) and Next deadline, on the Home and Lock Screens. |
-| **Notifications** | Block starts (with a Start focus button), a 10-minute warning, deadlines a day and 2 hours before, and a daily review reminder — rescheduled whenever the plan changes. **Push** (APNs): when Instinct has a new plan or adds work you get a notification straight away, and silent pushes keep reminders in step. |
+| **Notifications** | Scheduled on the iPhone: each study block's start (with a Start focus button that starts the timer for the time left) and a heads-up you choose (off, 5, 10, 15 or 30 min before), deadlines a day and 2 hours before, and a daily review reminder — rescheduled whenever the plan changes. **Push** (APNs): when Instinct has a new plan or adds work you get a notification straight away, and silent pushes keep reminders in step. |
 | **Instinct API** | `lumen-agent`: one-call context, plans with validation, CRUD for assignments, blocks, decks, cards and syllabus, an events feed and an outgoing webhook. See [docs/INSTINCT.md](docs/INSTINCT.md) and [docs/openapi.yaml](docs/openapi.yaml). |
 
 ## How it fits together

@@ -204,7 +204,7 @@ final class FocusTimer {
         phaseLength = TimeInterval(focusMinutes * 60)
         pausedRemaining = phaseLength
         context = Context()
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["lumen.focus"])
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["timer"])
         FocusShield.shared.release()
         FocusActivity.end()
         persist()
@@ -255,7 +255,7 @@ final class FocusTimer {
 
     private func scheduleNotification() {
         let center = UNUserNotificationCenter.current()
-        center.removePendingNotificationRequests(withIdentifiers: ["lumen.focus"])
+        center.removePendingNotificationRequests(withIdentifiers: ["timer"])
         guard let end = phaseEnd, end > Date() else { return }
         let c = UNMutableNotificationContent()
         switch phase {
@@ -270,7 +270,7 @@ final class FocusTimer {
         c.sound = .default
         c.interruptionLevel = .timeSensitive
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, end.timeIntervalSinceNow), repeats: false)
-        center.add(UNNotificationRequest(identifier: "lumen.focus", content: c, trigger: trigger))
+        center.add(UNNotificationRequest(identifier: "timer", content: c, trigger: trigger))
     }
 
     // MARK: Saving across launches

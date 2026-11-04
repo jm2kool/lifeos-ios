@@ -14,6 +14,15 @@ final class Store {
     private(set) var revision = 0
     var toast: Toast?
 
+    /// Notify me when study blocks start (Settings → Notifications).
+    var studyAlertsOn: Bool = UserDefaults.standard.object(forKey: "alerts.on") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(studyAlertsOn, forKey: "alerts.on") }
+    }
+    /// Minutes before a block for the heads-up; 0 is off.
+    var studyAlertLead: Int = UserDefaults.standard.object(forKey: "alerts.lead") as? Int ?? 5 {
+        didSet { UserDefaults.standard.set(studyAlertLead, forKey: "alerts.lead") }
+    }
+
     struct Toast: Identifiable, Equatable {
         let id = UUID()
         var text: String
@@ -84,6 +93,24 @@ final class Store {
 
     var nextBlock: StudyBlock? {
         live(StudyBlock.self).filter { $0.status == .planned && $0.endAt > Date() }.min { $0.startAt < $1.startAt }
+    }
+
+    /// The next 20 planned blocks in the coming three days: what StudyAlerts schedules.
+    var upcomingAlertBlocks: [StudyBlock] {
+        let now = Date(), until = now.addingTimeInterval(3 * 86400)
+        return Array(live(StudyBlock.self).filter { $0.status == .planned && $0.startAt > now && $0.startAt < until }
+            .sorted { $0.startAt < $1.startAt }.prefix(20))
+    }
+
+    func alertTitle(_ b: StudyBlock) -> String {
+        find(Assignment.self, b.assignmentID)?.title ?? (b.goal.isEmpty ? b.kind.label : b.goal)
+    }
+
+    /// Changes whenever study block alerts need rescheduling (any edit, the toggle or the lead time).
+    var alertKey: String {
+        _ = revision
+        let blocks = upcomingAlertBlocks.map { "\($0.id.lower)@\(Int($0.startAt.timeIntervalSince1970))" }
+        return "\(studyAlertsOn)|\(studyAlertLead)|" + blocks.joined(separator: ",")
     }
 
     var pendingProposal: Proposal? {

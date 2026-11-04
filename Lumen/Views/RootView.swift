@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UserNotifications
 
 struct RootView: View {
     @Environment(Store.self) private var store
@@ -93,6 +94,15 @@ struct RootView: View {
                 Push.shared.register()
                 await Push.shared.uploadQueued()
             }
+        }
+        .onAppear {
+            // Not in SwiftUI previews, UI tests or the demo used for CI screenshots, where the prompt would get in the way.
+            let env = ProcessInfo.processInfo.environment
+            guard env["XCODE_RUNNING_FOR_PREVIEWS"] != "1", !ProcessInfo.processInfo.arguments.contains("-UITests"), !Demo.active else { return }
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
+        }
+        .task(id: store.alertKey) {
+            await StudyAlerts.reschedule(store)
         }
         .task {
             await Notifier.shared.reschedule()

@@ -97,6 +97,7 @@ final class Push {
     /// A push arrived (silent or not): bring everything up to date.
     func handle(_ userInfo: [AnyHashable: Any]) async -> UIBackgroundFetchResult {
         let pulled = await SyncEngine.shared.sync()
+        await StudyAlerts.reschedule(Store.shared)
         await Notifier.shared.reschedule()
         await WidgetBridge.refresh()
         return pulled > 0 ? .newData : .noData

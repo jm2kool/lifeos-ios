@@ -431,9 +431,11 @@ struct CardSettings: View {
 }
 
 struct NotificationSettings: View {
+    @Environment(Store.self) private var store
     @State private var status: UNAuthorizationStatus = .notDetermined
     @State private var tick = 0
     var body: some View {
+        @Bindable var store = store
         Form {
             if status != .authorized && status != .provisional {
                 Section {
@@ -444,10 +446,20 @@ struct NotificationSettings: View {
                 }
             }
             Section {
+                Toggle("Notify me when study blocks start", isOn: $store.studyAlertsOn)
+                Picker("Heads-up", selection: $store.studyAlertLead) {
+                    Text("Off").tag(0)
+                    ForEach([5, 10, 15, 30], id: \.self) { Text("\($0) min before").tag($0) }
+                }
+                .disabled(!store.studyAlertsOn)
+            } header: { Text("Study blocks") } footer: {
+                Text("Scheduled on this iPhone from your plan, with a Start focus button. They update by themselves when you or Instinct change the plan.")
+            }
+            Section {
                 ForEach(Notifier.Kind.allCases) { k in
                     Toggle(k.label, isOn: Binding(get: { _ = tick; return Notifier.shared.isOn(k) }, set: { Notifier.shared.set(k, $0); tick += 1 }))
                 }
-            } footer: { Text("Block notifications have a Start focus button. They update by themselves when Instinct changes the plan.") }
+            }
             Section {
                 Label(Push.shared.summary, systemImage: Push.shared.state == .on ? "bell.and.waves.left.and.right" : "bell.slash")
                     .font(.subheadline)

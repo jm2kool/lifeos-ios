@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import BackgroundTasks
 import UIKit
+import UserNotifications
 
 @main
 struct LumenApp: App {
@@ -14,7 +15,12 @@ struct LumenApp: App {
     private let timer = FocusTimer.shared
     private let sync = SyncEngine.shared
 
-    init() { Demo.prepare() }
+    init() {
+        // Set before launch finishes, so a tap on the notification that launched Lumen is handled.
+        UNUserNotificationCenter.current().delegate = NotificationRouter.shared
+        StudyAlerts.registerCategories()
+        Demo.prepare()
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -68,29 +74,26 @@ enum Lifecycle {
         Task { await WidgetBridge.refresh() }
     }
 
-    /// Background App Refresh (there are no push notifications in a sideloaded app): pull Instinct's changes,
-    /// then reschedule notifications and redraw widgets.
+    /// Background App Refresh: pull Instinct's changes, then reschedule notifications and redraw widgets.
     static func backgroundRefresh() async {
         scheduleRefresh()
         await CalendarSync.shared.run()
         await SyncEngine.shared.sync()
+        await StudyAlerts.reschedule(Store.shared)
         await Notifier.shared.reschedule()
         await WidgetBridge.refresh()
     }
 
     static func scheduleRefresh() {
         let r = BGAppRefreshTaskRequest(identifier: refreshID)
-        r.earliestBeginDate = Date().addingTimeInterval(30 * 60)
+        r.earliestBeginDate = Date().addingTimeInterval(90 * 60)
         try? BGTaskScheduler.shared.submit(r)
     }
 }
 
 final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-        MainActor.assumeIsolated {
-            Notifier.shared.setUp()
-            Push.shared.register()
-        }
+        MainActor.assumeIsolated { Push.shared.register() }
         return true
     }
 
