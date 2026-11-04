@@ -127,6 +127,12 @@ estimate, ask for an extension) instead of overloading the day.
   exist by number or title). `PATCH /syllabus/topics/{id}` with `status` (not_started → learning → revised → mastered)
   when the student tells you how a topic is going; let the student's own updates stand.
 
+- **Everything else** — Instinct may change any part of Lumen (scope `write:settings` for settings and free times):
+  `PATCH /preferences` (any setting except the webhook's secret), `GET|POST|PATCH|DELETE /availability` (weekly free and
+  busy windows), `/busy_slots` (one-off busy times), `/focus_sessions` (logged study time), and `PATCH /proposals/{id}`
+  (e.g. `{"status": "superseded"}` to withdraw a plan). Cards also accept `due_at` and `state` to reschedule a review.
+  Ask the student before big changes to their settings, and always give a `reason`.
+
 Every write returns a `batch_id`. If you made a mistake, `POST /undo` with that `batch_id` puts things back. The student
 can also undo anything you did from Planner → Activity.
 

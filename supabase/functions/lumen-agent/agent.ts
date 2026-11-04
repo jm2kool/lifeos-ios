@@ -18,7 +18,7 @@ class HttpError extends Error {
 }
 
 const VERSION = '1.0';
-const SCOPES = ['read', 'write:assignments', 'write:plan', 'write:cards', 'write:syllabus'];
+const SCOPES = ['read', 'write:assignments', 'write:plan', 'write:cards', 'write:syllabus', 'write:settings'];
 
 // ───────────────────────────── resources ─────────────────────────────
 
@@ -80,7 +80,10 @@ const RESOURCES: Record<string, Resource> = {
   },
   cards: {
     table: 'cards', scope: 'write:cards', order: 'created_at.asc',
-    fields: { deck_id: { type: 'uuid', required: true }, front: { type: 'text', required: true, max: 4000 }, back: { type: 'text', max: 8000 } },
+    fields: {
+      deck_id: { type: 'uuid', required: true }, front: { type: 'text', required: true, max: 4000 }, back: { type: 'text', max: 8000 },
+      due_at: { type: 'date' }, state: { type: 'enum', values: ['new', 'learning', 'review', 'relearning'] },
+    },
     filters: { deck_id: eq('deck_id'), state: eq('state') },
     title: (r) => `card "${String(r.front ?? '').slice(0, 50)}"`,
   },
@@ -108,6 +111,47 @@ const RESOURCES: Record<string, Resource> = {
     filters: { chapter_id: eq('chapter_id'), subject_id: eq('subject_id'), status: eq('status') },
     title: (r) => `topic "${r.title}"`,
   },
+  availability: {
+    table: 'availability', scope: 'write:settings', order: 'weekday.asc,start_time.asc',
+    fields: {
+      weekday: { type: 'int', required: true, min: 0, max: 6 }, start_time: { type: 'hhmm', required: true }, end_time: { type: 'hhmm', required: true },
+      kind: { type: 'enum', values: ['free', 'busy'] }, label: { type: 'string', max: 120 },
+    },
+    filters: { weekday: eq('weekday'), kind: eq('kind') },
+    title: (r) => `${r.kind ?? 'free'} time ${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][r.weekday] ?? ''} ${r.start_time}–${r.end_time}`,
+  },
+  busy_slots: {
+    table: 'busy_slots', scope: 'write:plan', order: 'start_at.asc',
+    fields: { start_at: { type: 'date', required: true }, end_at: { type: 'date', required: true }, title: { type: 'string', max: 200 }, all_day: { type: 'bool' } },
+    filters: { source: eq('source') },
+    title: (r, tz) => `busy time ${T.label(new Date(r.start_at), tz)}${r.title ? ` (${r.title})` : ''}`,
+  },
+  focus_sessions: {
+    table: 'focus_sessions', scope: 'write:plan', order: 'started_at.desc',
+    fields: {
+      started_at: { type: 'date', required: true }, ended_at: { type: 'date', required: true }, minutes: { type: 'int', min: 0, max: 1440 },
+      subject_id: { type: 'uuid' }, assignment_id: { type: 'uuid' }, block_id: { type: 'uuid' }, deck_id: { type: 'uuid' },
+      goal: { type: 'text', max: 2000 }, outcome: { type: 'enum', values: ['done', 'partial', 'not_done'] }, note: { type: 'text', max: 4000 },
+    },
+    filters: { assignment_id: eq('assignment_id'), subject_id: eq('subject_id'), block_id: eq('block_id') },
+    title: (r, tz) => `focus session ${T.label(new Date(r.started_at), tz)}${r.minutes ? ` (${r.minutes} min)` : ''}`,
+  },
+  proposals: {
+    table: 'proposals', scope: 'write:plan', order: 'created_at.desc',
+    fields: { status: { type: 'enum', values: ['pending', 'accepted', 'rejected', 'superseded'] }, reasoning: { type: 'text', max: 8000 } },
+    filters: { status: eq('status') },
+    title: () => 'plan proposal',
+  },
+};
+
+/** Preferences Instinct may change (everything except the webhook's signing secret). */
+const PREFERENCE_FIELDS: Record<string, Field> = {
+  timezone: { type: 'string', max: 64 }, max_hours_per_day: { type: 'number', min: 0.25, max: 16 }, block_minutes: { type: 'int', min: 10, max: 300 },
+  break_minutes: { type: 'int', min: 0, max: 120 }, earliest_time: { type: 'hhmm' }, latest_time: { type: 'hhmm' },
+  plan_mode: { type: 'enum', values: ['auto', 'ask'] }, pomodoro_focus: { type: 'int', min: 1, max: 180 }, pomodoro_short: { type: 'int', min: 1, max: 60 },
+  pomodoro_long: { type: 'int', min: 1, max: 120 }, pomodoro_rounds: { type: 'int', min: 1, max: 12 }, review_time: { type: 'hhmm' },
+  new_cards_per_day: { type: 'int', min: 0, max: 500 }, desired_retention: { type: 'number', min: 0.7, max: 0.97 },
+  daily_goal_minutes: { type: 'int', min: 0, max: 1440 }, share_calendar_titles: { type: 'bool' }, webhook_url: { type: 'string', max: 500 },
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -268,9 +312,15 @@ class Api {
       case 'events': return this.only(method, 'GET', () => this.events());
       case 'activity': return this.only(method, 'GET', () => this.activity());
       case 'undo': return this.only(method, 'POST', () => this.undo(body));
-      case 'proposals': return this.only(method, 'GET', () => this.proposals());
-      case 'preferences': return this.only(method, 'GET', async () => ({ preferences: this.cleanPrefs(await this.prefs()) }));
-      case 'availability': return this.only(method, 'GET', () => this.availability());
+      case 'proposals':
+        if (method === 'GET' && !a) return this.proposals();
+        return this.crud(method, RESOURCES.proposals, a, body);
+      case 'preferences':
+        if (method === 'PATCH') return this.updatePreferences(body);
+        return this.only(method, 'GET', async () => ({ preferences: this.cleanPrefs(await this.prefs()) }));
+      case 'availability':
+        if (method === 'GET' && !a) return this.availability();
+        return this.crud(method, RESOURCES.availability, a, body);
       case 'syllabus':
         if (!a) {
           if (method === 'GET') return this.syllabus();
@@ -298,7 +348,9 @@ class Api {
       now: this.now.toISOString(),
       endpoints: ['GET /context', 'POST /plan', 'GET /events', 'GET /activity', 'POST /undo', 'GET /proposals', 'GET /preferences',
         'GET /availability', 'GET|POST|PATCH|DELETE /assignments', 'GET|POST|PATCH|DELETE /blocks', 'GET|POST|PATCH|DELETE /decks',
-        'GET|POST|PATCH|DELETE /cards', 'GET|POST /syllabus', 'GET|POST|PATCH|DELETE /syllabus/{subjects|chapters|topics}'],
+        'GET|POST|PATCH|DELETE /cards', 'GET|POST /syllabus', 'GET|POST|PATCH|DELETE /syllabus/{subjects|chapters|topics}',
+        'PATCH /preferences', 'GET|POST|PATCH|DELETE /availability', 'GET|POST|PATCH|DELETE /busy_slots', 'GET|POST|PATCH|DELETE /focus_sessions',
+        'GET|PATCH /proposals'],
       docs: 'docs/INSTINCT.md and docs/openapi.yaml in the Lumen repository',
     };
   }
@@ -666,6 +718,32 @@ class Api {
     return { status: 'proposed', mode, proposal_id: proposal.id, ...summary, warnings, dropped };
   }
 
+  // ── PATCH /preferences ──
+
+  private async updatePreferences(body: Row) {
+    this.need('write:settings');
+    const tz = await this.tz();
+    const { values, errors } = validate(PREFERENCE_FIELDS, body, true, tz);
+    if ('no_study_days' in body) {
+      const d = body.no_study_days;
+      if (!Array.isArray(d) || !d.every((x: unknown) => Number.isInteger(x) && (x as number) >= 0 && (x as number) <= 6)) errors.push('no_study_days must be weekdays 0–6 (0 = Sunday)');
+      else values.no_study_days = [...new Set(d)];
+    }
+    if (values.timezone && T.validZone(values.timezone) !== values.timezone) errors.push('timezone must be an IANA name like Europe/London');
+    if (errors.length) throw new HttpError(400, errors.join('; '));
+    if (!Object.keys(values).length) throw new HttpError(400, `Nothing to change. Fields: ${[...Object.keys(PREFERENCE_FIELDS), 'no_study_days'].join(', ')}`);
+    const [before] = await this.db.select('preferences', this.mine({ deleted: 'is.false', select: '*', limit: '1' }));
+    const stamp = { updated_by: 'instinct', reason: typeof body.reason === 'string' ? body.reason.slice(0, 2000) : null, updated_at: this.now.toISOString() };
+    const [after] = before
+      ? await this.db.update('preferences', this.mine({ id: `eq.${before.id}` }), { ...values, ...stamp })
+      : await this.db.insert('preferences', { id: this.caller.userId, user_id: this.caller.userId, ...values, ...stamp, created_by: 'instinct' });
+    this.prefsCache = undefined;
+    await this.log(crypto.randomUUID(), [{ action: before ? 'updated' : 'created', entity: 'preferences', id: after.id, before: before ?? null, after,
+      summary: `Changed settings: ${Object.keys(values).join(', ')}` }], body.reason);
+    this.notice = {};
+    return { preferences: this.cleanPrefs(after) };
+  }
+
   // ── /events ──
 
   private async events() {
@@ -928,6 +1006,15 @@ class Api {
           throw new HttpError(409, `That block overlaps a busy time: ${what}. Pick another time, or add ?allow_overlap=true.`);
         }
       }
+    }
+    if (res.table === 'busy_slots' || res.table === 'focus_sessions') {
+      for (const r of rows) {
+        const a = r.start_at ?? r.started_at, b = r.end_at ?? r.ended_at;
+        if (a && b && new Date(b) <= new Date(a)) throw new HttpError(400, 'The end must be after the start.');
+      }
+    }
+    if (res.table === 'availability') {
+      for (const r of rows) if (T.minutes(r.end_time) <= T.minutes(r.start_time)) throw new HttpError(400, 'end_time must be after start_time.');
     }
     if (res.table === 'cards') {
       const deckIds = [...new Set(rows.map((r) => r.deck_id))];

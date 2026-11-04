@@ -172,6 +172,11 @@ paths:
       summary: The student's planning preferences
       responses:
         "200": { description: OK, content: { application/json: { schema: { type: object, properties: { preferences: { $ref: "#/components/schemas/Preferences" } } } } } }
+    patch:
+      tags: [Planning]
+      summary: Change any setting (scope write:settings) — send only the fields that change, plus a reason
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/Preferences" } } } }
+      responses: { "200": { description: OK }, "400": { $ref: "#/components/responses/BadRequest" }, "403": { $ref: "#/components/responses/Forbidden" } }
 
   /availability:
     get:
@@ -182,6 +187,28 @@ paths:
         - { name: to, in: query, schema: { type: string } }
       responses:
         "200": { description: OK }
+
+  /availability/{id}:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    patch: { tags: [Planning], summary: Change a weekly free or busy window (scope write:settings), responses: { "200": { $ref: "#/components/responses/Written" } } }
+    delete: { tags: [Planning], summary: Remove a weekly window, responses: { "200": { $ref: "#/components/responses/Written" } } }
+  /busy_slots:
+    get: { tags: [Planning], summary: One-off busy times, responses: { "200": { description: OK } } }
+    post: { tags: [Planning], summary: "Add a busy time {start_at, end_at, title} (scope write:plan)", responses: { "200": { $ref: "#/components/responses/Written" } } }
+  /busy_slots/{id}:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    patch: { tags: [Planning], summary: Change a busy time, responses: { "200": { $ref: "#/components/responses/Written" } } }
+    delete: { tags: [Planning], summary: Remove a busy time, responses: { "200": { $ref: "#/components/responses/Written" } } }
+  /focus_sessions:
+    get: { tags: [Planning], summary: "Logged focus time (filters: assignment_id, subject_id, block_id)", responses: { "200": { description: OK } } }
+    post: { tags: [Planning], summary: "Log study time {started_at, ended_at, minutes, assignment_id, outcome, note} (scope write:plan)", responses: { "200": { $ref: "#/components/responses/Written" } } }
+  /focus_sessions/{id}:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    patch: { tags: [Planning], summary: Fix a logged session, responses: { "200": { $ref: "#/components/responses/Written" } } }
+    delete: { tags: [Planning], summary: Remove a logged session, responses: { "200": { $ref: "#/components/responses/Written" } } }
+  /proposals/{id}:
+    parameters: [{ $ref: "#/components/parameters/Id" }]
+    patch: { tags: [Planning], summary: "Change a proposal, e.g. {\"status\": \"superseded\"} to withdraw it (scope write:plan)", responses: { "200": { $ref: "#/components/responses/Written" } } }
 
   /assignments:
     get:
@@ -335,7 +362,7 @@ components:
     accessKey:
       type: http
       scheme: bearer
-      description: A Lumen access key (lmn_…). Only its SHA-256 hash is stored; scopes are read, write:assignments, write:plan, write:cards, write:syllabus.
+      description: A Lumen access key (lmn_…). Only its SHA-256 hash is stored; scopes are read, write:assignments, write:plan, write:cards, write:syllabus, write:settings.
 
   parameters:
     Id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }

@@ -143,6 +143,7 @@ enum Scope: String, CaseIterable, Identifiable {
     case plan = "write:plan"
     case cards = "write:cards"
     case syllabus = "write:syllabus"
+    case settings = "write:settings"
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -151,6 +152,7 @@ enum Scope: String, CaseIterable, Identifiable {
         case .plan: return "Plan study blocks"
         case .cards: return "Make decks and cards"
         case .syllabus: return "Update the syllabus"
+        case .settings: return "Change settings and free times"
         }
     }
     static func label(_ raw: String) -> String {
@@ -160,6 +162,7 @@ enum Scope: String, CaseIterable, Identifiable {
         case "write:plan": return "Plan"
         case "write:cards": return "Cards"
         case "write:syllabus": return "Syllabus"
+        case "write:settings": return "Settings"
         default: return raw
         }
     }

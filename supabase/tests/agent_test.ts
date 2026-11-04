@@ -16,7 +16,7 @@ const NOW = new Date('2026-11-04T15:20:00Z');
 
 async function setup() {
   const db = new FakeDb(() => NOW);
-  db.seed('agent_keys', { user_id: USER, name: 'Instinct', key_hash: await sha256Hex(KEY), scopes: ['read', 'write:assignments', 'write:plan', 'write:cards', 'write:syllabus'], revoked_at: null, last_used_at: null });
+  db.seed('agent_keys', { user_id: USER, name: 'Instinct', key_hash: await sha256Hex(KEY), scopes: ['read', 'write:assignments', 'write:plan', 'write:cards', 'write:syllabus', 'write:settings'], revoked_at: null, last_used_at: null });
   db.seed('agent_keys', { user_id: USER, name: 'Reader', key_hash: await sha256Hex(READ_KEY), scopes: ['read'], revoked_at: null, last_used_at: null });
   db.seed('agent_keys', { user_id: USER, name: 'Old', key_hash: await sha256Hex('lmn_revoked'), scopes: ['read'], revoked_at: '2026-10-01T00:00:00Z' });
   db.seed('preferences', { id: USER, user_id: USER, timezone: 'Europe/London', max_hours_per_day: 3, block_minutes: 50, break_minutes: 10, no_study_days: [6], earliest_time: '08:00', latest_time: '22:00', plan_mode: 'ask', new_cards_per_day: 10, daily_goal_minutes: 120, webhook_secret: 'shh' });
@@ -214,4 +214,34 @@ Deno.test('decks with cards in one call, and a syllabus import', async () => {
   equal(db.t('topics').length, 5);
   const tree = await call(db, 'GET', '/syllabus');
   equal(tree.body.subjects[0].chapters.length, 2);
+});
+
+Deno.test('everything else: settings, free times, busy times, focus logs, proposals', async () => {
+  const { db } = await setup();
+  const prefs = await call(db, 'PATCH', '/preferences', { max_hours_per_day: 5, no_study_days: [0, 6], plan_mode: 'auto', reason: 'You asked for weekends off' });
+  equal(prefs.status, 200);
+  const row = db.t('preferences')[0];
+  equal(row.max_hours_per_day, 5);
+  equal(row.no_study_days, [0, 6]);
+  equal(row.updated_by, 'instinct');
+  assert(!('webhook_secret' in prefs.body.preferences), 'secret stays hidden');
+  equal((await call(db, 'PATCH', '/preferences', { block_minutes: 2 })).status, 400);
+  equal((await call(db, 'PATCH', '/preferences', { max_hours_per_day: 3 }, READ_KEY)).status, 403);
+
+  const w = await call(db, 'POST', '/availability', { weekday: 6, start_time: '10:00', end_time: '12:00', kind: 'free' });
+  equal(w.status, 200);
+  equal((await call(db, 'PATCH', `/availability/${w.body.id}`, { end_time: '13:00' })).status, 200);
+  equal((await call(db, 'POST', '/availability', { weekday: 6, start_time: '12:00', end_time: '10:00' })).status, 400);
+  equal((await call(db, 'GET', '/availability')).body.timezone, 'Europe/London', 'GET still gives the free-time view');
+
+  const busy = await call(db, 'POST', '/busy_slots', { start_at: '2026-11-06T17:00:00Z', end_at: '2026-11-06T18:00:00Z', title: 'Dentist' });
+  equal(busy.status, 200);
+  const focus = await call(db, 'POST', '/focus_sessions', { started_at: '2026-11-04T10:00:00Z', ended_at: '2026-11-04T10:30:00Z', minutes: 30, outcome: 'done' });
+  equal(focus.status, 200);
+
+  db.seed('proposals', { user_id: USER, range_start: '2026-11-05T00:00:00Z', range_end: '2026-11-06T00:00:00Z', blocks: [], status: 'pending' });
+  const p = db.t('proposals')[0];
+  equal((await call(db, 'PATCH', `/proposals/${p.id}`, { status: 'superseded' })).status, 200);
+  equal(db.t('proposals')[0].status, 'superseded');
+  assert(db.t('activity').length >= 5, 'every change is in the activity feed');
 });

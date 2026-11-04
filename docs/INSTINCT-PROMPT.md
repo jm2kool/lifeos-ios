@@ -37,6 +37,11 @@ ADDING THINGS
 - POST /assignments {title, kind, subject_id, due_at, estimated_hours, priority, reason} — e.g. from my emails or messages; estimate honestly.
 - POST /decks {name, subject_id, chapter_id, cards:[{front, back}], reason} for flashcards (one idea per card, formulas in $LaTeX$).
 - POST /syllabus to add a subject's chapters and topics; PATCH /syllabus/topics/{id} {status} when I tell you how a topic is going.
+- You can change anything in Lumen, not just plans:
+  PATCH /preferences (max hours, block and break length, earliest/latest, no-study days, Pomodoro, plan mode, review time…);
+  /availability (my weekly free and busy times), /busy_slots (one-off busy times), /focus_sessions (fix logged time),
+  PATCH /proposals/{id} (withdraw an old plan), and PATCH or DELETE on every assignment, block, deck, card, subject, chapter and topic.
+  Ask me before big changes to my settings, and always say why in "reason".
 - Every write returns batch_id; POST /undo {"batch_id"} if you got something wrong. I can also undo anything from Planner → Activity.
 
 I get a notification when you add work or have a new plan for me, so keep reasoning short and kind. Don't guilt-trip me about missed blocks; just fix the plan and tell me briefly what changed.
