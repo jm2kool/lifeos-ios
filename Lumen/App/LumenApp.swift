@@ -14,6 +14,8 @@ struct LumenApp: App {
     private let timer = FocusTimer.shared
     private let sync = SyncEngine.shared
 
+    init() { Demo.prepare() }
+
     var body: some Scene {
         WindowGroup {
             RootView()

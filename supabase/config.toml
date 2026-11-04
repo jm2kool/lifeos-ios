@@ -1,0 +1,10 @@
+# Supabase CLI settings for Lumen's Edge Functions (used by `supabase functions deploy`).
+project_id = "lumen"
+
+[functions.lumen-agent]
+# Instinct authenticates with a Lumen access key, not a Supabase JWT.
+verify_jwt = false
+
+[functions.lumen-ai-cards]
+# Only signed-in Lumen users can make cards.
+verify_jwt = true

@@ -1,0 +1,58 @@
+name: Lumen server and logic tests
+
+on:
+  push:
+    branches: [lumen]
+    paths: ['supabase/**', 'tests/**', 'Lumen/Services/Core/**', '.github/workflows/server.yml']
+  pull_request:
+    branches: [lumen]
+  workflow_dispatch:
+
+jobs:
+  sql:
+    name: Migration on Postgres
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the migration twice and the behaviour checks
+        run: supabase/tests/sql/run.sh
+
+  functions:
+    name: Edge Functions (Deno)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.1.4
+      - name: Type-check
+        run: |
+          deno check supabase/functions/lumen-agent/index.ts
+          deno check supabase/functions/lumen-ai-cards/index.ts
+      - name: Agent API tests
+        run: deno test supabase/tests/
+
+  core:
+    name: Planner, parser and FSRS (Swift on Linux)
+    runs-on: ubuntu-latest
+    container: swift:6.1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run
+        run: |
+          swiftc -swift-version 5 -o /tmp/coretest tests/core/main.swift Lumen/Services/Core/*.swift
+          TZ=UTC /tmp/coretest | tee /tmp/out.txt
+          grep -q "ALL PASSED" /tmp/out.txt
