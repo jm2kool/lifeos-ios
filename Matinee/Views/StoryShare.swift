@@ -93,6 +93,7 @@ struct StoryTicket: View {
     let logged: Bool
     let art: StoryArt
     let showReview: Bool
+    var showRating = true
     let handle: String?
 
     static let width: CGFloat = 640
@@ -162,9 +163,9 @@ struct StoryTicket: View {
                 Text(titleLine).font(.system(size: 40, weight: .bold, design: .serif)).lineLimit(2).minimumScaleFactor(0.6)
             }
 
-            if (entry.rating ?? 0) > 0 || entry.liked {
+            if (showRating && (entry.rating ?? 0) > 0) || entry.liked {
                 HStack(alignment: .center, spacing: 22) {
-                    if let r = entry.rating, r > 0 { rating(r) }
+                    if showRating, let r = entry.rating, r > 0 { rating(r) }
                     if entry.liked { Image(systemName: "heart.fill").font(.system(size: 50)).foregroundStyle(Theme.heart) }
                     if entry.rewatch { Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 40, weight: .bold)).foregroundStyle(.white.opacity(0.6)) }
                 }
@@ -318,6 +319,7 @@ struct StoryShareSheet: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("storyStyle") private var style: StoryStyle = .glow
     @State private var showReview: Bool
+    @AppStorage("storyShowsRating") private var showRating = true
     @State private var art: StoryArt?
     @State private var preview: UIImage?
     @State private var sending = false
@@ -329,11 +331,12 @@ struct StoryShareSheet: View {
     }
 
     private var logged: Bool { library.doc.entries.contains { $0.id == entry.id } }
+    private var hasRating: Bool { (entry.rating ?? 0) > 0 }
     private var hasReview: Bool { !entry.review.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private var handle: String? { Handle.clean(library.doc.profile.handle) }
 
     private func ticket(_ art: StoryArt) -> StoryTicket {
-        StoryTicket(entry: entry, logged: logged, art: art, showReview: showReview && hasReview, handle: handle)
+        StoryTicket(entry: entry, logged: logged, art: art, showReview: showReview && hasReview, showRating: showRating, handle: handle)
     }
 
     var body: some View {
@@ -361,6 +364,11 @@ struct StoryShareSheet: View {
                     }
                     .pickerStyle(.segmented)
 
+                    if hasRating {
+                        Toggle(isOn: $showRating) {
+                            Label("Show my rating", systemImage: FilmRatingStyle.current == .stars ? "star.fill" : "gauge.with.needle")
+                        }
+                    }
                     if hasReview && style != .poster {
                         Toggle(isOn: $showReview) {
                             Label(entry.spoilers == true ? "Show my review (has spoilers)" : "Show my review", systemImage: "text.quote")
@@ -409,7 +417,7 @@ struct StoryShareSheet: View {
             let a = await StoryRenderer.art(for: entry.film)
             withAnimation(.smooth) { art = a }
         }
-        .task(id: "\(style.rawValue)|\(showReview)|\(art != nil)") {
+        .task(id: "\(style.rawValue)|\(showReview)|\(showRating)|\(art != nil)") {
             guard let art else { return }
             let img = composite(art)
             withAnimation(.smooth(duration: 0.3)) { preview = img }
@@ -423,7 +431,7 @@ struct StoryShareSheet: View {
     }
 
     private func posterCard(_ art: StoryArt) -> UIImage? {
-        StoryRenderer.image(ShareCard(film: entry.film, poster: art.poster, logo: art.logo, rating: entry.rating, liked: entry.liked,
+        StoryRenderer.image(ShareCard(film: entry.film, poster: art.poster, logo: art.logo, rating: showRating ? entry.rating : nil, liked: entry.liked,
                                       tint: Color(uiColor: art.accent)), scale: 1)
     }
 

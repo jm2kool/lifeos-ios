@@ -55,7 +55,7 @@ enum Changelog {
     static let releases: [Release] = [
         Release(version: "1.5", date: "6 November 2026", headline: "Straight to your story", items: [
             ChangeItem(symbol: "camera.circle.fill", title: "Share to Instagram Stories",
-                       detail: "Swipe right on a diary entry and tap Story, or use ••• on any film. Your film becomes a cinema ticket — poster, score, heart and a line of your review — that drops into Instagram's story editor, ready to move about. Pick Glow, Colour or Poster for the look.",
+                       detail: "Swipe right on a diary entry and tap Story, or use ••• on any film. Your film becomes a cinema ticket — poster, score, heart and a line of your review — that drops into Instagram's story editor, ready to move about. Pick Glow, Colour or Poster for the look, and switch your rating and review on or off before you share.",
                        action: .diary),
         ]),
         Release(version: "1.4", date: "3 November 2026", headline: "What's on, what's next", items: [
