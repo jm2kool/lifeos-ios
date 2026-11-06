@@ -285,6 +285,7 @@ struct SheetHost: View {
         case .ask: AskMatineeSheet()
         case .party(let c): PartySheet(code: c)
         case .finder(let t): FinderView(initial: t)
+        case .story(let e): StoryShareSheet(entry: e)
         }
     }
 }

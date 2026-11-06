@@ -115,6 +115,7 @@ enum SheetRoute: Identifiable, Equatable {
     case ask
     case party(String)
     case finder(String?)                        // the AI finder, optionally with a link or text to look up
+    case story(LogEntry)                        // share an entry (or a film) to Instagram Stories
 
     var id: String {
         switch self {
@@ -137,6 +138,7 @@ enum SheetRoute: Identifiable, Equatable {
         case .ask: return "ask"
         case .party(let c): return "party-\(c)"
         case .finder(let t): return "finder-\(t ?? "")"
+        case .story(let e): return "story-\(e.id)"
         }
     }
 }

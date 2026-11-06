@@ -73,6 +73,9 @@ struct FilmView: View {
                     ShareLink(item: shareText) {
                         Label("Share", systemImage: "square.and.arrow.up")
                     }
+                    Button { router.sheet = .story(storyEntry) } label: {
+                        Label("Share to Instagram Stories", systemImage: "camera.circle")
+                    }
                     if let img = shareImage {
                         ShareLink(item: Image(uiImage: img), preview: SharePreview(ref.title, image: Image(uiImage: img))) {
                             Label("Share as a story card", systemImage: "photo.on.rectangle")
@@ -127,6 +130,12 @@ struct FilmView: View {
                 withAnimation(.easeInOut(duration: 0.7)) { palette = p }
             }
         }
+    }
+
+    /// What a story shares: your latest diary entry for the title, or your rating and like if you haven't logged it.
+    private var storyEntry: LogEntry {
+        if let e = library.entries(for: ref.id).first(where: { !$0.isEpisode }) { return e }
+        return LogEntry(film: ref, rating: library.rating(ref.id), liked: library.isLiked(ref.id))
     }
 
     /// What sharing the page sends: your take if you've seen it, otherwise that it's on your list.

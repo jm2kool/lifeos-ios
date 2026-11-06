@@ -53,6 +53,11 @@ struct Release: Identifiable, Hashable {
 enum Changelog {
     /// Newest first.
     static let releases: [Release] = [
+        Release(version: "1.5", date: "6 November 2026", headline: "Straight to your story", items: [
+            ChangeItem(symbol: "camera.circle.fill", title: "Share to Instagram Stories",
+                       detail: "Swipe right on a diary entry and tap Story, or use ••• on any film. Your film becomes a cinema ticket — poster, score, heart and a line of your review — that drops into Instagram's story editor, ready to move about. Pick Glow, Colour or Poster for the look.",
+                       action: .diary),
+        ]),
         Release(version: "1.4", date: "3 November 2026", headline: "What's on, what's next", items: [
             ChangeItem(symbol: "play.tv.fill", title: "Your streaming services",
                        detail: "Tick the services you pay for in Settings → My streaming services. Your watchlist can then show only what's on them, Home gets a Ready to stream row, and Matinee tells you when a watchlist title arrives on one.",

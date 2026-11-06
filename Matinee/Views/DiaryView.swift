@@ -62,10 +62,12 @@ struct DiaryView: View {
                                 }
                                 .swipeActions(edge: .leading) {
                                     Button { router.sheet = e.logAgainRoute } label: { Label("Log again", systemImage: "arrow.triangle.2.circlepath") }.tint(Theme.watch)
+                                    Button { router.sheet = .story(e) } label: { Label("Story", systemImage: "camera.circle") }.tint(Theme.heart)
                                 }
                                 .contextMenu {
                                     Button { router.sheet = .log(e.film, e) } label: { Label("Edit entry", systemImage: "pencil") }
                                     Button { router.sheet = e.logAgainRoute } label: { Label("Log again", systemImage: "arrow.triangle.2.circlepath") }
+                                    Button { router.sheet = .story(e) } label: { Label("Share to Instagram Stories", systemImage: "camera.circle") }
                                     Button(role: .destructive) { library.delete(e) } label: { Label("Delete", systemImage: "trash") }
                                 }
                         }
