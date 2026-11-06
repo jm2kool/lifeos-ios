@@ -21,9 +21,9 @@
 	<string></string>
 	<key>MatineeTMDBToken</key>
 	<string></string>
-	<!-- Optional: a Facebook app ID, which Instagram asks for when Matinee opens its story editor. -->
+	<!-- The Facebook app ID Instagram asks for when Matinee opens its story editor. -->
 	<key>MatineeFacebookAppID</key>
-	<string></string>
+	<string>1097387086261982</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>instagram-stories</string>
