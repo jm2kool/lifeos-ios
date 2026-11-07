@@ -45,7 +45,7 @@ struct MixtapeDetailView: View {
                         Divider().overlay(Palette.stroke)
                     }
                     Button { adding = true } label: { Label(busy ? "Importing…" : "Add tracks", systemImage: "plus") }
-                        .buttonStyle(.glass).padding(.top, 16).disabled(busy)
+                        .buttonStyle(.linerGlass).padding(.top, 16).disabled(busy)
                 }
                 .padding(.horizontal, 16).padding(.top, 18)
             }

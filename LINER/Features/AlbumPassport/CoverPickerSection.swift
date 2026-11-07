@@ -15,7 +15,7 @@ struct CoverPickerSection: View {
                 PhotosPicker(selection: $photo, matching: .images) { Label("Cover image", systemImage: "photo") }
                 PhotosPicker(selection: $video, matching: .any(of: [.videos, .images])) { Label("Motion cover", systemImage: "play.rectangle") }
             }
-            .buttonStyle(.glass).font(.footnote)
+            .buttonStyle(.linerGlass).font(.footnote)
             if working { ProgressView("Preparing motion cover…").font(.footnote) }
             if note.coverOverride != nil || note.motionCoverFile != nil {
                 Button("Use the original artwork", role: .destructive) {

@@ -49,12 +49,12 @@ struct ShareCardSheet: View {
                             }
                             if animated, let video {
                                 ShareLink(item: video) { Label("Share…", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity).padding(.vertical, 6) }
-                                    .buttonStyle(.glass).controlSize(.large)
+                                    .buttonStyle(.linerGlass).controlSize(.large)
                             } else if let still {
                                 ShareLink(item: Image(uiImage: still), preview: SharePreview(content.title, image: Image(uiImage: still))) {
                                     Label("Share…", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity).padding(.vertical, 6)
                                 }
-                                .buttonStyle(.glass).controlSize(.large)
+                                .buttonStyle(.linerGlass).controlSize(.large)
                             }
                         }
                     }

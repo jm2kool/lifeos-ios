@@ -15,7 +15,7 @@ struct InstagramSpikeView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 Button(spike.story == nil ? "Make story video" : "Remake from test song") { Task { await spike.prepare() } }
-                    .buttonStyle(.glass).disabled(spike.working)
+                    .buttonStyle(.linerGlass).disabled(spike.working)
             }
             ForEach(InstagramSpike.Kind.allCases, id: \.self) { kind in
                 Card {

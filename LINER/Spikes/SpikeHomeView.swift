@@ -37,7 +37,7 @@ struct SpikeHomeView: View {
                             ShareLink(item: report.text) {
                                 Label("Share", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity)
                             }
-                            .buttonStyle(.glass)
+                            .buttonStyle(.linerGlass)
                         }
                         .controlSize(.large)
                     }

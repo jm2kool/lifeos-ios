@@ -29,7 +29,7 @@ struct MoodPlaylistDetail: View {
                         Task { message = await MoodPlaylistService.saveToAppleMusic(playlist, library: library) }
                     }
                 }
-                .buttonStyle(.glass).font(.footnote)
+                .buttonStyle(.linerGlass).font(.footnote)
                 if let message { Text(message).font(.footnote).foregroundStyle(Palette.secondary) }
                 LazyVStack(spacing: 0) {
                     ForEach(songs) { s in PlayableSongRow(song: s, list: songs).padding(.vertical, 6) }

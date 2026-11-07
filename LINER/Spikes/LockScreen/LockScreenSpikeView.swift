@@ -48,7 +48,7 @@ struct LockScreenSpikeView: View {
                     Button("Re-apply", systemImage: "arrow.clockwise") { spike.apply(reason: "manual") }
                     Button("Stop", systemImage: "stop.fill") { spike.stopAll() }
                 }
-                .buttonStyle(.glass).font(.footnote)
+                .buttonStyle(.linerGlass).font(.footnote)
             }
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.audio, .mp3, .mpeg4Audio, .wav]) { result in
@@ -76,7 +76,7 @@ struct LockScreenSpikeView: View {
                 Text("3:4 is 1080×1440, 1:1 is 1080×1080, 8 s loop at 30 fps, H.264.").font(.caption).foregroundStyle(.white.opacity(0.5))
             }
             Button(spike.tall == nil ? "Make Living Covers" : "Remake from test song") { Task { await spike.prepareCovers() } }
-                .buttonStyle(.glass).disabled(spike.working)
+                .buttonStyle(.linerGlass).disabled(spike.working)
         }
     }
 

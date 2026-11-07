@@ -5,6 +5,6 @@ import SwiftUI
 enum ShareCardLauncher {
     @ViewBuilder static func recap(card: RecapStoryView.Card, recap: Recap, cover: UIImage?) -> some View {
         ShareCardButton(make: { .recap(recap, card: card) }, label: "Share this card")
-            .buttonStyle(.glass).controlSize(.large)
+            .buttonStyle(.linerGlass).controlSize(.large)
     }
 }

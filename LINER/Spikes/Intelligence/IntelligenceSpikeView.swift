@@ -11,7 +11,7 @@ struct IntelligenceSpikeView: View {
             Card {
                 SectionLabel("Availability")
                 Text(spike.availability).font(.subheadline)
-                Button("Check again") { spike.check() }.buttonStyle(.glass)
+                Button("Check again") { spike.check() }.buttonStyle(.linerGlass)
             }
             Card {
                 SectionLabel("Your vibe")

@@ -25,7 +25,7 @@ struct LibrarySpikeView: View {
                         Button { lib.play(song) } label: { row(song) }.buttonStyle(.plain)
                     }
                 }
-                Button("Rescan library") { lib.scan() }.buttonStyle(.glass)
+                Button("Rescan library") { lib.scan() }.buttonStyle(.linerGlass)
             }
         }
         .task { if lib.status == .authorized && lib.topSongs.isEmpty { lib.scan() } }
@@ -46,7 +46,7 @@ struct LibrarySpikeView: View {
                     Button("+15s", systemImage: "goforward.15") { lib.skipForward() }
                     Button("Stop", systemImage: "stop.fill") { lib.stop() }
                 }
-                .labelStyle(.iconOnly).buttonStyle(.glass).controlSize(.large)
+                .labelStyle(.iconOnly).buttonStyle(.linerGlass).controlSize(.large)
             }
         }
     }

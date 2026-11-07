@@ -47,7 +47,7 @@ struct SongPassportContent: View {
             }
             section("Moods") {
                 ChipGrid(options: allMoods, selection: Binding(get: { Set(note.moods) }, set: { note.moods = allMoods.filter($0.contains); touch() }))
-                Button("+ Custom", systemImage: "plus") { addingMood = true }.font(.footnote).buttonStyle(.glass)
+                Button("+ Custom", systemImage: "plus") { addingMood = true }.font(.footnote).buttonStyle(.linerGlass)
             }
             section("My Notes") {
                 TextField("What this song is to you", text: Binding(get: { note.notes }, set: { note.notes = $0; touch() }), axis: .vertical)

@@ -35,7 +35,7 @@ struct GlassPillButton: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 6)
         }
-        .buttonStyle(prominent ? AnyPrimitiveButtonStyle(.linerPrimary) : AnyPrimitiveButtonStyle(.glass))
+        .buttonStyle(prominent ? AnyPrimitiveButtonStyle(.linerPrimary) : AnyPrimitiveButtonStyle(.linerGlass))
         .controlSize(.large)
     }
 }
@@ -65,10 +65,31 @@ struct AnyPrimitiveButtonStyle: PrimitiveButtonStyle {
 struct LinerPrimaryStyle: PrimitiveButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         Button(role: configuration.role, action: configuration.trigger) {
-            configuration.label.foregroundStyle(.black)
+            configuration.label.foregroundStyle(.black).singleLineLabel()
         }
         .buttonStyle(.glassProminent)
         .tint(.white)
+    }
+}
+
+/// Liquid Glass button whose label stays on one line (shrinking a little before it would wrap).
+struct LinerGlassStyle: PrimitiveButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button(role: configuration.role, action: configuration.trigger) {
+            configuration.label.singleLineLabel()
+        }
+        .buttonStyle(.glass)
+    }
+}
+
+extension PrimitiveButtonStyle where Self == LinerGlassStyle {
+    static var linerGlass: LinerGlassStyle { LinerGlassStyle() }
+}
+
+extension View {
+    /// Button text never breaks onto a second line: it shrinks to at most 70 %, then truncates.
+    func singleLineLabel() -> some View {
+        lineLimit(1).minimumScaleFactor(0.7).allowsTightening(true)
     }
 }
 
