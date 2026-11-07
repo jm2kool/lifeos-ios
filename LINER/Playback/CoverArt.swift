@@ -1,10 +1,12 @@
 import UIKit
 
-/// Finds the cover for any queue item: library artwork from the cache, or a mixtape's saved cover.
+/// Finds the cover for any queue item: your own album cover, library artwork from the cache, or a mixtape's cover.
+@MainActor
 enum CoverArt {
     static func image(for item: QueueItem, pixels: CGFloat) async -> UIImage? {
         switch item {
         case .library(let song):
+            if let mine = CoverOverrides.shared.image(song.albumID) { return mine }
             return await ArtworkCache.shared.image(album: song.albumID, pixels: pixels)
         case .local(let track):
             guard let url = track.coverURL else { return nil }

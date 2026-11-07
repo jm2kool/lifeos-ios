@@ -44,7 +44,8 @@ final class ArtistLogoStore: @unchecked Sendable {
         parts.queryItems = [URLQueryItem(name: "s", value: name)]
         await Self.limiter.wait()
         guard let url = parts.url, let result = try? await URLSession.shared.data(from: url),
-              let decoded = try? JSONDecoder().decode(Response.self, from: result.0),
+              (result.1 as? HTTPURLResponse)?.statusCode == 200 else { return nil }   // offline: try again later
+        guard let decoded = try? JSONDecoder().decode(Response.self, from: result.0),
               let match = decoded.artists?.first(where: { MediaKey.normalise($0.strArtist ?? "") == key }),
               let logoString = match.strArtistLogo, let logoURL = URL(string: logoString),
               let png = try? await URLSession.shared.data(from: logoURL).0,

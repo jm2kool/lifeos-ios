@@ -46,7 +46,7 @@ final class NowPlayingManager {
         ]
         let extra = animated.keys(for: item)
         guard ownsNowPlaying || !extra.isEmpty else { return }
-        if let artwork, artwork.key == item.artworkKey {
+        if let artwork, artwork.key == item.coverKey {
             info[MPMediaItemPropertyArtwork] = Self.staticArtwork(artwork.image)
         } else {
             loadArtwork(for: item)
@@ -59,7 +59,7 @@ final class NowPlayingManager {
         artworkTask?.cancel()
         artworkTask = Task {
             guard let image = await CoverArt.image(for: item, pixels: 1000), !Task.isCancelled else { return }
-            artwork = (item.artworkKey, image)
+            artwork = (item.coverKey, image)
             update()
         }
     }

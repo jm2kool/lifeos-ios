@@ -61,6 +61,9 @@ enum LibraryScanner {
         }
 
         var snapshot = LibrarySnapshot(songs: songs, albums: albums, artists: artists, playlists: playlists)
+        var artworkSongs: [UInt64: UInt64] = [:]
+        for s in songs where s.hasArtwork && artworkSongs[s.albumID] == nil { artworkSongs[s.albumID] = s.id }
+        snapshot.artworkSongs = artworkSongs
         snapshot.items = MediaItemIndex(Dictionary(items.map { ($0.persistentID, $0) }, uniquingKeysWith: { a, _ in a }))
         snapshot.scannedAt = .now
         snapshot.scanDuration = clock.now - start

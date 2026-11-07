@@ -85,6 +85,8 @@ final class MediaItemIndex: @unchecked Sendable {
 /// Everything read from the library in one pass.
 struct LibrarySnapshot: Sendable {
     var items = MediaItemIndex()
+    /// For each album, a song whose item carries the artwork.
+    var artworkSongs: [UInt64: UInt64] = [:]
     let songs: [Song]
     let albums: [Album]
     let artists: [Artist]

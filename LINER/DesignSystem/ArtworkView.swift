@@ -1,31 +1,39 @@
 import SwiftUI
 
-/// Square album art from the cache, with a quiet placeholder while it loads.
+/// Square album art: your own cover if you set one, else the library artwork from the cache, with a quiet
+/// placeholder while it loads. Failed loads are retried, and tried again after each library scan.
 struct ArtworkView: View {
     let albumID: UInt64?
     var cornerRadius: CGFloat = 8
     @Environment(\.displayScale) private var scale
+    @Environment(LibraryService.self) private var library
     @State private var image: UIImage?
 
     var body: some View {
         GeometryReader { geo in
             let pixels = max(geo.size.width, geo.size.height) * scale
+            let custom = albumID.flatMap { CoverOverrides.shared.image($0) }
             ZStack {
                 Palette.placeholder
-                if let image {
-                    FillImage(image: image)
-                        .transition(.opacity)
+                if let shown = custom ?? image {
+                    FillImage(image: shown).transition(.opacity)
                 } else {
                     Image(systemName: "music.note").font(.system(size: max(12, geo.size.width * 0.22))).foregroundStyle(Palette.faint)
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .clipped()
-            .task(id: "\(albumID ?? 0)-\(Int(pixels))") {
-                guard let albumID, pixels > 0 else { return }
+            .task(id: "\(albumID ?? 0)-\(Int(pixels))-\(library.snapshot.scannedAt.timeIntervalSince1970)") {
+                guard custom == nil, let albumID, pixels > 0 else { return }
                 if let hit = ArtworkCache.shared.cached(album: albumID, pixels: pixels) { image = hit; return }
-                let loaded = await ArtworkCache.shared.image(album: albumID, pixels: pixels)
-                withAnimation(.easeOut(duration: 0.2)) { image = loaded }
+                for attempt in 0..<3 {
+                    if let loaded = await ArtworkCache.shared.image(album: albumID, pixels: pixels) {
+                        withAnimation(.easeOut(duration: 0.2)) { image = loaded }
+                        return
+                    }
+                    if Task.isCancelled { return }
+                    try? await Task.sleep(for: .seconds(1.0 + Double(attempt)))
+                }
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
@@ -66,4 +74,5 @@ struct ArtistPortraitView: View {
         ArtistPortraitView(name: "Lorde").frame(width: 120, height: 120).clipShape(Circle())
     }
     .padding().background(.black)
+    .environment(PreviewData.library)
 }

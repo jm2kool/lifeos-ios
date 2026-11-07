@@ -8,7 +8,7 @@ enum PlayerExtras {
         if let item, let motion = MotionLookup.file(for: item) {
             LoopingVideo(url: MotionCoverFiles.url(motion))
         } else if let image, let item, MotionSettings.livingCoversOn {
-            LivingCoverView(image: image, look: look, key: item.artworkKey)
+            LivingCoverView(image: image, look: look, key: item.coverKey)
         } else if let image {
             FocusedFillImage(image: image, focus: look.focus)
         } else {

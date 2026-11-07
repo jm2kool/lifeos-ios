@@ -135,22 +135,37 @@ struct AlbumDetailView: View {
     }
 }
 
-/// The album header: edition cover, your cover override, a motion cover, or the album artwork.
+/// The album header: a motion cover if you attached one; otherwise the cover (edition cover, your own cover,
+/// or the album artwork) as a moving Living Cover while you're on the page.
 struct AlbumHeaderArt: View {
     let albumID: UInt64
     let note: AlbumNote?
     let edition: Edition?
+    @State private var image: UIImage?
+    @State private var look = ArtworkLook.neutral
+
+    private var stillKey: String {
+        "album-\(albumID)\(CoverVersions.suffix(albumID))-\(edition?.id.uuidString ?? "")-\(edition?.coverImage?.count ?? 0)"
+    }
 
     var body: some View {
         let motion = edition?.motionCoverFile ?? note?.motionCoverFile
-        let still = edition?.coverImage ?? note?.coverOverride
         ZStack {
-            if let data = still, let img = UIImage(data: data) {
-                FillImage(image: img)
-            } else {
-                ArtworkView(albumID: albumID, cornerRadius: 0)
+            ArtworkView(albumID: albumID, cornerRadius: 0)
+            if let motion {
+                LoopingVideo(url: MotionCoverFiles.url(motion))
+            } else if let image, MotionSettings.livingCoversOn {
+                LivingCoverView(image: image, look: look, key: stillKey).transition(.opacity)
             }
-            if let motion { LoopingVideo(url: MotionCoverFiles.url(motion)) }
+        }
+        .task(id: stillKey) {
+            var img: UIImage?
+            if let data = edition?.coverImage { img = UIImage(data: data) }
+            if img == nil { img = CoverOverrides.shared.image(albumID) }
+            if img == nil { img = await ArtworkCache.shared.image(album: albumID, pixels: 1400) }
+            guard let img else { return }
+            look = await ArtworkAnalysis.look(for: img, key: stillKey)
+            withAnimation(.easeIn(duration: 0.4)) { image = img }
         }
     }
 }

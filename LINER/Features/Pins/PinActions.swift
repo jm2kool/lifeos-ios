@@ -54,6 +54,13 @@ struct AlbumActionsMenu: View {
             }
         }
         Button("Album Passport", systemImage: "text.book.closed") { passports.album = .library(album, snapshot: library.snapshot) }
+        Menu("Cover", systemImage: "photo.on.rectangle") {
+            Button("Choose Cover Photo", systemImage: "photo") { passports.cover = CoverRequest(album: album, motion: false) }
+            Button("Choose Motion Cover", systemImage: "play.rectangle") { passports.cover = CoverRequest(album: album, motion: true) }
+            if CoverOverrides.shared.image(album.id) != nil || Store.shared.albumNote(id)?.motionCoverFile != nil {
+                Button("Use Original Artwork", systemImage: "arrow.uturn.backward", role: .destructive) { CoverSaver.reset(album) }
+            }
+        }
         Button("Manage Editions", systemImage: "square.stack.3d.up") { passports.editions = .library(album, snapshot: library.snapshot) }
     }
 }

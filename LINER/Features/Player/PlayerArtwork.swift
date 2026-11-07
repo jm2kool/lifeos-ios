@@ -9,12 +9,12 @@ final class PlayerArtwork {
 
     func load(_ item: QueueItem?) async {
         guard let item else { image = nil; key = nil; return }
-        guard item.artworkKey != key else { return }
-        key = item.artworkKey
+        guard item.coverKey != key else { return }
+        key = item.coverKey
         let img = await CoverArt.image(for: item, pixels: 1600)
         var look = ArtworkLook.neutral
-        if let img { look = await ArtworkAnalysis.look(for: img, key: item.artworkKey) }
-        guard key == item.artworkKey else { return }
+        if let img { look = await ArtworkAnalysis.look(for: img, key: item.coverKey) }
+        guard key == item.coverKey else { return }
         withAnimation(.easeInOut(duration: 0.6)) {
             self.image = img
             self.look = look

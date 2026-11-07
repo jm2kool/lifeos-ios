@@ -4,9 +4,11 @@ import Foundation
 /// a paid Apple Music path could slot in here later (SPEC §1).
 protocol CatalogProvider: Sendable {
     var sourceName: String { get }
-    /// A large portrait for the artist, or nil when the catalogue has no real photo.
-    func artistImageURL(for name: String) async -> URL?
+    func artistImage(for name: String) async -> CatalogResult
 }
+
+/// A lookup's outcome: only `.notFound` is remembered as "no photo"; a failed request is simply tried again later.
+enum CatalogResult: Sendable { case found(URL), notFound, failed }
 
 /// Deezer's public API: `search/artist` → `picture_xl`. Spaced out to stay well under its 50 requests / 5 s limit.
 struct DeezerCatalog: CatalogProvider {
@@ -18,18 +20,21 @@ struct DeezerCatalog: CatalogProvider {
         let data: [Artist]
     }
 
-    func artistImageURL(for name: String) async -> URL? {
+    func artistImage(for name: String) async -> CatalogResult {
         var parts = URLComponents(string: "https://api.deezer.com/search/artist")!
         parts.queryItems = [URLQueryItem(name: "q", value: name), URLQueryItem(name: "limit", value: "5")]
-        guard let url = parts.url else { return nil }
+        guard let url = parts.url else { return .failed }
         await Self.limiter.wait()
-        guard let result = try? await URLSession.shared.data(from: url),
-              let decoded = try? JSONDecoder().decode(Response.self, from: result.0) else { return nil }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 15
+        guard let result = try? await URLSession.shared.data(for: request),
+              (result.1 as? HTTPURLResponse)?.statusCode == 200,
+              let decoded = try? JSONDecoder().decode(Response.self, from: result.0) else { return .failed }
         let wanted = MediaKey.normalise(name)
         // Only accept a matching name, so a wrong artist's face never shows up.
         guard let match = decoded.data.first(where: { MediaKey.normalise($0.name) == wanted }),
-              let picture = match.picture_xl, !picture.contains("/artist//") else { return nil }
-        return URL(string: picture)
+              let picture = match.picture_xl, !picture.contains("/artist//"), let pictureURL = URL(string: picture) else { return .notFound }
+        return .found(pictureURL)
     }
 }
 

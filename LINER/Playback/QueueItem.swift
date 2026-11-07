@@ -42,6 +42,15 @@ enum QueueItem: Hashable, Sendable, Identifiable {
         case .local(let t): "mixtape-\(t.mixtapeID?.uuidString ?? t.id.uuidString)"
         }
     }
+
+    /// The artwork key plus the cover's version (and the mixtape cover file), for caches that must refresh
+    /// when you change a cover.
+    var coverKey: String {
+        switch self {
+        case .library(let s): artworkKey + CoverVersions.suffix(s.albumID)
+        case .local(let t): artworkKey + (t.coverURL.map { "-\($0.deletingPathExtension().lastPathComponent)" } ?? "")
+        }
+    }
 }
 
 enum RepeatMode: String, CaseIterable, Sendable {

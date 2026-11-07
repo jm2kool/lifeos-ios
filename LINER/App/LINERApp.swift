@@ -5,6 +5,7 @@ struct LINERApp: App {
     @State private var library: LibraryService
     @State private var player: PlaybackCoordinator
     @State private var passports = PassportPresenter()
+    @State private var splash = true
 
     init() {
         let service = LibraryService()
@@ -18,15 +19,22 @@ struct LINERApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environment(library)
-                .environment(player)
-                .environment(passports)
-                .modelContainer(Store.shared.container)
-                .task { library.reloadPersonalRatings() }
-                .preferredColorScheme(.dark)
-                .tint(.white)
-                .toggleStyle(LinerToggleStyle())
+            ZStack {
+                RootView()
+                    .environment(library)
+                    .environment(player)
+                    .environment(passports)
+                    .modelContainer(Store.shared.container)
+                    .task { library.reloadPersonalRatings(); CoverOverrides.shared.load() }
+                if splash {
+                    SplashView { withAnimation(.easeOut(duration: 0.3)) { splash = false } }
+                        .transition(.opacity)
+                        .zIndex(1)
+                }
+            }
+            .preferredColorScheme(.dark)
+            .tint(.white)
+            .toggleStyle(LinerToggleStyle())
         }
     }
 }

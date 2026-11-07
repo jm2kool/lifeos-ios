@@ -30,6 +30,7 @@ struct RootView: View {
         .sheet(item: $passports.song) { SongPassportSheet(item: $0) }
         .sheet(item: $passports.album) { AlbumPassportSheet(subject: $0) }
         .sheet(item: $passports.editions) { EditionsSheet(subject: $0) }
+        .modifier(CoverPickerHost())
         .task { if library.isAuthorized && !library.hasLoaded { await library.refresh() } }
         .onOpenURL { url in Task { await openFile(url) } }
         .onChange(of: phase) { _, now in

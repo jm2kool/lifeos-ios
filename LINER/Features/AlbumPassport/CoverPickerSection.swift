@@ -18,12 +18,7 @@ struct CoverPickerSection: View {
             .buttonStyle(.linerGlass).font(.footnote)
             if working { ProgressView("Preparing motion cover…").font(.footnote) }
             if note.coverOverride != nil || note.motionCoverFile != nil {
-                Button("Use the original artwork", role: .destructive) {
-                    if let f = note.motionCoverFile { try? FileManager.default.removeItem(at: MotionCoverFiles.url(f)) }
-                    note.coverOverride = nil
-                    note.motionCoverFile = nil
-                    changed()
-                }
+                Button("Use the original artwork", role: .destructive) { if let album { CoverSaver.reset(album) } }
                 .font(.footnote)
             }
             Text("Motion covers loop behind the player and on the lock screen. Your Apple Music library is never changed.")
@@ -33,34 +28,21 @@ struct CoverPickerSection: View {
         .onChange(of: video) { _, v in Task { await loadMotion(v) } }
     }
 
+    private var album: Album? {
+        guard note.albumID.hasPrefix("album-"), let id = UInt64(note.albumID.dropFirst(6)) else { return nil }
+        return LibraryService.current?.snapshot.album(id)
+    }
+
     private func loadPhoto(_ item: PhotosPickerItem?) async {
-        guard let item, let data = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: data) else { return }
-        note.coverOverride = img.preparingThumbnail(of: CGSize(width: 1400, height: 1400))?.jpegData(compressionQuality: 0.88) ?? data
-        changed()
+        guard let item, let album else { return }
+        await CoverSaver.save(item, for: CoverRequest(album: album, motion: false))
     }
 
     /// Videos come through as movies; GIFs come through as image data and are converted.
     private func loadMotion(_ item: PhotosPickerItem?) async {
-        guard let item else { return }
+        guard let item, let album else { return }
         working = true
         defer { working = false }
-        var name: String?
-        if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }) {
-            name = await MotionCoverImport.importVideo(item, id: note.albumID)
-        } else if let data = try? await item.loadTransferable(type: Data.self) {
-            let tmp = URL.temporaryDirectory.appending(path: "\(UUID().uuidString).gif")
-            try? data.write(to: tmp)
-            name = await MotionCoverImport.importFile(tmp, id: note.albumID)
-            try? FileManager.default.removeItem(at: tmp)
-        }
-        if let name {
-            note.motionCoverFile = name
-            changed()
-        }
-    }
-
-    private func changed() {
-        Store.shared.save()
-        PlaybackCoordinator.shared?.nowPlaying.animated.reset()
+        await CoverSaver.save(item, for: CoverRequest(album: album, motion: true))
     }
 }

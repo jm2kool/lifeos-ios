@@ -21,7 +21,7 @@ struct ShareContent: Sendable {
 
     static func nowPlaying(_ item: QueueItem) -> ShareContent {
         ShareContent(kind: .nowPlaying, kicker: "Now playing", title: item.title, subtitle: item.artist, lines: [item.albumTitle],
-                     coverItem: item, artworkKey: item.artworkKey)
+                     coverItem: item, artworkKey: item.coverKey)
     }
 
     static func song(_ item: QueueItem, note: SongNote?, plays: Int?) -> ShareContent {
@@ -30,31 +30,31 @@ struct ShareContent: Sendable {
         if let n = note?.notes, !n.isEmpty { lines.append(String(n.prefix(160))) }
         return ShareContent(kind: .song, kicker: "Song Passport", title: item.title, subtitle: item.artist, lines: lines,
                             stat: plays.map { ("Plays", $0.grouped) }, hearts: note?.rating, quote: note?.lyricLines.first,
-                            coverItem: item, artworkKey: item.artworkKey)
+                            coverItem: item, artworkKey: item.coverKey)
     }
 
     static func album(_ subject: AlbumSubject, rating: Int?, ranking: [QueueItem]) -> ShareContent {
         let top = ranking.prefix(3).enumerated().map { "\($0.offset + 1). \($0.element.title)" }
         return ShareContent(kind: .album, kicker: "Album Passport", title: subject.title, subtitle: subject.artist, lines: top,
                             stat: subject.album.map { ("Plays", $0.playCount.grouped) }, hearts: rating,
-                            coverItem: subject.tracks.first, albumID: subject.album?.id, artworkKey: subject.id)
+                            coverItem: subject.tracks.first, albumID: subject.album?.id, artworkKey: subject.id + (subject.album.map { CoverVersions.suffix($0.id) } ?? ""))
     }
 
     static func artist(_ a: Artist, rank: Int?, minutes: Int, topSong: Song?) -> ShareContent {
         var lines = ["\(a.playCount.grouped) plays · \(minutes.grouped) minutes"]
         if let s = topSong { lines.append("Most played: \(s.title)") }
         return ShareContent(kind: .artist, kicker: "My history", title: a.name, subtitle: rank.map { "#\($0) most played artist" } ?? "Artist",
-                            lines: lines, albumID: a.albumIDs.first, portraitName: a.name, artworkKey: a.albumIDs.first.map { "album-\($0)" })
+                            lines: lines, albumID: a.albumIDs.first, portraitName: a.name, artworkKey: a.albumIDs.first.map { "album-\($0)" + CoverVersions.suffix($0) })
     }
 
     static func lyric(_ item: QueueItem, line: String) -> ShareContent {
-        ShareContent(kind: .lyric, kicker: "Lyric", title: item.title, subtitle: item.artist, quote: line, coverItem: item, artworkKey: item.artworkKey)
+        ShareContent(kind: .lyric, kicker: "Lyric", title: item.title, subtitle: item.artist, quote: line, coverItem: item, artworkKey: item.coverKey)
     }
 
     static func recap(_ r: Recap, card: RecapStoryView.Card) -> ShareContent {
         let period = r.period.kind == .week ? "My week in music" : (r.period.kind == .month ? "My month in music" : "My year in music")
         var c = ShareContent(kind: .recap, kicker: period, title: r.period.title, subtitle: "\(r.minutes.grouped) minutes · \(r.plays.grouped) plays",
-                             albumID: r.song?.albumID, artworkKey: r.song?.albumID.map { "album-\($0)" })
+                             albumID: r.song?.albumID, artworkKey: r.song?.albumID.map { "album-\($0)" + CoverVersions.suffix($0) })
         switch card {
         case .artists: c.lines = r.topArtists.enumerated().map { "\($0.offset + 1). \($0.element.name)" }
         case .albums: c.lines = r.topAlbums.enumerated().map { "\($0.offset + 1). \($0.element.name)" }

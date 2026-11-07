@@ -35,13 +35,17 @@ final class ArtistImageStore: @unchecked Sendable {
         }
         if let missed = lookups.object(forKey: "miss.\(key)") as? Date, Date.now.timeIntervalSince(missed) < Self.retryAfter { return nil }
 
-        guard let url = await provider.artistImageURL(for: name),
-              let result = try? await URLSession.shared.data(from: url),
-              let original = UIImage(data: result.0),
-              let noir = Self.noir(original) else {
-            lookups.set(Date.now, forKey: "miss.\(key)")
-            return nil
+        let url: URL
+        switch await provider.artistImage(for: name) {
+        case .found(let u): url = u
+        case .notFound: lookups.set(Date.now, forKey: "miss.\(key)"); return nil
+        case .failed: return nil   // offline or slow: try again next time
         }
+        var downloaded: UIImage?
+        for _ in 0..<2 where downloaded == nil {
+            if let result = try? await URLSession.shared.data(from: url) { downloaded = UIImage(data: result.0) }
+        }
+        guard let original = downloaded, let noir = Self.noir(original) else { return nil }
         lookups.set(url.absoluteString, forKey: "url.\(key)")
         if let jpeg = noir.jpegData(compressionQuality: 0.85) { try? jpeg.write(to: file, options: .atomic) }
         memory.setObject(noir, forKey: key as NSString)

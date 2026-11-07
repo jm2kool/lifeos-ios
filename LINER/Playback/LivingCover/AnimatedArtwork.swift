@@ -19,13 +19,13 @@ final class AnimatedArtwork {
         if item.isLibrary && !Self.forLibrarySongs { return [:] }
         let supported = MPNowPlayingInfoCenter.supportedAnimatedArtworkKeys
         guard supported.contains(MPNowPlayingInfoProperty3x4AnimatedArtwork) || supported.contains(MPNowPlayingInfoProperty1x1AnimatedArtwork) else { return [:] }
-        if let ready = prepared[item.artworkKey] { return ready }
+        if let ready = prepared[item.coverKey] { return ready }
         prepare(item)
         return [:]
     }
 
     private func prepare(_ item: QueueItem) {
-        let key = item.artworkKey
+        let key = item.coverKey
         guard !preparing.contains(key) else { return }
         preparing.insert(key)
         let motion = MotionLookup.file(for: item)
