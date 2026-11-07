@@ -127,6 +127,7 @@ struct LibraryDestinations: ViewModifier {
             .navigationDestination(for: Artist.self) { ArtistDetailView(artist: $0, namespace: namespace) }
             .navigationDestination(for: Playlist.self) { PlaylistDetailView(playlist: $0) }
             .navigationDestination(for: Mixtape.self) { MixtapeDetailView(mixtape: $0) }
+            .navigationDestination(for: MoodPlaylist.self) { MoodPlaylistDetail(playlist: $0) }
     }
 }
 

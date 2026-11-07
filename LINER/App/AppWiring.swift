@@ -6,11 +6,17 @@ import Foundation
 enum AppWiring {
     private static var rescan: Task<Void, Never>?
 
+    private static var refreshedMoods = false
+
     static func connect(library: LibraryService, player: PlaybackCoordinator) {
         library.onRefresh = { [library] snapshot in
             Store.shared.rematch(with: snapshot)
             library.reloadPersonalRatings()
             SnapshotService.shared.record(snapshot)
+            if !refreshedMoods {
+                refreshedMoods = true
+                Task { await MoodPlaylistService.refreshDue(library: library) }
+            }
         }
         player.onFinished = { [library] record in
             SnapshotService.shared.log(record)

@@ -3,11 +3,6 @@ import SwiftUI
 import FoundationModels
 #endif
 
-/// The app's mood list (SPEC §6.8). The model must only pick from these.
-enum Moods {
-    static let all = ["Euphoric", "Melancholic", "Nostalgic", "Intimate", "Dreamy", "Dangerous",
-                      "Healing", "Late Night", "Confident", "Bittersweet", "Energetic", "Calm"]
-}
 
 #if canImport(FoundationModels)
 /// Step 1 of the mood playlist design: a small recipe, never the library itself.
