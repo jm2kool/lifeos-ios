@@ -1,7 +1,8 @@
 import UIKit
 
-/// Stylised artist names (the iOS 27-style artist titles): transparent logos from TheAudioDB's free API,
-/// turned white so they sit in the monochrome design. Cached on disk; artists without a logo are re-checked monthly.
+/// Stylised artist names (the iOS 27-style artist titles): logos fetched automatically from TheAudioDB's free API
+/// on each phone, turned white so they sit in the monochrome design, and cached. Artists without a logo are
+/// re-checked weekly (so new logos turn up on their own), and saved logos refresh every two months.
 final class ArtistLogoStore: @unchecked Sendable {
     static let shared = ArtistLogoStore()
 
@@ -25,7 +26,7 @@ final class ArtistLogoStore: @unchecked Sendable {
     /// Whether we already know there's no logo (so the UI can skip a loading state).
     func knownMissing(_ name: String) -> Bool {
         guard let d = lookups.object(forKey: "miss.\(MediaKey.normalise(name))") as? Date else { return false }
-        return Date.now.timeIntervalSince(d) < 30 * 86_400
+        return Date.now.timeIntervalSince(d) < 7 * 86_400
     }
 
     @concurrent
@@ -36,9 +37,17 @@ final class ArtistLogoStore: @unchecked Sendable {
         let file = folder.appending(path: "\(key).png")
         if let data = try? Data(contentsOf: file), let img = UIImage(data: data) {
             memory.setObject(img, forKey: key as NSString)
+            let age = (try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate).map { Date.now.timeIntervalSince($0) } ?? 0
+            if age > 60 * 86_400 { Task { await self.fetch(name, key: key, file: file) } }   // refresh quietly
             return img
         }
         if knownMissing(name) { return nil }
+        return await fetch(name, key: key, file: file)
+    }
+
+    /// Downloads and processes the logo; nil if there isn't one (remembered for a week) or the request failed.
+    @concurrent
+    private func fetch(_ name: String, key: String, file: URL) async -> UIImage? {
 
         var parts = URLComponents(string: "https://www.theaudiodb.com/api/v1/json/123/search.php")!
         parts.queryItems = [URLQueryItem(name: "s", value: name)]

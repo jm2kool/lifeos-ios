@@ -122,7 +122,7 @@ struct LibraryDestinations: ViewModifier {
     func body(content: Content) -> some View {
         content
             .navigationDestination(for: Album.self) { album in
-                AlbumDetailView(album: album).navigationTransition(.zoom(sourceID: album.id, in: namespace))
+                AlbumDestination(album: album).navigationTransition(.zoom(sourceID: album.id, in: namespace))
             }
             .navigationDestination(for: Artist.self) { ArtistDetailView(artist: $0, namespace: namespace) }
             .navigationDestination(for: Playlist.self) { PlaylistDetailView(playlist: $0) }

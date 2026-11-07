@@ -5,6 +5,8 @@ import SwiftUI
 /// arm to pause; swipe up on the record to flip to Side B.
 struct TurntableView: View {
     let record: VinylRecord
+    /// When set, an ⓘ button shows the album page instead.
+    var onInfo: (() -> Void)?
     @Environment(PlaybackCoordinator.self) private var player
     @Environment(\.dismiss) private var dismiss
     @State private var spin = SpinState()
@@ -52,7 +54,10 @@ struct TurntableView: View {
                 Text("\(record.artist) · Side \(side)").linerLabel(size: 10)
             }
             Spacer()
-            GlassCircleButton(systemImage: "xmark", label: "Close turntable", size: 42) { dismiss() }
+            if let onInfo {
+                GlassCircleButton(systemImage: "info", label: "Album page", size: 42, action: onInfo).padding(.trailing, 6)
+            }
+            GlassCircleButton(systemImage: onInfo == nil ? "xmark" : "chevron.down", label: "Close turntable", size: 42) { dismiss() }
         }
     }
 

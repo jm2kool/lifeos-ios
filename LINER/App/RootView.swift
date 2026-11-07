@@ -12,11 +12,13 @@ struct RootView: View {
     @Environment(PassportPresenter.self) private var passports
     @AppStorage("root.tab") private var tab: TabID = .home
     @Namespace private var playerZoom
+    @State private var lastHomeTap = Date.distantPast
 
     var body: some View {
         @Bindable var player = player
         @Bindable var passports = passports
         @Bindable var prompts = NewAlbumPrompts.shared
+        @Bindable var crate = CratePresenter.shared
         Group {
             if library.isAuthorized {
                 tabs
@@ -32,6 +34,7 @@ struct RootView: View {
         .sheet(item: $passports.album) { AlbumPassportSheet(subject: $0) }
         .sheet(item: $passports.editions) { EditionsSheet(subject: $0) }
         .modifier(CoverPickerHost())
+        .fullScreenCover(isPresented: $crate.isOpen) { CrateView() }
         .sheet(item: $prompts.current, onDismiss: { NewAlbumPrompts.shared.showNext(library.snapshot) }) { AlbumRatingPrompt(album: $0) }
         .task { if library.isAuthorized && !library.hasLoaded { await library.refresh() } }
         .onOpenURL { url in Task { await openFile(url) } }
@@ -39,6 +42,19 @@ struct RootView: View {
             if now == .active && library.hasLoaded { Task { await library.refresh() } }
             if now == .background { SnapshotService.schedule() }
         }
+    }
+
+    /// Tab selection that also notices a double tap on Home (which opens the crate).
+    private var tabSelection: Binding<TabID> {
+        Binding(get: { tab }, set: { new in
+            if new == .home && tab == .home {
+                if Date.now.timeIntervalSince(lastHomeTap) < 0.45 { CratePresenter.shared.open(); lastHomeTap = .distantPast; return }
+                lastHomeTap = .now
+            } else if new == .home {
+                lastHomeTap = .now
+            }
+            tab = new
+        })
     }
 
     /// "Open in LINER." from Files, Safari downloads or the share sheet: import into a mixtape.
@@ -55,7 +71,7 @@ struct RootView: View {
     }
 
     private var tabs: some View {
-        TabView(selection: $tab) {
+        TabView(selection: tabSelection) {
             Tab("Home", systemImage: "house", value: TabID.home) { HomeView() }
             Tab("Library", systemImage: "square.stack", value: TabID.library) { LibraryView() }
             Tab("Mixtapes", systemImage: "recordingtape", value: TabID.mixtapes) { MixtapesTab() }
