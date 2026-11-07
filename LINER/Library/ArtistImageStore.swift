@@ -11,7 +11,7 @@ final class ArtistImageStore: @unchecked Sendable {
     private let memory = NSCache<NSString, UIImage>()
     private let folder: URL
     private let lookups = UserDefaults(suiteName: "liner.artistImages") ?? .standard
-    nonisolated(unsafe) private static let context = CIContext()
+    private static let context = CIContext()
     /// Retry artists with no photo after a month — catalogues add pictures.
     private static let retryAfter: TimeInterval = 30 * 86_400
 
