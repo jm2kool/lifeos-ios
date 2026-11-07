@@ -28,9 +28,12 @@ enum PlayerExtras {
         HeartButton(item: item)
     }
 
-    @ViewBuilder static func moreMenu(dismiss: @escaping () -> Void) -> some View {
+    @ViewBuilder static func moreMenu(item: QueueItem?, dismiss: @escaping () -> Void, share: @escaping () -> Void,
+                                      lyrics: @escaping () -> Void) -> some View {
         Menu {
-            Text("More options are coming")
+            Button("Share Now Playing", systemImage: "square.and.arrow.up", action: share)
+            Button("Lyrics", systemImage: "quote.bubble", action: lyrics)
+            PlayerMenuExtras(item: item)
         } label: {
             Image(systemName: "ellipsis").font(.system(size: 16, weight: .semibold)).frame(width: 42, height: 42)
         }

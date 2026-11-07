@@ -62,8 +62,10 @@ struct FavoriteMoments: View {
     }
 }
 
-/// Share button for the passport (share cards arrive with Phase 10).
+/// Share button for the Song Passport.
 @MainActor
 enum SongPassportShare {
-    @ViewBuilder static func button(item: QueueItem) -> some View { EmptyView() }
+    @ViewBuilder static func button(item: QueueItem) -> some View {
+        ShareCardButton { .song(item, note: Store.shared.songNote(item.id), plays: item.song?.playCount) }
+    }
 }

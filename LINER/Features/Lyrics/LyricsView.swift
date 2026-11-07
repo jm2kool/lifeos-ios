@@ -10,6 +10,7 @@ struct LyricsView: View {
     @State private var loading = true
     @State private var art = PlayerArtwork()
     @State private var saved: String?
+    @State private var sharing: ShareContent?
 
     var body: some View {
         ZStack {
@@ -25,6 +26,9 @@ struct LyricsView: View {
             await art.load(player.current)
             if let item = player.current { lyrics = await LyricsStore.lyrics(for: item) }
             loading = false
+        }
+        .sheet(isPresented: Binding(get: { sharing != nil }, set: { if !$0 { sharing = nil } })) {
+            if let sharing { ShareCardSheet(content: sharing) }
         }
         .overlay(alignment: .bottom) {
             if let saved {
@@ -111,6 +115,9 @@ struct LyricsView: View {
             .contextMenu {
                 Button("Save line", systemImage: "bookmark") { save(line: line) }
                 Button("Save as favourite moment", systemImage: "star") { saveMoment(line) }
+                if let item = player.current, !line.text.isEmpty {
+                    Button("Share line", systemImage: "square.and.arrow.up") { sharing = .lyric(item, line: line.text) }
+                }
             }
             .accessibilityAddTraits(state == 0 ? .isSelected : [])
             .accessibilityHint("Double-tap to jump here")

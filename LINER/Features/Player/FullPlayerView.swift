@@ -9,7 +9,7 @@ struct FullPlayerView: View {
     @State private var drag: CGFloat = 0
     @State private var sheet: PlayerSheet?
 
-    enum PlayerSheet: String, Identifiable { case queue, lyrics, songPassport; var id: String { rawValue } }
+    enum PlayerSheet: String, Identifiable { case queue, lyrics, songPassport, share; var id: String { rawValue } }
 
     var body: some View {
         ZStack {
@@ -36,6 +36,7 @@ struct FullPlayerView: View {
             case .queue: QueueSheet().presentationDetents([.medium, .large])
             case .lyrics: PlayerExtras.lyrics()
             case .songPassport: PlayerExtras.songPassport(for: player.current)
+            case .share: if let item = player.current { ShareCardSheet(content: .nowPlaying(item)) }
             }
         }
         .statusBarHidden(drag > 0)
@@ -65,7 +66,7 @@ struct FullPlayerView: View {
             Spacer()
             Text(player.current?.albumTitle ?? "").linerLabel(size: 10).lineLimit(1).padding(.horizontal, 8)
             Spacer()
-            PlayerExtras.moreMenu(dismiss: { dismiss() })
+            PlayerExtras.moreMenu(item: player.current, dismiss: { dismiss() }, share: { sheet = .share }, lyrics: { sheet = .lyrics })
         }
         .padding(.top, 8)
     }

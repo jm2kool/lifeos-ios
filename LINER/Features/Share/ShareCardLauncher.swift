@@ -1,7 +1,10 @@
 import SwiftUI
 
-/// Entry points for share cards (Phase 10).
+/// Share entry point for recap story cards.
 @MainActor
 enum ShareCardLauncher {
-    @ViewBuilder static func recap(card: RecapStoryView.Card, recap: Recap, cover: UIImage?) -> some View { EmptyView() }
+    @ViewBuilder static func recap(card: RecapStoryView.Card, recap: Recap, cover: UIImage?) -> some View {
+        ShareCardButton(make: { .recap(recap, card: card) }, label: "Share this card")
+            .buttonStyle(.glass).controlSize(.large)
+    }
 }

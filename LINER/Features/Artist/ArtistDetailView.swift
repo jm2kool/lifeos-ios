@@ -25,6 +25,13 @@ struct ArtistDetailView: View {
         .background(Palette.background)
         .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                ShareCardButton {
+                    .artist(artist, rank: library.stats.rank(of: artist), minutes: library.stats.minutes(of: artist), topSong: songs.first)
+                }
+            }
+        }
     }
 
     private func hero(releases: Int) -> some View {

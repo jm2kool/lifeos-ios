@@ -113,10 +113,15 @@ struct AlbumSubjectArtwork: View {
     }
 }
 
-/// Share button for the album passport (share cards arrive with Phase 10).
+/// Share button for the Album Passport.
 @MainActor
 enum AlbumPassportShare {
-    @ViewBuilder static func button(subject: AlbumSubject) -> some View { EmptyView() }
+    @ViewBuilder static func button(subject: AlbumSubject) -> some View {
+        ShareCardButton {
+            let note = Store.shared.albumNote(subject.id)
+            return .album(subject, rating: note?.rating, ranking: PersonalRankingView.ordered(subject.tracks, by: note?.personalRanking ?? []))
+        }
+    }
 }
 
 /// Personal Editions → Manage.
