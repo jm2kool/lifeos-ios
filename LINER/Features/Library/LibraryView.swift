@@ -78,9 +78,12 @@ struct LibraryView: View {
             }
         case .playlists:
             let list = library.playlists(sort).filter { matches($0.name) }
+            if query.isEmpty { PinnedPlaylistsShelf().padding(.bottom, 12) }
+            SectionLabel("All Playlists").padding(.horizontal, 16).padding(.bottom, 4)
             if list.isEmpty { empty("music.note.list", "No playlists") }
             ForEach(list) { playlist in
                 NavigationLink(value: playlist) { PlaylistRow(playlist: playlist) }.buttonStyle(.plain)
+                    .contextMenu { PlaylistActionsMenu(playlist: playlist) }
                     .padding(.horizontal, 16).padding(.vertical, 6)
             }
         case .mixtapes:

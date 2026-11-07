@@ -15,6 +15,7 @@ struct AlbumTile: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(album.title), \(album.artist)")
+        .contextMenu { AlbumActionsMenu(album: album) }
     }
 }
 

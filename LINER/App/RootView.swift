@@ -28,6 +28,7 @@ struct RootView: View {
         .overlay(alignment: .top) { ErrorBanner() }
         .sheet(item: $passports.song) { SongPassportSheet(item: $0) }
         .sheet(item: $passports.album) { AlbumPassportSheet(subject: $0) }
+        .sheet(item: $passports.editions) { EditionsSheet(subject: $0) }
         .task { if library.isAuthorized && !library.hasLoaded { await library.refresh() } }
         .onChange(of: phase) { _, now in
             if now == .active && library.hasLoaded { Task { await library.refresh() } }

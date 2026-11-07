@@ -118,10 +118,26 @@ enum AlbumPassportShare {
     @ViewBuilder static func button(subject: AlbumSubject) -> some View { EmptyView() }
 }
 
-/// Personal Editions → Manage (editions arrive with Phase 5).
+/// Personal Editions → Manage.
 struct PassportEditionsLink: View {
     let subject: AlbumSubject
-    var body: some View { EmptyView() }
+    @State private var open = false
+
+    var body: some View {
+        Button { open = true } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "square.stack.3d.up").frame(width: 26)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Personal Editions").font(.system(size: 16, weight: .medium))
+                    Text("Manage your own versions").font(.caption).foregroundStyle(Palette.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").foregroundStyle(Palette.faint)
+            }
+            .contentShape(Rectangle())
+        }
+        .sheet(isPresented: $open) { EditionsSheet(subject: subject) }
+    }
 }
 
 #Preview {

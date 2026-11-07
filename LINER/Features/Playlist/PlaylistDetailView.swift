@@ -26,6 +26,11 @@ struct PlaylistDetailView: View {
         }
         .background(Palette.background)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu { PlaylistActionsMenu(playlist: playlist) } label: { Label("More", systemImage: "ellipsis") }
+            }
+        }
     }
 }
 

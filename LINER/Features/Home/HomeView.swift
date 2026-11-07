@@ -16,6 +16,9 @@ struct HomeView: View {
                     }
                     .padding(.top, 8)
 
+                    PinnedCarousel()
+                    HomeShelves()
+
                     Text("Recently Added").font(.sectionTitle)
                     if library.recentlyAdded.isEmpty {
                         if library.isLoading { ProgressView().frame(maxWidth: .infinity).padding(40) } else {
