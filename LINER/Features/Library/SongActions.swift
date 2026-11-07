@@ -12,7 +12,7 @@ struct SongContextMenu: ViewModifier {
             Button("Song Passport", systemImage: "text.book.closed") { passports.song = .library(song) }
             Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") { player.playNext([.library(song)]) }
             Button("Add to Queue", systemImage: "text.line.last.and.arrowtriangle.forward") { player.addToQueue([.library(song)]) }
-            if let album = library.snapshot.album(song.albumID) {
+            if let album = library.snapshot.albumOf(song) {
                 NavigationLink(value: album) { Label("Go to Album", systemImage: "square.stack") }
             }
             if let artist = library.snapshot.artist(named: song.albumArtist) {

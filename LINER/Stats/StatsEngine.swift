@@ -49,7 +49,7 @@ struct LibraryStats: Sendable {
         songs = snap.songs.filter { $0.playCount > 0 }.sorted {
             ($0.playCount, $0.lastPlayed ?? .distantPast) > ($1.playCount, $1.lastPlayed ?? .distantPast)
         }
-        albums = snap.albums.filter { $0.playCount > 0 }.sorted {
+        albums = snap.albums.filter { $0.playCount > 0 && !$0.isSingle }.sorted {
             ($0.playCount, lastPlayedByAlbum[$0.id] ?? .distantPast) > ($1.playCount, lastPlayedByAlbum[$1.id] ?? .distantPast)
         }
         artists = snap.artists.filter { $0.playCount > 0 }.sorted {

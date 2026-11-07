@@ -5,6 +5,7 @@ import SwiftUI
 /// own interactive zoom dismissal, so it tracks your finger smoothly.
 struct FullPlayerView: View {
     @Environment(PlaybackCoordinator.self) private var player
+    @Environment(LibraryService.self) private var library
     @Environment(\.dismiss) private var dismiss
     @State private var art = PlayerArtwork()
     @State private var sheet: PlayerSheet?
@@ -21,9 +22,7 @@ struct FullPlayerView: View {
                 Spacer(minLength: 12)
                 if vinyl, let item = player.current {
                     PlayerVinyl(item: item)
-                        .aspectRatio(1, contentMode: .fit)
-                        .frame(maxWidth: 360)
-                        .padding(.horizontal, 8)
+                        .frame(maxWidth: 440)
                         .frame(maxWidth: .infinity)
                         .transition(.scale(scale: 0.7).combined(with: .opacity))
                     Spacer(minLength: 12)
@@ -74,11 +73,18 @@ struct FullPlayerView: View {
         .allowsHitTesting(false)
     }
 
+    /// The album's name above the player, left out for a song on its own.
+    private var albumLine: String {
+        guard let item = player.current else { return "" }
+        if let song = item.song { return library.snapshot.albumOf(song)?.title ?? "" }
+        return item.albumTitle
+    }
+
     private var topBar: some View {
         HStack {
             GlassCircleButton(systemImage: "chevron.down", label: "Close player", size: 42) { dismiss() }
             Spacer()
-            Text(player.current?.albumTitle ?? "").linerLabel(size: 10).lineLimit(1).padding(.horizontal, 8)
+            Text(albumLine).linerLabel(size: 10).lineLimit(1).padding(.horizontal, 8)
             Spacer()
             // Always in reach: flips between the full cover and the spinning record.
             GlassCircleButton(systemImage: vinyl ? "photo" : "record.circle", label: vinyl ? "Show the cover" : "Show as a record", size: 42) {

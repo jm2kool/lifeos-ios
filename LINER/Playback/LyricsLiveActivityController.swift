@@ -12,6 +12,7 @@ final class LyricsLiveActivityController {
     private var lyrics: Lyrics?
     private var itemID: String?
     private var lastState: LyricsActivityAttributes.ContentState?
+    private var song: (title: String, artist: String) = ("", "")
     private var loop: Task<Void, Never>?
     private let keepAlive = SilentKeepAlive()
 
@@ -31,12 +32,17 @@ final class LyricsLiveActivityController {
     }
 
     private func start(_ item: QueueItem) {
-        let attributes = LyricsActivityAttributes(title: item.title, artist: item.artist)
-        let state = LyricsActivityAttributes.ContentState(previous: "", current: "", next: lyrics?.lines.first?.text ?? "", isPlaying: true)
-        // A new song gets a fresh activity (the title is part of its attributes).
-        let old = activity
-        activity = try? Activity.request(attributes: attributes, content: .init(state: state, staleDate: nil), pushType: nil)
-        if let old { Self.end(old) }
+        song = (item.title, item.artist)
+        let state = LyricsActivityAttributes.ContentState(title: item.title, artist: item.artist, previous: "", current: "",
+                                                          next: lyrics?.lines.first?.text ?? "", isPlaying: true)
+        if let activity {
+            // The same activity carries on with the new song: nothing pops up again.
+            let box = ActivityBox(activity: activity)
+            Task.detached { await box.activity.update(Self.content(state)) }
+        } else {
+            for a in Activity<LyricsActivityAttributes>.activities { Self.end(a) }
+            activity = try? Activity.request(attributes: LyricsActivityAttributes(), content: Self.content(state), pushType: nil)
+        }
         lastState = state
         loop?.cancel()
         loop = Task { [weak self] in
@@ -55,6 +61,7 @@ final class LyricsLiveActivityController {
         let i = lyrics.activeIndex(at: player.currentTime + 0.3)
         let lines = lyrics.lines
         let state = LyricsActivityAttributes.ContentState(
+            title: song.title, artist: song.artist,
             previous: i.flatMap { $0 > 0 ? lines[$0 - 1].text : nil } ?? "",
             current: i.map { lines[$0].text } ?? "",
             next: (i.map { $0 + 1 } ?? 0) < lines.count ? lines[(i.map { $0 + 1 } ?? 0)].text : "",
@@ -62,7 +69,7 @@ final class LyricsLiveActivityController {
         guard state != lastState else { return }
         lastState = state
         let box = ActivityBox(activity: activity)
-        Task.detached { await box.activity.update(.init(state: state, staleDate: nil)) }
+        Task.detached { await box.activity.update(Self.content(state)) }
     }
 
     func stop() {
@@ -78,6 +85,11 @@ final class LyricsLiveActivityController {
 }
 
 extension LyricsLiveActivityController {
+    /// Lowest relevance, so when the system's Now Playing is also live it gets the Dynamic Island, not us.
+    nonisolated static func content(_ state: LyricsActivityAttributes.ContentState) -> ActivityContent<LyricsActivityAttributes.ContentState> {
+        ActivityContent(state: state, staleDate: nil, relevanceScore: 0)
+    }
+
     /// Ends an activity off the main actor.
     nonisolated static func end(_ activity: Activity<LyricsActivityAttributes>) {
         let box = ActivityBox(activity: activity)

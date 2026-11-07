@@ -41,20 +41,28 @@ struct RecordDisc: View {
         .accessibilityHidden(true)
     }
 
+    /// The centre label: the cover, with the printing kept to the bottom of the label (album, side and year,
+    /// then a tiny "LINER. — curated by Jash"), always inside its edge.
     private func label(_ size: CGFloat) -> some View {
         ZStack {
             RecordCover(record: record).frame(width: size, height: size).clipShape(Circle())
+            Circle()
+                .fill(LinearGradient(stops: [.init(color: .clear, location: 0.5), .init(color: .black.opacity(0.78), location: 0.92)],
+                                     startPoint: .top, endPoint: .bottom))
+                .frame(width: size, height: size)
             Circle().stroke(Color.black.opacity(0.6), lineWidth: 2).frame(width: size, height: size)
-            VStack {
-                Spacer()
-                Text("\(AppBrand.name) — curated by Jash\(record.year.map { " · \($0)" } ?? "") · Side \(side)")
-                    .font(.system(size: max(5, size * 0.04), weight: .semibold)).tracking(0.5)
-                    .lineLimit(1).minimumScaleFactor(0.5)
-                    .foregroundStyle(.white.opacity(0.9)).shadow(color: .black, radius: 1)
-                    .padding(.horizontal, size * 0.18).padding(.bottom, size * 0.1)
+            VStack(spacing: size * 0.012) {
+                Text(record.title).font(.system(size: size * 0.058, weight: .semibold, design: .serif))
+                Text((["SIDE \(side)"] + [record.year.map(String.init)].compactMap { $0 }).joined(separator: " · "))
+                    .font(.system(size: size * 0.036, weight: .bold)).tracking(size * 0.008)
+                Text("\(AppBrand.name) — curated by Jash").font(.system(size: size * 0.03, weight: .medium)).opacity(0.7)
             }
-            .frame(width: size, height: size)
+            .lineLimit(1).minimumScaleFactor(0.4)
+            .foregroundStyle(.white.opacity(0.92))
+            .frame(width: size * 0.56)
+            .offset(y: size * 0.28)
         }
+        .frame(width: size, height: size)
     }
 }
 
@@ -71,28 +79,6 @@ struct RecordSheen: View {
             .blendMode(.screen)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
-    }
-}
-
-/// A minimal matte tonearm that swings onto the record.
-struct Tonearm: View {
-    let down: Bool
-    let length: CGFloat
-
-    var body: some View {
-        ZStack(alignment: .top) {
-            Circle().fill(Color(white: 0.16)).frame(width: 46, height: 46)
-                .overlay(Circle().stroke(.white.opacity(0.08)))
-                .glassEffect(.regular, in: .circle)
-            VStack(spacing: 0) {
-                Capsule().fill(LinearGradient(colors: [Color(white: 0.55), Color(white: 0.3)], startPoint: .leading, endPoint: .trailing))
-                    .frame(width: 6, height: length)
-                RoundedRectangle(cornerRadius: 3).fill(Color(white: 0.25)).frame(width: 16, height: 30)
-            }
-            .padding(.top, 20)
-        }
-        .rotationEffect(.degrees(down ? 24 : 2), anchor: UnitPoint(x: 0.5, y: 0.05))
-        .shadow(color: .black.opacity(0.6), radius: 8, x: 4, y: 6)
     }
 }
 

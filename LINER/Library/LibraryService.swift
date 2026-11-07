@@ -117,7 +117,7 @@ final class LibraryService {
     }
 
     func albums(_ sort: LibrarySort) -> [Album] {
-        let list = snapshot.albums
+        let list = snapshot.albums.filter { !$0.isSingle }
         return switch sort {
         case .alphabetical: list.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         case .mostPlayed: list.sorted { $0.playCount > $1.playCount }
@@ -162,7 +162,7 @@ final class LibraryService {
         func hit(_ s: String) -> Bool { s.localizedStandardContains(q) }
         return Results(
             artists: snapshot.artists.filter { hit($0.name) }.sorted { $0.playCount > $1.playCount }.prefix(8).map { $0 },
-            albums: snapshot.albums.filter { hit($0.title) || hit($0.artist) }.sorted { $0.playCount > $1.playCount }.prefix(12).map { $0 },
+            albums: snapshot.albums.filter { !$0.isSingle && (hit($0.title) || hit($0.artist)) }.sorted { $0.playCount > $1.playCount }.prefix(12).map { $0 },
             songs: snapshot.songs.filter { hit($0.title) || hit($0.artist) }.sorted { $0.playCount > $1.playCount }.prefix(30).map { $0 })
     }
 }

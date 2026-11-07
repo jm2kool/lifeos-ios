@@ -9,12 +9,13 @@ struct LINERWidgets: WidgetBundle {
     }
 }
 
-/// Live lyrics on the Lock Screen: the line being sung, big and serif, with the lines either side dimmed.
-/// The Dynamic Island versions are left as empty as iOS allows.
+/// Live lyrics on the Lock Screen only: the line being sung, big and serif, with the lines either side dimmed.
+/// iOS gives every Live Activity a Dynamic Island slot and has no way to opt out, so the island versions are
+/// empty and clear, and the activity asks for the lowest priority so the system's own Now Playing takes the island.
 struct LyricsLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: LyricsActivityAttributes.self) { context in
-            LyricsLockScreen(attributes: context.attributes, state: context.state)
+            LyricsLockScreen(state: context.state)
                 .activityBackgroundTint(Color.black.opacity(0.82))
                 .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { _ in
@@ -27,19 +28,19 @@ struct LyricsLiveActivity: Widget {
             } minimal: {
                 EmptyView()
             }
+            .keylineTint(.clear)
         }
     }
 }
 
 struct LyricsLockScreen: View {
-    let attributes: LyricsActivityAttributes
     let state: LyricsActivityAttributes.ContentState
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: state.isPlaying ? "waveform" : "pause.fill").font(.system(size: 10, weight: .bold))
-                Text("\(attributes.title) · \(attributes.artist)".uppercased())
+                Text("\(state.title) · \(state.artist)".uppercased())
                     .font(.system(size: 10, weight: .semibold)).tracking(1.6).lineLimit(1)
             }
             .foregroundStyle(.white.opacity(0.55))

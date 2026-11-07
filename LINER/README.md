@@ -6,7 +6,7 @@ Install it with Sideloadly using your Apple ID.
 
 | Area | What's there |
 |---|---|
-| Library | Artists · Albums · Songs · Playlists with search and sort (Mixtapes have their own tab); albums as a moving crate with haptic ticks; black-and-white artist photos from Deezer |
+| Library | Artists · Albums · Songs · Playlists with search and sort; one-song "albums" are treated as songs (Mixtapes have their own tab); albums as a moving crate with haptic ticks; black-and-white artist photos from Deezer |
 | Artist titles | iOS 27-style stylised names: the artist's logo (TheAudioDB) in white, or genre-matched lettering; pick a style per artist in Settings → Artist titles; pages tinted from the artwork |
 | Playback | Library songs via `applicationQueuePlayer`, imported files via AVPlayer, mixed in one queue; shuffle, repeat, Up Next |
 | Player | Always full-screen artwork aimed at the subject, motion covers or Living Covers behind it, glass controls tinted by the art |
@@ -15,11 +15,11 @@ Install it with Sideloadly using your Apple ID.
 | Passports | Song Passport (hearts, moods, notes, connection, Song DNA, favourite moments, saved lyrics); Album Passport (hearts, personal ranking, history, cover) |
 | Editions & pins | Your own versions of albums (library + mixtape tracks, custom covers); pinned carousel on Home |
 | Mixtapes | Import mp3/m4a/wav/aiff/mp4/mov from Files or "Open in LINER."; covers, motion covers, LRC lyrics |
-| Lyrics | LRCLIB synced lyrics, sing-along view, tap to seek, save lines and moments; live lyrics on the Lock Screen (Live Activity) |
+| Lyrics | LRCLIB synced lyrics, sing-along view, tap to seek, save lines and moments; live lyrics on the Lock Screen (Live Activity, kept out of the Dynamic Island as far as iOS allows) |
 | Recaps | In My LINER.: week / month / year from the day you install, story mode, Monday notification |
 | Share | 9:16 still and animated cards to Instagram Stories, Photos or anywhere |
 | Mood playlists | On-device Apple Intelligence recipe + local scoring; Mood Mix without AI; save to Apple Music |
-| Vinyl Mode | Home becomes the record crate; albums open their page, "Put it on" plays at once on the turntable; needle drop, 33⅓ rpm spin, scratch-scrub, Side B; Cover/Record switch in the player |
+| Vinyl Mode | Home becomes the record crate; albums open their page, "Put it on" plays at once on the turntable; needle drop, 33⅓ rpm spin, scratch-scrub, Side B; Cover/Record switch in the player opens a turntable deck whose tonearm follows the song — move it to seek, set it down off the record to pause |
 | Settings | Covers, Low Power, lyrics, sounds, notifications, artist titles, recalibrate Apple Music, rebuild stats, JSON backup, test data, spike lab |
 
 Limits of free signing: no MusicKit (MediaPlayer only), re-sign every 7 days. The live lyrics widget extension uses one extra App ID.

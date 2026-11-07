@@ -104,11 +104,12 @@ struct SongPassportContent: View {
 struct SongDNA: View {
     let item: QueueItem
     let song: Song?
+    @Environment(LibraryService.self) private var library
 
     var body: some View {
         Card {
             if let s = song {
-                row("Album", s.albumTitle)
+                row("Album", library.snapshot.albumOf(s)?.title)
                 row("Release date", s.releaseDate?.formatted(date: .long, time: .omitted))
                 row("Duration", s.duration.trackTime)
                 row("Genre", s.genre)

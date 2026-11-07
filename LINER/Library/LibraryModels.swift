@@ -49,6 +49,8 @@ struct Album: Identifiable, Hashable, Sendable {
     let rating: Double        // mean of rated songs, 0 if none
 
     var songCount: Int { songIDs.count }
+    /// One song on its own: LINER. treats it as a song, never as an album (unlike Apple Music).
+    var isSingle: Bool { songIDs.count <= 1 }
     var key: AlbumKey { AlbumKey(albumPersistentID: id, title: title, albumArtist: artist) }
 }
 
@@ -111,7 +113,9 @@ struct LibrarySnapshot: Sendable {
     func songs(_ ids: [UInt64]) -> [Song] { ids.compactMap { songsByID[$0] } }
     func album(_ id: UInt64) -> Album? { albumsByID[id] }
     func artist(named name: String) -> Artist? { artistsByID[MediaKey.normalise(name)] }
-    func albums(of artist: Artist) -> [Album] { artist.albumIDs.compactMap { albumsByID[$0] } }
+    func albums(of artist: Artist) -> [Album] { artist.albumIDs.compactMap { albumsByID[$0] }.filter { !$0.isSingle } }
+    /// The song's album, unless the song is on its own (a single is just a song).
+    func albumOf(_ song: Song) -> Album? { albumsByID[song.albumID].flatMap { $0.isSingle ? nil : $0 } }
     func songs(of artist: Artist) -> [Song] {
         songs.filter { MediaKey.normalise($0.albumArtist) == artist.id || MediaKey.normalise($0.artist) == artist.id }
     }

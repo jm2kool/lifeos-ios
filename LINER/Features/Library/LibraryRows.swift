@@ -44,6 +44,7 @@ struct SongRow: View {
     let song: Song
     var number: Int?
     var showArtwork = true
+    @Environment(LibraryService.self) private var library
 
     var body: some View {
         HStack(spacing: 12) {
@@ -54,7 +55,7 @@ struct SongRow: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(song.title).font(.system(size: 16)).lineLimit(1)
-                Text(number == nil ? "\(song.artist) · \(song.albumTitle)" : song.artist)
+                Text(number == nil && library.snapshot.albumOf(song) != nil ? "\(song.artist) · \(song.albumTitle)" : song.artist)
                     .font(.system(size: 13)).foregroundStyle(Palette.secondary).lineLimit(1)
             }
             Spacer(minLength: 8)
