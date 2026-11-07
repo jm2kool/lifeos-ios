@@ -55,6 +55,7 @@ enum LibraryScanner {
         }
 
         var snapshot = LibrarySnapshot(songs: songs, albums: albums, artists: artists, playlists: playlists)
+        snapshot.items = MediaItemIndex(Dictionary(items.map { ($0.persistentID, $0) }, uniquingKeysWith: { a, _ in a }))
         snapshot.scannedAt = .now
         snapshot.scanDuration = clock.now - start
         return snapshot

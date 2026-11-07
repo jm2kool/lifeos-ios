@@ -50,4 +50,4 @@ struct SettingsView: View {
     }
 }
 
-#Preview { SettingsView().environment(PreviewData.library).preferredColorScheme(.dark) }
+#Preview { SettingsView().environment(PreviewData.library).environment(PreviewData.player).preferredColorScheme(.dark) }

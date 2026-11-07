@@ -32,11 +32,7 @@ struct SearchView: View {
                     }
                     if !results.songs.isEmpty {
                         SectionLabel("Songs")
-                        ForEach(results.songs) { song in
-                            if let album = library.snapshot.album(song.albumID) {
-                                NavigationLink(value: album) { SongRow(song: song) }.buttonStyle(.plain)
-                            } else { SongRow(song: song) }
-                        }
+                        ForEach(results.songs) { song in PlayableSongRow(song: song, list: results.songs) }
                     }
                 }
                 .padding(16)
@@ -49,4 +45,4 @@ struct SearchView: View {
     }
 }
 
-#Preview { SearchView().environment(PreviewData.library).preferredColorScheme(.dark) }
+#Preview { SearchView().environment(PreviewData.library).environment(PreviewData.player).preferredColorScheme(.dark) }

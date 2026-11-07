@@ -35,4 +35,4 @@ struct MyStatsView: View {
     }
 }
 
-#Preview { MyStatsView().environment(PreviewData.library).preferredColorScheme(.dark) }
+#Preview { MyStatsView().environment(PreviewData.library).environment(PreviewData.player).preferredColorScheme(.dark) }

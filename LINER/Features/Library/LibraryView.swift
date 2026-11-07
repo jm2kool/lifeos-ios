@@ -74,7 +74,7 @@ struct LibraryView: View {
             let list = library.songs(sort).filter { matches($0.title, $0.artist, $0.albumTitle) }
             if list.isEmpty { empty("music.note", "No songs") }
             ForEach(list) { song in
-                songLink(song).padding(.horizontal, 16).padding(.vertical, 5)
+                PlayableSongRow(song: song, list: list).padding(.horizontal, 16).padding(.vertical, 5)
             }
         case .playlists:
             let list = library.playlists(sort).filter { matches($0.name) }
@@ -89,18 +89,10 @@ struct LibraryView: View {
         }
     }
 
-    @ViewBuilder private func songLink(_ song: Song) -> some View {
-        if let album = library.snapshot.album(song.albumID) {
-            NavigationLink(value: album) { SongRow(song: song) }.buttonStyle(.plain)
-        } else {
-            SongRow(song: song)
-        }
-    }
-
     private func empty(_ symbol: String, _ title: String) -> some View {
         EmptyStateView(symbol: symbol, title: query.isEmpty ? title : "No matches",
                        message: query.isEmpty ? "Add music in the Music app and pull down to refresh." : "Nothing matches “\(query)”.")
     }
 }
 
-#Preview { LibraryView().environment(PreviewData.library).preferredColorScheme(.dark) }
+#Preview { LibraryView().environment(PreviewData.library).environment(PreviewData.player).preferredColorScheme(.dark) }

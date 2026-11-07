@@ -45,4 +45,4 @@ struct HomeView: View {
     }
 }
 
-#Preview { HomeView().environment(PreviewData.library).preferredColorScheme(.dark) }
+#Preview { HomeView().environment(PreviewData.library).environment(PreviewData.player).preferredColorScheme(.dark) }

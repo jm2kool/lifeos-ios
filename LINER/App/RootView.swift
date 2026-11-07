@@ -1,21 +1,29 @@
 import SwiftUI
 
 /// The glass tab bar (SPEC §8): Home, Library, Recaps, My LINER., Search — or the permission screen.
+/// The mini player sits in the bottom accessory and zooms open into the full player.
 struct RootView: View {
     enum TabID: String { case home, library, recaps, stats, search }
 
     @Environment(LibraryService.self) private var library
+    @Environment(PlaybackCoordinator.self) private var player
     @Environment(\.scenePhase) private var phase
     @AppStorage("root.tab") private var tab: TabID = .home
+    @Namespace private var playerZoom
 
     var body: some View {
+        @Bindable var player = player
         Group {
             if library.isAuthorized {
                 tabs
+                    .fullScreenCover(isPresented: $player.showFullPlayer) {
+                        FullPlayerView().navigationTransition(.zoom(sourceID: "player", in: playerZoom))
+                    }
             } else {
                 PermissionView()
             }
         }
+        .overlay(alignment: .top) { ErrorBanner() }
         .task { if library.isAuthorized && !library.hasLoaded { await library.refresh() } }
         .onChange(of: phase) { _, now in
             if now == .active && library.hasLoaded { Task { await library.refresh() } }
@@ -31,7 +39,53 @@ struct RootView: View {
             Tab(value: TabID.search, role: .search) { SearchView() }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
+        .modifier(MiniPlayerAccessory(enabled: player.current != nil, namespace: playerZoom))
     }
 }
 
-#Preview { RootView().environment(PreviewData.library).preferredColorScheme(.dark) }
+/// Shows the mini player only once something has played.
+private struct MiniPlayerAccessory: ViewModifier {
+    let enabled: Bool
+    let namespace: Namespace.ID
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26.1, *) {
+            content.tabViewBottomAccessory(isEnabled: enabled) { mini }
+        } else {
+            content.tabViewBottomAccessory { mini }
+        }
+    }
+
+    private var mini: some View { MiniPlayer().matchedTransitionSource(id: "player", in: namespace) }
+}
+
+/// A dismissible glass banner for playback problems (no subscription, missing file).
+private struct ErrorBanner: View {
+    @Environment(PlaybackCoordinator.self) private var player
+
+    var body: some View {
+        if let message = player.errorMessage {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)
+                Text(message).font(.footnote).frame(maxWidth: .infinity, alignment: .leading)
+                Button { withAnimation { player.errorMessage = nil } } label: { Image(systemName: "xmark") }
+                    .buttonStyle(.plain).accessibilityLabel("Dismiss")
+            }
+            .padding(14)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .padding(.horizontal, 16)
+            .transition(.move(edge: .top).combined(with: .opacity))
+            .task(id: message) {
+                try? await Task.sleep(for: .seconds(8))
+                withAnimation { player.errorMessage = nil }
+            }
+        }
+    }
+}
+
+#Preview {
+    RootView()
+        .environment(PreviewData.library)
+        .environment(PlaybackCoordinator(library: PreviewData.library))
+        .preferredColorScheme(.dark)
+}

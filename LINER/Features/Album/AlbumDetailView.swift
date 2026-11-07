@@ -29,12 +29,13 @@ struct AlbumDetailView: View {
                         Text(album.artist).linerLabel(size: 12)
                     }
                     Text(facts).linerLabel(size: 10).padding(.top, 6)
+                    PlayShuffleRow(songs: songs).padding(.top, 10)
                 }
                 .padding(.horizontal, 16).padding(.top, -24)
 
                 VStack(spacing: 0) {
                     ForEach(songs) { song in
-                        SongRow(song: song, number: song.trackNumber > 0 ? song.trackNumber : nil, showArtwork: false)
+                        PlayableSongRow(song: song, list: songs, number: song.trackNumber > 0 ? song.trackNumber : nil, showArtwork: false)
                             .padding(.vertical, 10)
                         Divider().overlay(Palette.stroke)
                     }
@@ -57,5 +58,5 @@ struct AlbumDetailView: View {
 
 #Preview {
     NavigationStack { AlbumDetailView(album: PreviewData.snapshot.albums[0]) }
-        .environment(PreviewData.library).preferredColorScheme(.dark)
+        .environment(PreviewData.library).environment(PreviewData.player).preferredColorScheme(.dark)
 }

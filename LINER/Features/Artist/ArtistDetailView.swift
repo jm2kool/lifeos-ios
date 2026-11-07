@@ -32,11 +32,13 @@ struct ArtistDetailView: View {
                 }
                 .padding(.horizontal, 16)
 
+                PlayShuffleRow(songs: all.sorted { $0.playCount > $1.playCount }).padding(.horizontal, 16)
+
                 if !top.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("My Top Songs").font(.sectionTitle)
                         ForEach(Array(top.enumerated()), id: \.element.id) { i, song in
-                            SongRow(song: song, number: i + 1)
+                            PlayableSongRow(song: song, list: Array(top), number: i + 1)
                                 .padding(.vertical, 6)
                         }
                     }
@@ -67,5 +69,5 @@ struct ArtistDetailView: View {
 #Preview {
     @Previewable @Namespace var ns
     NavigationStack { ArtistDetailView(artist: PreviewData.snapshot.artists[0], namespace: ns) }
-        .environment(PreviewData.library).preferredColorScheme(.dark)
+        .environment(PreviewData.library).environment(PreviewData.player).preferredColorScheme(.dark)
 }

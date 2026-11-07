@@ -1,4 +1,4 @@
-import Foundation
+@preconcurrency import MediaPlayer
 
 /// One library song, copied out of MediaPlayer into a plain value so it can cross threads.
 struct Song: Identifiable, Hashable, Sendable {
@@ -67,8 +67,17 @@ struct Playlist: Identifiable, Hashable, Sendable {
     let dateAdded: Date?
 }
 
+/// The MediaPlayer items behind a snapshot, by persistent ID, so playback can start without re-querying.
+/// MediaPlayer items are read-only proxies, safe to hand between threads.
+final class MediaItemIndex: @unchecked Sendable {
+    let items: [UInt64: MPMediaItem]
+    init(_ items: [UInt64: MPMediaItem] = [:]) { self.items = items }
+    subscript(id: UInt64) -> MPMediaItem? { items[id] }
+}
+
 /// Everything read from the library in one pass.
 struct LibrarySnapshot: Sendable {
+    var items = MediaItemIndex()
     let songs: [Song]
     let albums: [Album]
     let artists: [Artist]

@@ -12,9 +12,10 @@ struct PlaylistDetailView: View {
                 PlaylistCover(playlist: playlist).frame(maxWidth: 280).frame(maxWidth: .infinity)
                 Text(playlist.name).font(.itemTitle)
                 Text("Playlist · \(songs.count) songs · \(songs.reduce(0) { $0 + $1.duration }.minutesLabel)").linerLabel(size: 10)
+                PlayShuffleRow(songs: songs)
                 LazyVStack(spacing: 0) {
                     ForEach(songs) { song in
-                        SongRow(song: song).padding(.vertical, 6)
+                        PlayableSongRow(song: song, list: songs).padding(.vertical, 6)
                     }
                 }
                 if songs.isEmpty {
@@ -30,5 +31,5 @@ struct PlaylistDetailView: View {
 
 #Preview {
     NavigationStack { PlaylistDetailView(playlist: PreviewData.snapshot.playlists[0]) }
-        .environment(PreviewData.library).preferredColorScheme(.dark)
+        .environment(PreviewData.library).environment(PreviewData.player).preferredColorScheme(.dark)
 }
