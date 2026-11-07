@@ -12,6 +12,9 @@ struct LibraryView: View {
     @AppStorage("library.section") private var section: Section = .albums
     @AppStorage("library.sort") private var sort: LibrarySort = .alphabetical
     @State private var query = ""
+    @AppStorage("library.crate") private var crateLayout = false
+    @AppStorage("vinylMode") private var vinylMode = false
+    private var asCrate: Bool { crateLayout || vinylMode }
 
     var body: some View {
         NavigationStack {
@@ -36,7 +39,12 @@ struct LibraryView: View {
     }
 
     private var sortMenu: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            Button { withAnimation(.liner) { crateLayout.toggle() } } label: {
+                Label(asCrate ? "Grid" : "Crate", systemImage: asCrate ? "square.grid.2x2" : "record.circle")
+            }
+            .accessibilityLabel(asCrate ? "Show as a grid" : "Show as a crate")
+            .disabled(vinylMode)
             Menu {
                 Picker("Sort", selection: $sort) {
                     ForEach(LibrarySort.allCases) { Label($0.rawValue, systemImage: $0.symbol).tag($0) }
@@ -64,17 +72,23 @@ struct LibraryView: View {
         case .albums:
             let list = library.albums(sort).filter { matches($0.title, $0.artist) }
             if list.isEmpty { empty("square.stack", "No albums") }
+            if asCrate { CrateShelf(entries: list.map(CrateShelf.Entry.album)) } else {
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 20) {
                 ForEach(list) { album in
                     NavigationLink(value: album) { AlbumTile(album: album, namespace: zoom) }.buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 16)
+            }
         case .songs:
             let list = library.songs(sort).filter { matches($0.title, $0.artist, $0.albumTitle) }
             if list.isEmpty { empty("music.note", "No songs") }
-            ForEach(list) { song in
-                PlayableSongRow(song: song, list: list).padding(.horizontal, 16).padding(.vertical, 5)
+            if asCrate {
+                CrateShelf(entries: list.map { CrateShelf.Entry.song($0, list) })
+            } else {
+                ForEach(list) { song in
+                    PlayableSongRow(song: song, list: list).padding(.horizontal, 16).padding(.vertical, 5)
+                }
             }
         case .playlists:
             let list = library.playlists(sort).filter { matches($0.name) }
