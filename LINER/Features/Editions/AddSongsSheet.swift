@@ -34,7 +34,7 @@ struct AddSongsSheet: View {
                     .buttonStyle(.plain)
                 }
                 if source == 1 && mixtapes.isEmpty {
-                    Text("No mixtapes yet. Import audio in Library → Mixtapes.").foregroundStyle(Palette.secondary)
+                    Text("No mixtapes yet. Import audio in the Mixtapes tab.").foregroundStyle(Palette.secondary)
                 }
             }
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always))

@@ -4,7 +4,7 @@ import SwiftUI
 /// The glass tab bar (SPEC §8): Home, Library, Recaps, My LINER., Search — or the permission screen.
 /// The mini player sits in the bottom accessory and zooms open into the full player.
 struct RootView: View {
-    enum TabID: String { case home, library, recaps, stats, search }
+    enum TabID: String { case home, library, mixtapes, recaps, stats, search }
 
     @Environment(LibraryService.self) private var library
     @Environment(PlaybackCoordinator.self) private var player
@@ -47,8 +47,7 @@ struct RootView: View {
         let title = first.album ?? "Inbox"
         let existing = (try? Store.shared.context.fetch(FetchDescriptor<Mixtape>()))?.first { $0.title == title }
         let mixtape = MixtapeImporter.makeMixtape(from: files, into: existing)
-        tab = .library
-        UserDefaults.standard.set("Mixtapes", forKey: "library.section")
+        tab = .mixtapes
         player.notice = "Imported “\(first.title)” into \(mixtape?.title ?? title)."
     }
 
@@ -56,6 +55,7 @@ struct RootView: View {
         TabView(selection: $tab) {
             Tab("Home", systemImage: "house", value: TabID.home) { HomeView() }
             Tab("Library", systemImage: "square.stack", value: TabID.library) { LibraryView() }
+            Tab("Mixtapes", systemImage: "recordingtape", value: TabID.mixtapes) { MixtapesTab() }
             Tab("Recaps", systemImage: "calendar", value: TabID.recaps) { RecapsView() }
             Tab("My \(AppBrand.name)", systemImage: "chart.bar.xaxis", value: TabID.stats) { MyStatsView() }
             Tab(value: TabID.search, role: .search) { SearchView() }

@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// The Library tab: Artists · Albums · Songs · Playlists · Mixtapes, each searchable and sortable (SPEC §6.2).
+/// The Library tab: Artists · Albums · Songs · Playlists, each searchable and sortable (SPEC §6.2). Mixtapes have their own tab.
 struct LibraryView: View {
     enum Section: String, CaseIterable, Identifiable {
-        case artists = "Artists", albums = "Albums", songs = "Songs", playlists = "Playlists", mixtapes = "Mixtapes"
+        case artists = "Artists", albums = "Albums", songs = "Songs", playlists = "Playlists"
         var id: String { rawValue }
     }
 
@@ -86,8 +86,6 @@ struct LibraryView: View {
                     .contextMenu { PlaylistActionsMenu(playlist: playlist) }
                     .padding(.horizontal, 16).padding(.vertical, 6)
             }
-        case .mixtapes:
-            MixtapesSection(query: query)
         }
     }
 

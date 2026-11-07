@@ -6,7 +6,7 @@ Install it with Sideloadly using your Apple ID.
 
 | Area | What's there |
 |---|---|
-| Library | Artists · Albums · Songs · Playlists · Mixtapes with search and sort; black-and-white artist photos from Deezer |
+| Library | Artists · Albums · Songs · Playlists with search and sort (Mixtapes have their own tab); black-and-white artist photos from Deezer |
 | Artist titles | iOS 27-style stylised names: the artist's logo (TheAudioDB) in white, or genre-matched lettering; pick a style per artist; pages tinted from the artwork |
 | Playback | Library songs via `applicationQueuePlayer`, imported files via AVPlayer, mixed in one queue; shuffle, repeat, Up Next |
 | Player | Always full-screen artwork aimed at the subject, motion covers or Living Covers behind it, glass controls tinted by the art |
