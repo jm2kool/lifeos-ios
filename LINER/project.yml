@@ -1,0 +1,35 @@
+name: LINER
+options:
+  bundleIdPrefix: com.jm2kool
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""
+targets:
+  LINER:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+      - path: Spikes
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jm2kool.liner
+        PRODUCT_NAME: LINER
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: Config/Info.plist
+        INFOPLIST_KEY_CFBundleDisplayName: "LINER."
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.music
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_NSAppleMusicUsageDescription: "LINER. reads your Apple Music library to show your play counts, artwork and history, and to play your songs."
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_PREVIEWS: YES

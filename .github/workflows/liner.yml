@@ -1,0 +1,77 @@
+name: Build LINER IPA
+
+on:
+  push:
+    branches: [main, liner, 'claude/**']
+    paths: ['LINER/**', '.github/workflows/liner.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: liner-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: LINER
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use the newest Xcode
+        run: |
+          XC=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          [ -z "$XC" ] && XC=/Applications/Xcode.app
+          sudo xcode-select -s "$XC"
+          xcodebuild -version
+
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen >/dev/null 2>&1 || brew install xcodegen
+          xcodegen generate
+
+      - name: Build (unsigned)
+        run: |
+          xcodebuild -project LINER.xcodeproj -target LINER -configuration Release -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            SYMROOT="$PWD/build" build > build.log 2>&1 || {
+              grep -E "error:|fatal error" build.log | sort -u | head -60 | while IFS= read -r l; do echo "::error::${l#$PWD/}"; done; exit 1; }
+          grep -E "warning:" build.log | grep -v "appintentsmetadataprocessor" | sort -u | head -40 | while IFS= read -r l; do echo "::warning::${l#$PWD/}"; done || true
+          test -d build/Release-iphoneos/LINER.app
+
+      - name: Package .ipa
+        run: |
+          rm -rf Payload && mkdir Payload
+          cp -R build/Release-iphoneos/LINER.app Payload/
+          codesign --force --sign - Payload/LINER.app || true
+          zip -qry LINER.ipa Payload
+          ls -lh LINER.ipa
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: liner-build-log
+          path: LINER/build.log
+          if-no-files-found: ignore
+
+      - name: Upload .ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: LINER-ipa
+          path: LINER/LINER.ipa
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=liner-latest
+          gh release delete $TAG --yes --cleanup-tag 2>/dev/null || true
+          gh release create $TAG LINER.ipa --title "LINER. (latest build)" --target $GITHUB_SHA --prerelease \
+            --notes "Unsigned build of ${GITHUB_SHA::7} from ${GITHUB_REF_NAME}. Install with Sideloadly using your Apple ID."
