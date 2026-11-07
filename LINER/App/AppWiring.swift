@@ -19,6 +19,7 @@ enum AppWiring {
                 Task { await MoodPlaylistService.refreshDue(library: library) }
             }
         }
+        player.onStarted = { item in LyricsLiveActivityController.shared.itemStarted(item) }
         player.onFinished = { [library] record in
             SnapshotService.shared.log(record)
             guard record.item.isLibrary else { return }

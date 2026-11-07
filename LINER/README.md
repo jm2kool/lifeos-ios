@@ -15,12 +15,12 @@ Install it with Sideloadly using your Apple ID.
 | Passports | Song Passport (hearts, moods, notes, connection, Song DNA, favourite moments, saved lyrics); Album Passport (hearts, personal ranking, history, cover) |
 | Editions & pins | Your own versions of albums (library + mixtape tracks, custom covers); pinned carousel on Home |
 | Mixtapes | Import mp3/m4a/wav/aiff/mp4/mov from Files or "Open in LINER."; covers, motion covers, LRC lyrics |
-| Lyrics | LRCLIB synced lyrics, sing-along view, tap to seek, save lines and moments |
+| Lyrics | LRCLIB synced lyrics, sing-along view, tap to seek, save lines and moments; live lyrics on the Lock Screen (Live Activity) |
 | Recaps | Week / month / year from the day you install, story mode, Monday notification |
 | Share | 9:16 still and animated cards to Instagram Stories, Photos or anywhere |
 | Mood playlists | On-device Apple Intelligence recipe + local scoring; Mood Mix without AI; save to Apple Music |
 | Vinyl Mode | Record crate, turntable, needle drop, 33⅓ rpm spin, scratch-scrub, Side B |
 | Settings | Covers, Low Power, lyrics, sounds, notifications, rebuild stats, JSON backup, test data, spike lab |
 
-Limits of free signing: no MusicKit (MediaPlayer only), no widgets or extensions, re-sign every 7 days.
+Limits of free signing: no MusicKit (MediaPlayer only), re-sign every 7 days. The live lyrics widget extension uses one extra App ID.
 See `PHASE0.md` for the device checks and `CLAUDE.md` for working on the code.

@@ -13,6 +13,8 @@ settings:
 targets:
   LINER:
     type: application
+    dependencies:
+      - target: LINERWidgets
     platform: iOS
     sources:
       # Every Swift folder in LINER/ is part of the app; new feature folders need no edits here.
@@ -26,6 +28,7 @@ targets:
           - "*.ipa"
           - "build.log"
           - "LINER.xcodeproj/**"
+          - "LINERWidgets/**"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jm2kool.liner
@@ -39,8 +42,30 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait
         INFOPLIST_KEY_NSAppleMusicUsageDescription: "LINER. reads your Apple Music library to show your play counts, artwork and history, and to play your songs."
+        INFOPLIST_KEY_NSSupportsLiveActivities: YES
         INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription: "LINER. saves your share cards to Photos when you ask."
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic
         ENABLE_PREVIEWS: YES
+  LINERWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: LINERWidgets
+      - path: Shared
+    info:
+      path: LINERWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: "LINER."
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jm2kool.liner.widgets
+        PRODUCT_NAME: LINERWidgets
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: "LINER."
+        TARGETED_DEVICE_FAMILY: "1"
+        SKIP_INSTALL: YES
+        CODE_SIGN_STYLE: Automatic

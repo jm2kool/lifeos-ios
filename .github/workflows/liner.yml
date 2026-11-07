@@ -49,7 +49,12 @@ jobs:
         run: |
           rm -rf Payload && mkdir Payload
           cp -R build/Release-iphoneos/LINER.app Payload/
+          # Ad-hoc sign the widget extension (live lyrics) first, then the app around it.
+          if [ -d Payload/LINER.app/PlugIns/LINERWidgets.appex ]; then
+            codesign --force --sign - Payload/LINER.app/PlugIns/LINERWidgets.appex || true
+          fi
           codesign --force --sign - Payload/LINER.app || true
+          ls Payload/LINER.app/PlugIns || true
           zip -qry LINER.ipa Payload
           ls -lh LINER.ipa
 

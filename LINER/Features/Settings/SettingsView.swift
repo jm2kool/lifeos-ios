@@ -14,6 +14,7 @@ struct SettingsView: View {
     @AppStorage("ownPlayerForFiles") private var ownPlayer = true
     @AppStorage("lyricsSource") private var lyricsSource = "lrclib"
     @AppStorage("needleSounds") private var needleSounds = true
+    @AppStorage("liveLyrics") private var liveLyrics = true
     @AppStorage("recapNotifications") private var recapNotifications = false
     @AppStorage("brandName") private var brandName = ""
     @State private var exportURL: URL?
@@ -34,6 +35,8 @@ struct SettingsView: View {
                 Section("Listening") {
                     Toggle("Vinyl Mode", isOn: $vinylMode)
                     Toggle("Needle sounds", isOn: $needleSounds).disabled(!vinylMode)
+                    Toggle("Live lyrics on the Lock Screen", isOn: $liveLyrics)
+                        .onChange(of: liveLyrics) { _, on in if !on { LyricsLiveActivityController.shared.stop() } }
                     Picker("Lyrics", selection: $lyricsSource) {
                         Text("LRCLIB").tag("lrclib")
                         Text("Off").tag("off")

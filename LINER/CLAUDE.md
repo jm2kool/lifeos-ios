@@ -2,7 +2,8 @@
 
 LINER. is a separate app from Matinee (the rest of this repo). `SPEC.md` is the source of truth; build one phase at a time.
 
-- Free signing only: MediaPlayer framework, never MusicKit or the Apple Music API. No app extensions.
+- Free signing only: MediaPlayer framework, never MusicKit or the Apple Music API. One app extension:
+  `LINERWidgets` (the live lyrics Live Activity), sharing `Shared/LyricsActivity.swift` with the app.
 - Swift 6 language mode. UI and stores are `@MainActor`. Callbacks that the system calls on its own queues
   (MediaPlayer artwork handlers, notifications, remote commands) are `@Sendable` closures that hop back to the
   main actor. MediaPlayer is imported with `@preconcurrency`.

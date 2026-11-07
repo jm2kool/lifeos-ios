@@ -8,15 +8,22 @@ struct FullPlayerView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var art = PlayerArtwork()
     @State private var sheet: PlayerSheet?
+    @AppStorage("playerVinyl") private var vinyl = false
 
     enum PlayerSheet: String, Identifiable { case queue, lyrics, songPassport, share; var id: String { rawValue } }
 
     var body: some View {
         ZStack {
             background
+            if vinyl { Color.black.opacity(0.55).ignoresSafeArea().transition(.opacity) }
             VStack(spacing: 0) {
                 topBar
-                Spacer()
+                if vinyl, let item = player.current {
+                    PlayerVinyl(item: item).padding(.horizontal, 12).padding(.vertical, 18)
+                        .transition(.scale(scale: 0.6).combined(with: .opacity))
+                } else {
+                    Spacer()
+                }
                 if let item = player.current { bottom(item) }
             }
             .padding(.horizontal, 20)
@@ -87,6 +94,10 @@ struct FullPlayerView: View {
                 Image(systemName: "speaker.fill").font(.caption).foregroundStyle(Palette.secondary)
                 VolumeSlider().frame(height: 34)
                 RoutePicker().frame(width: 30, height: 30)
+                Button { withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) { vinyl.toggle() } } label: {
+                    Image(systemName: vinyl ? "record.circle.fill" : "record.circle")
+                }
+                .accessibilityLabel(vinyl ? "Show the cover" : "Show as a record")
                 Button { sheet = .lyrics } label: { Image(systemName: "quote.bubble") }.accessibilityLabel("Lyrics")
                 Button { sheet = .queue } label: { Image(systemName: "list.bullet") }.accessibilityLabel("Queue")
             }
