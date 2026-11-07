@@ -23,8 +23,9 @@ struct PlayerVinyl: View {
                 let angle = spin.angle(at: ctx.date, playing: player.isPlaying && scrub == nil) + (scrub ?? 0)
                 RecordDisc(record: record, side: "A")
                     .rotationEffect(.radians(angle))
-                    .shadow(color: .black.opacity(0.7), radius: 30, y: 16)
             }
+            .overlay(RecordSheen())
+            .shadow(color: .black.opacity(0.7), radius: 30, y: 16)
             .frame(width: size, height: size)
             .contentShape(Circle())
             .gesture(scratch(size: size))

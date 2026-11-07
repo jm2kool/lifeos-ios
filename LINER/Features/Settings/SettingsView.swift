@@ -5,7 +5,10 @@ import UniformTypeIdentifiers
 /// rebuild stats, backup, test data, diagnostics and about.
 struct SettingsView: View {
     @Environment(LibraryService.self) private var library
+    @Environment(PlaybackCoordinator.self) private var player
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("musicConnected") private var connected = true
+    @State private var recalibrating = false
     @AppStorage("vinylMode") private var vinylMode = false
     @AppStorage("livingCovers") private var livingCovers = true
     @AppStorage("livingCoverStyle") private var coverStyle = LivingCoverRenderer.Style.drift.rawValue
@@ -32,7 +35,7 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 if let message { Section { Text(message).font(.footnote) } }
-                Section("Listening") {
+                Section {
                     Toggle("Vinyl Mode", isOn: $vinylMode)
                     Toggle("Needle sounds", isOn: $needleSounds).disabled(!vinylMode)
                     Toggle("Live lyrics on the Lock Screen", isOn: $liveLyrics)
@@ -41,6 +44,11 @@ struct SettingsView: View {
                         Text("LRCLIB").tag("lrclib")
                         Text("Off").tag("off")
                     }
+                } header: { Text("Listening") } footer: {
+                    Text("With Vinyl Mode on, Home becomes your record crate and the Library shows albums as a crate.")
+                }
+                Section("Artists") {
+                    NavigationLink("Artist titles") { ArtistTitlesSettings() }
                 }
                 Section {
                     Toggle("Living Covers", isOn: $livingCovers)
@@ -71,6 +79,15 @@ struct SettingsView: View {
                     }
                     Button(library.isLoading ? "Rebuilding…" : "Rebuild stats") { Task { ArtworkCache.shared.clear(); await library.refresh() } }
                         .disabled(library.isLoading)
+                }
+                Section {
+                    Button(recalibrating ? "Recalibrating…" : "Recalibrate Apple Music", systemImage: "arrow.triangle.2.circlepath") {
+                        Task { await recalibrate() }
+                    }
+                    .disabled(recalibrating || library.isLoading)
+                    Button("Show the connect screen again", systemImage: "music.note") { connected = false; dismiss() }
+                } header: { Text("Apple Music") } footer: {
+                    Text("If songs stop playing from Apple Music (for example after reinstalling \(AppBrand.name)), recalibrate: it asks for access again, resets the player and rescans your library.")
                 }
                 Section {
                     Button("Export backup (JSON)", systemImage: "square.and.arrow.up") {
@@ -110,6 +127,14 @@ struct SettingsView: View {
             .onChange(of: coverStyle) { PlaybackCoordinator.shared?.nowPlaying.animated.reset() }
             .onChange(of: livingCovers) { PlaybackCoordinator.shared?.nowPlaying.animated.reset() }
         }
+    }
+
+    private func recalibrate() async {
+        recalibrating = true
+        defer { recalibrating = false }
+        guard await library.connect() else { message = "\(AppBrand.name) can't read your library. Turn on Media & Apple Music for it in the Settings app."; return }
+        player.recalibrate()
+        message = "Recalibrated: the player is reset and your library was rescanned. Songs in iCloud need an Apple Music subscription to play."
     }
 
     private func updateCache() { cacheSize = ByteCountFormatter.string(fromByteCount: LivingCoverRenderer.cacheSize, countStyle: .file) }

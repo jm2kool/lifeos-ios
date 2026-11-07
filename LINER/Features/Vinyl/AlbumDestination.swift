@@ -1,20 +1,15 @@
 import SwiftUI
 
-/// Where an album opens: with Vinyl Mode on, straight onto the turntable (the ⓘ button shows the album page);
-/// otherwise the album page.
+/// Where an album opens: always the album page with every song, Vinyl Mode or not. Nothing plays until you ask
+/// (the crate's "Put it on" is the way onto the turntable).
 struct AlbumDestination: View {
     let album: Album
-    @AppStorage("vinylMode") private var vinylMode = false
-    @Environment(LibraryService.self) private var library
-    @State private var showDetails = false
 
-    var body: some View {
-        if vinylMode && !showDetails {
-            TurntableView(record: .album(album, library.snapshot), onInfo: { withAnimation(.liner) { showDetails = true } })
-                .toolbar(.hidden, for: .navigationBar)
-                .toolbar(.hidden, for: .tabBar)
-        } else {
-            AlbumDetailView(album: album)
-        }
-    }
+    var body: some View { AlbumDetailView(album: album) }
+}
+
+#Preview {
+    NavigationStack { AlbumDestination(album: PreviewData.snapshot.albums[0]) }
+        .environment(PreviewData.library).environment(PreviewData.player).environment(PreviewData.passports)
+        .modelContainer(Store.shared.container).preferredColorScheme(.dark)
 }

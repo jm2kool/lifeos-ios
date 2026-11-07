@@ -55,6 +55,19 @@ final class LibraryService {
         if isAuthorized { await refresh() }
     }
 
+    /// Re-reads the permission, which can change in Settings while LINER. is in the background.
+    func recheckAccess() { status = MPMediaLibrary.authorizationStatus() }
+
+    /// The connect flow (first launch after an install, or Settings → Recalibrate): asks for access (instant when
+    /// it's already granted), then scans the library from scratch. Returns whether LINER. can read the library.
+    func connect() async -> Bool {
+        status = await Self.askForAccess()
+        guard isAuthorized else { return false }
+        ArtworkCache.shared.clear()
+        await refresh()
+        return true
+    }
+
     nonisolated private static func askForAccess() async -> MPMediaLibraryAuthorizationStatus {
         await withCheckedContinuation { c in MPMediaLibrary.requestAuthorization { @Sendable s in c.resume(returning: s) } }
     }

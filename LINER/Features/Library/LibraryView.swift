@@ -1,6 +1,7 @@
 import SwiftUI
 
 /// The Library tab: Artists · Albums · Songs · Playlists, each searchable and sortable (SPEC §6.2). Mixtapes have their own tab.
+/// Albums can show as a moving crate (always in Vinyl Mode); songs are always a plain list.
 struct LibraryView: View {
     enum Section: String, CaseIterable, Identifiable {
         case artists = "Artists", albums = "Albums", songs = "Songs", playlists = "Playlists"
@@ -19,16 +20,15 @@ struct LibraryView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0, pinnedViews: []) {
-                    Picker("Section", selection: $section) {
-                        ForEach(Section.allCases) { Text($0.rawValue).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal, 16).padding(.bottom, 14)
-
+                LazyVStack(alignment: .leading, spacing: 0) {
                     content
                 }
+                .padding(.top, 6)
+                .id(section)   // a fresh list for each section, so switching is instant
             }
+            .scrollDismissesKeyboard(.immediately)
+            // Outside the scroll view, so it's always there and always takes the tap.
+            .safeAreaInset(edge: .top, spacing: 0) { sectionPicker }
             .background(Palette.background)
             .navigationTitle("Library")
             .searchable(text: $query, prompt: "Search \(section.rawValue.lowercased())")
@@ -38,13 +38,24 @@ struct LibraryView: View {
         }
     }
 
+    private var sectionPicker: some View {
+        Picker("Section", selection: Binding(get: { section }, set: { new in withAnimation(.liner) { section = new } })) {
+            ForEach(Section.allCases) { Text($0.rawValue).tag($0) }
+        }
+        .pickerStyle(.segmented)
+        .padding(.horizontal, 16).padding(.vertical, 8)
+        .background(Palette.background.opacity(0.92))
+        .sensoryFeedback(.selection, trigger: section)
+    }
+
     private var sortMenu: some ToolbarContent {
         ToolbarItemGroup(placement: .topBarTrailing) {
-            Button { withAnimation(.liner) { crateLayout.toggle() } } label: {
-                Label(asCrate ? "Grid" : "Crate", systemImage: asCrate ? "square.grid.2x2" : "record.circle")
+            if section == .albums && !vinylMode {
+                Button { withAnimation(.liner) { crateLayout.toggle() } } label: {
+                    Label(asCrate ? "Grid" : "Crate", systemImage: asCrate ? "square.grid.2x2" : "record.circle")
+                }
+                .accessibilityLabel(asCrate ? "Show as a grid" : "Show as a crate")
             }
-            .accessibilityLabel(asCrate ? "Show as a grid" : "Show as a crate")
-            .disabled(vinylMode)
             Menu {
                 Picker("Sort", selection: $sort) {
                     ForEach(LibrarySort.allCases) { Label($0.rawValue, systemImage: $0.symbol).tag($0) }
@@ -72,7 +83,7 @@ struct LibraryView: View {
         case .albums:
             let list = library.albums(sort).filter { matches($0.title, $0.artist) }
             if list.isEmpty { empty("square.stack", "No albums") }
-            if asCrate { CrateShelf(entries: list.map(CrateShelf.Entry.album)) } else {
+            if asCrate { CrateShelf(albums: list, namespace: zoom) } else {
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 20) {
                 ForEach(list) { album in
                     NavigationLink(value: album) { AlbumTile(album: album, namespace: zoom) }.buttonStyle(.plain)
@@ -83,12 +94,8 @@ struct LibraryView: View {
         case .songs:
             let list = library.songs(sort).filter { matches($0.title, $0.artist, $0.albumTitle) }
             if list.isEmpty { empty("music.note", "No songs") }
-            if asCrate {
-                CrateShelf(entries: list.map { CrateShelf.Entry.song($0, list) })
-            } else {
-                ForEach(list) { song in
-                    PlayableSongRow(song: song, list: list).padding(.horizontal, 16).padding(.vertical, 5)
-                }
+            ForEach(list) { song in
+                PlayableSongRow(song: song, list: list).padding(.horizontal, 16).padding(.vertical, 5)
             }
         case .playlists:
             let list = library.playlists(sort).filter { matches($0.name) }

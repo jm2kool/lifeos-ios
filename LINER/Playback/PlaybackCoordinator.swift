@@ -160,6 +160,17 @@ final class PlaybackCoordinator {
         nowPlaying.clear()
     }
 
+    /// Settings → Recalibrate and the connect screen: clears the queue and resets both engines.
+    func recalibrate() {
+        stopAll()
+        queue = []
+        unshuffled = []
+        index = 0
+        errorMessage = nil
+        let first = library.snapshot.songs.first { !$0.isCloudOnly && !$0.playsInLINER }.flatMap { library.snapshot.items[$0.id] }
+        music.recalibrate(with: first)
+    }
+
     // MARK: Transport
 
     func togglePlayPause() { isPlaying ? pause() : resume() }

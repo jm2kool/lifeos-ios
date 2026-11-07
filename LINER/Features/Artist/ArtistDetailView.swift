@@ -1,12 +1,13 @@
 import SwiftUI
 
 /// An artist (SPEC §6.3): black-and-white portrait, serif name, Play/Shuffle, your history with them,
-/// My Top Songs, totals, albums and songs.
+/// My Top Songs, totals, albums and songs. The title style is picked in Settings → Artist titles.
 struct ArtistDetailView: View {
     let artist: Artist
     let namespace: Namespace.ID
     @Environment(LibraryService.self) private var library
     @Environment(PlaybackCoordinator.self) private var player
+    @Environment(\.dismiss) private var dismiss
     @State private var titleStyle: ArtistTitleStyle = .auto
     /// How bright the photo is where the title sits (0 dark … 1 bright).
     @State private var titleBackdrop = 0.0
@@ -43,14 +44,13 @@ struct ArtistDetailView: View {
         .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { titleStyle = ArtistTitleStyle.saved(for: artist.id) }
+        // One back button of our own: the system one could show twice over the full-bleed photo after a zoom
+        // transition. Swipe-back still works. Title styles live in Settings → Artist titles.
+        .navigationBarBackButtonHidden(true)
+        .keepsSwipeBack()
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Picker("Title style", selection: $titleStyle) {
-                        ForEach(ArtistTitleStyle.allCases) { Text($0.label).tag($0) }
-                    }
-                } label: { Label("Title style", systemImage: "textformat") }
-                .onChange(of: titleStyle) { _, s in ArtistTitleStyle.save(s, for: artist.id) }
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Back", systemImage: "chevron.left") { dismiss() }
             }
         }
     }

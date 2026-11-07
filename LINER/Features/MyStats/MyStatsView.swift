@@ -1,9 +1,13 @@
 import SwiftUI
 
-/// "My LINER." (SPEC §6.11): all-time totals, top artists, albums and songs with See All, and extras.
+/// "My LINER." (SPEC §6.11): all-time totals, top artists, albums and songs with See All, and extras —
+/// with Recaps one tap away at the top.
 struct MyStatsView: View {
+    enum Page: String, CaseIterable, Identifiable { case overview = "Overview", recaps = "Recaps"; var id: String { rawValue } }
+
     @Environment(LibraryService.self) private var library
     @Namespace private var zoom
+    @AppStorage("stats.page") private var page: Page = .overview
 
     var body: some View {
         let stats = library.stats
@@ -12,28 +16,16 @@ struct MyStatsView: View {
                 VStack(alignment: .leading, spacing: 26) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("My \(AppBrand.name)").font(.serif(44))
-                        Text(AppBrand.tagline).linerLabel()
+                        Text(page == .recaps ? "Your listening, period by period" : AppBrand.tagline).linerLabel()
                     }
                     .padding(.horizontal, 16)
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        StatRow {
-                            StatTile("Total plays", value: stats.totalPlays)
-                            StatTile("Minutes", value: stats.totalMinutes, footnote: "Estimated")
-                        }
-                        Text("Minutes estimated from track durations × play counts").font(.caption2).foregroundStyle(Palette.label)
+                    Picker("Page", selection: $page.animation(.liner)) {
+                        ForEach(Page.allCases) { Text($0.rawValue).tag($0) }
                     }
-                    .padding(.horizontal, 16)
+                    .pickerStyle(.segmented).padding(.horizontal, 16)
 
-                    if stats.totalPlays == 0 {
-                        EmptyStateView(symbol: "chart.bar", title: "No plays yet", message: "Play some music and your history builds up here.")
-                    } else {
-                        topArtists(stats.artists)
-                        topAlbums(stats.albums)
-                        topSongs(stats.songs)
-                    }
-                    PersonalStatsSections()
-                    libraryCard
+                    if page == .recaps { RecapsView() } else { overview(stats) }
                 }
                 .padding(.bottom, 32)
             }
@@ -41,6 +33,27 @@ struct MyStatsView: View {
             .refreshable { await library.refresh() }
             .libraryDestinations(zoom)
         }
+    }
+
+    @ViewBuilder private func overview(_ stats: LibraryStats) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            StatRow {
+                StatTile("Total plays", value: stats.totalPlays)
+                StatTile("Minutes", value: stats.totalMinutes, footnote: "Estimated")
+            }
+            Text("Minutes estimated from track durations × play counts").font(.caption2).foregroundStyle(Palette.label)
+        }
+        .padding(.horizontal, 16)
+
+        if stats.totalPlays == 0 {
+            EmptyStateView(symbol: "chart.bar", title: "No plays yet", message: "Play some music and your history builds up here.")
+        } else {
+            topArtists(stats.artists)
+            topAlbums(stats.albums)
+            topSongs(stats.songs)
+        }
+        PersonalStatsSections()
+        libraryCard
     }
 
     private func topArtists(_ artists: [Artist]) -> some View {

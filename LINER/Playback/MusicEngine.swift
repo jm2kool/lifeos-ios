@@ -32,6 +32,17 @@ final class MusicEngine {
         player.play()
     }
 
+    /// Wakes the system music player after an install or a recalibrate: stops whatever it held, then loads one
+    /// library song without playing it, so the next tap plays straight away.
+    func recalibrate(with item: MPMediaItem?) {
+        observe()
+        player.stop()
+        runIDs = []
+        guard let item else { return }
+        player.setQueue(with: MPMediaItemCollection(items: [item]))
+        player.prepareToPlay { @Sendable _ in }
+    }
+
     func play() { player.play() }
     func pause() { player.pause() }
     func stop() { player.stop(); runIDs = [] }

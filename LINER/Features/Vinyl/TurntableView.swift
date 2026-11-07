@@ -67,8 +67,9 @@ struct TurntableView: View {
             TimelineView(.animation) { ctx in
                 let angle = spin.angle(at: ctx.date, playing: isThisPlaying && scrubbing == nil) + (scrubbing ?? 0)
                 RecordDisc(record: record, side: side)
-                    .padding(size * 0.03)
                     .rotationEffect(.radians(angle))
+                    .overlay(RecordSheen())
+                    .padding(size * 0.03)
             }
             .rotation3DEffect(.degrees(flipped), axis: (x: 1, y: 0, z: 0))
             .offset(y: landed ? 0 : -size * 1.3)
@@ -95,26 +96,31 @@ struct TurntableView: View {
 
     // MARK: Actions
 
+    /// The song starts the moment the turntable opens; the record landing, the arm and the pop happen alongside it.
     private func dropTheNeedle() async {
-        withAnimation(.spring(response: 0.7, dampingFraction: 0.8)) { landed = true }
-        try? await Task.sleep(for: .seconds(0.75))
-        setArm(down: true)
+        startPlaying()
+        withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) { landed = true }
+        withAnimation(.spring(response: 0.6, dampingFraction: 0.78).delay(0.2)) { armDown = true }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
 
     private func setArm(down: Bool) {
         withAnimation(.spring(response: 0.6, dampingFraction: 0.78)) { armDown = down }
         UIImpactFeedbackGenerator(style: down ? .medium : .light).impactOccurred()
-        if down {
-            Task {
-                try? await Task.sleep(for: .seconds(0.55))
-                VinylSounds.shared.needleDrop()
-                if record.tracks.contains(where: { $0.id == player.current?.id }) { player.resume() }
-                else { player.play(record.tracks, startAt: side == "A" ? 0 : record.tracks.count / 2) }
-            }
-        } else {
+        if down { startPlaying() } else {
             VinylSounds.shared.stopCrackle()
             player.pause()
         }
+    }
+
+    /// Plays (or resumes) this record at once, with the needle drop sound on top.
+    private func startPlaying() {
+        if record.tracks.contains(where: { $0.id == player.current?.id }) {
+            if !player.isPlaying { player.resume() }
+        } else {
+            player.play(record.tracks, startAt: side == "A" ? 0 : record.tracks.count / 2)
+        }
+        VinylSounds.shared.needleDrop()
     }
 
     /// Side B: the second half of the tracklist.

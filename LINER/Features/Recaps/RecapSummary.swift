@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A recap on the Recaps tab: minutes with the change, song of the period, top 5s, genre, moods, discoveries.
+/// A recap in My LINER. → Recaps: minutes with the change, song of the period, top 5s, genre, moods, discoveries.
 struct RecapSummary: View {
     let recap: Recap
     let namespace: Namespace.ID

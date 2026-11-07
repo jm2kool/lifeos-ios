@@ -1,7 +1,8 @@
 import SwiftData
 import SwiftUI
 
-/// The glass tab bar (SPEC §8): Home, Library, Recaps, My LINER., Search — or the permission screen.
+/// The glass tab bar (SPEC §8): Home, Library, Mixtapes, My LINER. (with Recaps inside), Search — or the
+/// connect screen, which shows on the first launch after every install and after Settings → Recalibrate.
 /// The mini player sits in the bottom accessory and zooms open into the full player.
 struct RootView: View {
     enum TabID: String { case home, library, mixtapes, recaps, stats, search }
@@ -12,15 +13,15 @@ struct RootView: View {
     @Environment(PassportPresenter.self) private var passports
     @AppStorage("root.tab") private var tab: TabID = .home
     @Namespace private var playerZoom
-    @State private var lastHomeTap = Date.distantPast
+    /// Wiped when the app is deleted, so a fresh install always walks through connecting Apple Music again.
+    @AppStorage("musicConnected") private var connected = false
 
     var body: some View {
         @Bindable var player = player
         @Bindable var passports = passports
         @Bindable var prompts = NewAlbumPrompts.shared
-        @Bindable var crate = CratePresenter.shared
         Group {
-            if library.isAuthorized {
+            if library.isAuthorized && connected {
                 tabs
                     .fullScreenCover(isPresented: $player.showFullPlayer) {
                         FullPlayerView().navigationTransition(.zoom(sourceID: "player", in: playerZoom))
@@ -34,27 +35,13 @@ struct RootView: View {
         .sheet(item: $passports.album) { AlbumPassportSheet(subject: $0) }
         .sheet(item: $passports.editions) { EditionsSheet(subject: $0) }
         .modifier(CoverPickerHost())
-        .fullScreenCover(isPresented: $crate.isOpen) { CrateView() }
         .sheet(item: $prompts.current, onDismiss: { NewAlbumPrompts.shared.showNext(library.snapshot) }) { AlbumRatingPrompt(album: $0) }
-        .task { if library.isAuthorized && !library.hasLoaded { await library.refresh() } }
+        .task { if library.isAuthorized && connected && !library.hasLoaded { await library.refresh() } }
         .onOpenURL { url in Task { await openFile(url) } }
         .onChange(of: phase) { _, now in
-            if now == .active && library.hasLoaded { Task { await library.refresh() } }
+            if now == .active && library.hasLoaded { library.recheckAccess(); Task { await library.refresh() } }
             if now == .background { SnapshotService.schedule() }
         }
-    }
-
-    /// Tab selection that also notices a double tap on Home (which opens the crate).
-    private var tabSelection: Binding<TabID> {
-        Binding(get: { tab }, set: { new in
-            if new == .home && tab == .home {
-                if Date.now.timeIntervalSince(lastHomeTap) < 0.45 { CratePresenter.shared.open(); lastHomeTap = .distantPast; return }
-                lastHomeTap = .now
-            } else if new == .home {
-                lastHomeTap = .now
-            }
-            tab = new
-        })
     }
 
     /// "Open in LINER." from Files, Safari downloads or the share sheet: import into a mixtape.
@@ -71,15 +58,15 @@ struct RootView: View {
     }
 
     private var tabs: some View {
-        TabView(selection: tabSelection) {
+        TabView(selection: $tab) {
             Tab("Home", systemImage: "house", value: TabID.home) { HomeView() }
             Tab("Library", systemImage: "square.stack", value: TabID.library) { LibraryView() }
             Tab("Mixtapes", systemImage: "recordingtape", value: TabID.mixtapes) { MixtapesTab() }
-            Tab("Recaps", systemImage: "calendar", value: TabID.recaps) { RecapsView() }
             Tab("My \(AppBrand.name)", systemImage: "chart.bar.xaxis", value: TabID.stats) { MyStatsView() }
             Tab(value: TabID.search, role: .search) { SearchView() }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
+        .onAppear { if tab == .recaps { tab = .stats } }
         .modifier(MiniPlayerAccessory(enabled: player.current != nil, namespace: playerZoom))
     }
 }

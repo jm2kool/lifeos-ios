@@ -1,113 +1,83 @@
 import SwiftUI
 
-/// The Library as a crate: records stacked on their spines, only the edge and the name showing.
-/// Tap a spine to pull the record up out of the crate; tap it again to open it (albums) or play it (songs).
+/// The Library's albums as a crate (MD Vinyl-style): big sleeves that lean back as you flip past them, the
+/// record sliding out of the one in front, with a tick under your finger for every record. Tap a sleeve and it
+/// zooms open into the album page.
 struct CrateShelf: View {
-    enum Entry: Identifiable {
-        case album(Album)
-        case song(Song, [Song])
-        var id: String {
-            switch self {
-            case .album(let a): "a\(a.id)"
-            case .song(let s, _): "s\(s.id)"
-            }
-        }
-        var title: String { switch self { case .album(let a): a.title; case .song(let s, _): s.title } }
-        var subtitle: String { switch self { case .album(let a): a.artist; case .song(let s, _): s.artist } }
-        var albumID: UInt64 { switch self { case .album(let a): a.id; case .song(let s, _): s.albumID } }
-    }
-
-    let entries: [Entry]
-    @Environment(PlaybackCoordinator.self) private var player
-    @State private var pulled: String?
-    @Namespace private var shelf
+    let albums: [Album]
+    let namespace: Namespace.ID
+    @State private var ticks = 0
+    @State private var taps = 0
 
     var body: some View {
-        LazyVStack(spacing: 3) {
-            ForEach(entries) { e in
-                if pulled == e.id { pulledOut(e) } else { spine(e) }
+        LazyVStack(spacing: 22) {
+            ForEach(albums) { album in
+                NavigationLink(value: album) { CrateSleeve(album: album) }
+                    .buttonStyle(SleevePressStyle())
+                    .modifier(ZoomSource(id: album.id, namespace: namespace))
+                    .simultaneousGesture(TapGesture().onEnded { taps += 1 })
+                    .contextMenu { AlbumActionsMenu(album: album) }
+                    .scrollTransition(.interactive, axis: .vertical) { content, phase in
+                        content
+                            // Records above the middle lean back into the crate; ones below tip towards you.
+                            .rotation3DEffect(.degrees(phase.value * -28), axis: (x: 1, y: 0, z: 0),
+                                              anchor: phase.value < 0 ? .bottom : .top, perspective: 0.55)
+                            .scaleEffect(1 - abs(phase.value) * 0.1)
+                            .opacity(1 - abs(phase.value) * 0.4)
+                    }
+                    .onScrollVisibilityChange(threshold: 0.95) { if $0 { ticks += 1 } }
+                    .accessibilityLabel("\(album.title), \(album.artist)")
+                    .accessibilityHint("Double-tap to open the album")
             }
         }
         .padding(.horizontal, 16)
-        .sensoryFeedback(.impact(weight: .medium), trigger: pulled)
+        .sensoryFeedback(.selection, trigger: ticks)
+        .sensoryFeedback(.impact(weight: .medium), trigger: taps)
     }
-
-    /// A record standing in the crate: a thin strip of its cover, its name along the edge.
-    private func spine(_ e: Entry) -> some View {
-        Button { withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) { pulled = e.id } } label: {
-            ZStack(alignment: .leading) {
-                ArtworkView(albumID: e.albumID, cornerRadius: 0)
-                    .matchedGeometryEffect(id: "art-\(e.id)", in: shelf)
-                    .blur(radius: 6).saturation(0.6)
-                LinearGradient(colors: [.black.opacity(0.75), .black.opacity(0.45), .black.opacity(0.8)], startPoint: .leading, endPoint: .trailing)
-                // A sliver of the record's edge sticking up out of the sleeve.
-                Capsule().fill(LinearGradient(colors: [Color(white: 0.18), Color(white: 0.04)], startPoint: .top, endPoint: .bottom))
-                    .frame(width: 6).padding(.vertical, 3).frame(maxWidth: .infinity, alignment: .trailing).padding(.trailing, 14)
-                HStack(spacing: 10) {
-                    Text(e.title).font(.serif(16)).lineLimit(1)
-                    Text(e.subtitle.uppercased()).font(.system(size: 9, weight: .semibold)).tracking(1.6)
-                        .foregroundStyle(.white.opacity(0.6)).lineLimit(1)
-                    Spacer(minLength: 30)
-                }
-                .padding(.horizontal, 14)
-            }
-            .frame(height: 40)
-            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).stroke(.white.opacity(0.07)))
-            .shadow(color: .black.opacity(0.6), radius: 3, y: 2)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(e.title), \(e.subtitle)")
-        .accessibilityHint("Double-tap to pull it out of the crate")
-    }
-
-    /// The pulled-out record: the sleeve with the vinyl sliding out; tap again to open or play.
-    @ViewBuilder private func pulledOut(_ e: Entry) -> some View {
-        let content = VStack(spacing: 10) {
-            ZStack {
-                Circle().fill(Color(white: 0.05)).padding(10).offset(x: 54)
-                    .overlay(RecordDiscLabel(albumID: e.albumID).offset(x: 54))
-                ArtworkView(albumID: e.albumID, cornerRadius: 6)
-                    .matchedGeometryEffect(id: "art-\(e.id)", in: shelf)
-                    .shadow(color: .black.opacity(0.7), radius: 18, y: 10)
-            }
-            .frame(width: 230, height: 230)
-            .padding(.trailing, 54)
-            Text(e.title).font(.serif(22)).lineLimit(1)
-            Text(e.subtitle).linerLabel(size: 10)
-            Text(isAlbum(e) ? "Tap again to open" : "Tap again to play").font(.caption2).foregroundStyle(Palette.label)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 18)
-        .background(Palette.cardFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
-
-        switch e {
-        case .album(let a):
-            NavigationLink(value: a) { content }.buttonStyle(.plain)
-                .simultaneousGesture(LongPressGesture().onEnded { _ in withAnimation(.liner) { pulled = nil } })
-        case .song(let s, let list):
-            Button {
-                let start = list.firstIndex(of: s) ?? 0
-                player.play(songs: Array(list[start..<min(list.count, start + 300)]))
-            } label: { content }
-            .buttonStyle(.plain)
-            .modifier(SongContextMenu(song: s))
-        }
-    }
-
-    private func isAlbum(_ e: Entry) -> Bool { if case .album = e { true } else { false } }
 }
 
-/// The record's centre label (its own artwork) for the pulled-out view.
-private struct RecordDiscLabel: View {
-    let albumID: UInt64
+/// One record in the crate: the sleeve, the vinyl peeking out (further when it's the one in front), the name.
+private struct CrateSleeve: View {
+    let album: Album
+
     var body: some View {
-        ZStack {
-            ForEach(0..<10, id: \.self) { i in
-                Circle().stroke(Color.white.opacity(0.04), lineWidth: 0.6).padding(CGFloat(14 + i * 9))
+        VStack(alignment: .leading, spacing: 10) {
+            ZStack(alignment: .leading) {
+                RecordDisc(record: .album(album, .init()), side: "A")
+                    .padding(6)
+                    .scrollTransition(.interactive, axis: .vertical) { content, phase in
+                        content.offset(x: 12 + 62 * (1 - min(1, abs(phase.value) * 1.6)))
+                    }
+                ArtworkView(albumID: album.id, cornerRadius: 6)
+                    .aspectRatio(1, contentMode: .fit)
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(.white.opacity(0.08)))
+                    .shadow(color: .black.opacity(0.7), radius: 16, x: 6, y: 10)
             }
-            ArtworkView(albumID: albumID, cornerRadius: 0).frame(width: 74, height: 74).clipShape(Circle())
+            .aspectRatio(1, contentMode: .fit)
+            .containerRelativeFrame(.horizontal) { w, _ in w * 0.72 }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(album.title).font(.serif(20)).lineLimit(1)
+                Text([album.artist.uppercased(), album.year.map(String.init)].compactMap { $0 }.joined(separator: " · "))
+                    .linerLabel(size: 10).lineLimit(1)
+            }
         }
+        .contentShape(Rectangle())
     }
+}
+
+/// The sleeve dips a little under your finger.
+private struct SleevePressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
+
+#Preview {
+    @Previewable @Namespace var ns
+    NavigationStack { ScrollView { CrateShelf(albums: PreviewData.snapshot.albums, namespace: ns) } }
+        .environment(PreviewData.library).environment(PreviewData.player).environment(PreviewData.passports)
+        .modelContainer(Store.shared.container).preferredColorScheme(.dark)
 }

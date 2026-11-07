@@ -10,6 +10,14 @@ struct VinylRecord: Identifiable, Hashable {
     let albumID: UInt64?
     let coverData: Data?
     let tracks: [QueueItem]
+    /// What the record opens when you tap it in the crate.
+    var source: Source? = nil
+
+    enum Source: Hashable {
+        case album(Album)
+        case mixtape(Mixtape)
+        case mood(MoodPlaylist)
+    }
 
     static func == (a: VinylRecord, b: VinylRecord) -> Bool { a.id == b.id }
     func hash(into h: inout Hasher) { h.combine(id) }
@@ -17,7 +25,7 @@ struct VinylRecord: Identifiable, Hashable {
 
 /// The crate's filters (SPEC §6.16).
 enum CrateFilter: String, CaseIterable, Identifiable {
-    case pinned = "Pinned", recent = "Recent", mostPlayed = "Most played", mixtapes = "Mixtapes", moods = "Mood Playlists"
+    case recent = "Recent", all = "All albums", mostPlayed = "Most played", pinned = "Pinned", mixtapes = "Mixtapes", moods = "Mood Playlists"
     var id: String { rawValue }
 }
 
@@ -30,9 +38,17 @@ final class VinylSounds {
 
     static var enabled: Bool { UserDefaults.standard.object(forKey: "needleSounds") as? Bool ?? true }
 
+    /// Makes the sounds ahead of time so the first needle drop is instant.
+    func prepare() { if Self.enabled { load() } }
+
     func needleDrop() {
         guard Self.enabled else { return }
         load()
+        // Apple Music songs play in the system player: mix with it so the pop never pauses or delays the music.
+        if PlaybackCoordinator.shared?.engine != .local {
+            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            try? AVAudioSession.sharedInstance().setActive(true)
+        }
         pop?.currentTime = 0
         pop?.play()
         crackle?.currentTime = 0
@@ -51,6 +67,8 @@ final class VinylSounds {
         pop = try? AVAudioPlayer(contentsOf: popURL)
         crackle = try? AVAudioPlayer(contentsOf: crackleURL)
         pop?.volume = 0.5
+        pop?.prepareToPlay()
+        crackle?.prepareToPlay()
     }
 
     private static func write(_ url: URL, seconds: Double, make: (Int, Double) -> Float) {

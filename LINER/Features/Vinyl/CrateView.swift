@@ -1,11 +1,12 @@
 import SwiftData
 import SwiftUI
 
-/// The crate (full screen): flip through sleeves in 3D, the backdrop takes the colours of the record in front,
-/// and "Put it on" carries it to the turntable. Swipe down or ✕ to put the crate away.
+/// Home in Vinyl Mode: flip through sleeves in 3D (a tick under your finger for each record), the backdrop takes
+/// the colours of the record in front. Tap a sleeve to open it; "Put it on" carries it to the turntable.
 struct CrateView: View {
+    /// Opens Settings from the crate's header.
+    var onSettings: () -> Void = {}
     @Environment(LibraryService.self) private var library
-    @Environment(\.dismiss) private var dismiss
     @Query(filter: #Predicate<AlbumNote> { $0.pinned }, sort: \AlbumNote.pinnedAt) private var pins: [AlbumNote]
     @Query(sort: \Mixtape.createdAt, order: .reverse) private var mixtapes: [Mixtape]
     @Query(sort: \MoodPlaylist.createdAt, order: .reverse) private var moods: [MoodPlaylist]
@@ -14,6 +15,7 @@ struct CrateView: View {
     @State private var focused: String?
     @State private var playing: VinylRecord?
     @State private var backdrop: UIImage?
+    @State private var taps = 0
     @Namespace private var sleeve
 
     var body: some View {
@@ -37,12 +39,13 @@ struct CrateView: View {
                 }
             }
         }
-        .gesture(DragGesture(minimumDistance: 30).onEnded { if $0.translation.height > 160 && abs($0.translation.width) < 80 { dismiss() } })
         .task(id: current?.id) { await loadBackdrop(current) }
+        .task { VinylSounds.shared.prepare() }
         .fullScreenCover(item: $playing) { r in
             TurntableView(record: r).navigationTransition(.zoom(sourceID: r.id, in: sleeve))
         }
-        .statusBarHidden()
+        .sensoryFeedback(.impact(weight: .medium), trigger: taps)
+        .toolbar(.hidden, for: .navigationBar)
     }
 
     // MARK: Pieces
@@ -68,9 +71,10 @@ struct CrateView: View {
                 Text("Vinyl Mode").linerLabel(size: 10)
             }
             Spacer()
-            Toggle("Vinyl Mode", isOn: $vinylMode).labelsHidden()
+            Toggle("Vinyl Mode", isOn: $vinylMode.animation(.liner)).labelsHidden()
                 .accessibilityLabel("Vinyl Mode")
-            GlassCircleButton(systemImage: "xmark", label: "Close the crate", size: 44) { dismiss() }
+                .accessibilityHint("Turn off to go back to the normal Home")
+            GlassCircleButton(systemImage: "gearshape", label: "Settings", size: 44, action: onSettings)
                 .padding(.leading, 8)
         }
     }
@@ -95,7 +99,7 @@ struct CrateView: View {
             LazyHStack(spacing: -side * 0.28) {
                 ForEach(list) { r in
                     let isFront = r.id == (focused ?? list.first?.id)
-                    Button { playing = r } label: {
+                    open(r) {
                         VStack(spacing: 6) {
                             SleeveView(record: r, peek: isFront ? 0.32 : 0.12).frame(width: side, height: side)
                             // A soft reflection on the floor.
@@ -104,7 +108,6 @@ struct CrateView: View {
                                 .mask(LinearGradient(colors: [.white, .clear], startPoint: .top, endPoint: .bottom))
                         }
                     }
-                    .buttonStyle(.plain)
                     .matchedTransitionSource(id: r.id, in: sleeve)
                     .scrollTransition(axis: .horizontal) { content, phase in
                         content
@@ -115,7 +118,7 @@ struct CrateView: View {
                     .zIndex(isFront ? 1 : 0)
                     .id(r.id)
                     .accessibilityLabel("\(r.title) by \(r.artist)")
-                    .accessibilityHint("Double-tap to put it on the turntable")
+                    .accessibilityHint("Double-tap to open it")
                 }
             }
             .scrollTargetLayout()
@@ -125,6 +128,16 @@ struct CrateView: View {
         .scrollPosition(id: $focused)
         .sensoryFeedback(.selection, trigger: focused)
         .frame(height: side * 1.45)
+    }
+
+    /// A sleeve opens its album, mixtape or mood playlist page; nothing plays until you put it on.
+    @ViewBuilder private func open<L: View>(_ r: VinylRecord, @ViewBuilder label: () -> L) -> some View {
+        switch r.source {
+        case .album(let a): NavigationLink(value: a, label: label).buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { taps += 1 })
+        case .mixtape(let m): NavigationLink(value: m, label: label).buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { taps += 1 })
+        case .mood(let p): NavigationLink(value: p, label: label).buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { taps += 1 })
+        case nil: Button(action: { playing = r }, label: label).buttonStyle(.plain)
+        }
     }
 
     private func details(_ r: VinylRecord) -> some View {
@@ -156,17 +169,18 @@ struct CrateView: View {
         case .pinned:
             return pins.compactMap { n in UInt64(n.albumID.dropFirst(6)).flatMap { snap.album($0) }.map { VinylRecord.album($0, snap) } }
         case .recent: return library.recentlyAdded.prefix(30).map { VinylRecord.album($0, snap) }
+        case .all: return library.albums(.alphabetical).map { VinylRecord.album($0, snap) }
         case .mostPlayed: return library.stats.albums.prefix(30).map { VinylRecord.album($0, snap) }
         case .mixtapes:
             return mixtapes.map { m in
                 VinylRecord(id: "mixtape-\(m.id)", title: m.title, artist: m.artist, year: m.year, albumID: nil, coverData: m.coverImage,
-                            tracks: m.orderedTracks.map { .local(TrackResolver.local($0)) })
+                            tracks: m.orderedTracks.map { .local(TrackResolver.local($0)) }, source: .mixtape(m))
             }
         case .moods:
             return moods.map { p in
                 let songs = MoodPlaylistService.songs(p, library: library)
                 return VinylRecord(id: "mood-\(p.id)", title: p.name, artist: "Mood playlist", year: nil, albumID: songs.first?.albumID,
-                                   coverData: nil, tracks: songs.map(QueueItem.library))
+                                   coverData: nil, tracks: songs.map(QueueItem.library), source: .mood(p))
             }
         }
     }
@@ -175,6 +189,6 @@ struct CrateView: View {
 extension VinylRecord {
     static func album(_ a: Album, _ snap: LibrarySnapshot) -> VinylRecord {
         VinylRecord(id: "album-\(a.id)", title: a.title, artist: a.artist, year: a.year, albumID: a.id, coverData: nil,
-                    tracks: snap.songs(a.songIDs).map(QueueItem.library))
+                    tracks: snap.songs(a.songIDs).map(QueueItem.library), source: .album(a))
     }
 }

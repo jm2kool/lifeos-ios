@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// The Recaps tab (SPEC §6.12): week, month and year recaps from the day recording began, plus All time.
+/// Recaps (SPEC §6.12), inside My LINER.: week, month and year recaps from the day recording began, plus All time.
+/// Lives in its parent's scroll view and navigation stack.
 struct RecapsView: View {
     @Environment(LibraryService.self) private var library
     @State private var history: PlayHistory?
@@ -15,36 +16,22 @@ struct RecapsView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Recaps").font(.serif(44))
-                        Text("Your listening, period by period").linerLabel()
-                    }
-                    .padding(.horizontal, 16)
-
-                    Picker("Period", selection: $kind) {
-                        ForEach(RecapPeriod.Kind.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                    }
-                    .pickerStyle(.segmented).padding(.horizontal, 16)
-
-                    periodPicker
-                    content
-                    AllTimeCard().padding(.horizontal, 16)
-                }
-                .padding(.bottom, 32)
+        VStack(alignment: .leading, spacing: 22) {
+            Picker("Period", selection: $kind) {
+                ForEach(RecapPeriod.Kind.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
-            .background(Palette.background)
-            .refreshable { await library.refresh(); await reload() }
-            .task(id: library.snapshot.scannedAt) { await reload() }
-            .onChange(of: kind) { period = periods.first }
-            .fullScreenCover(isPresented: $showStory) {
-                if let history, let p = period ?? periods.first {
-                    RecapStoryView(recap: Recap.make(p, history: history, moods: RecapLoader.moods()))
-                }
+            .pickerStyle(.segmented).padding(.horizontal, 16)
+
+            periodPicker
+            content
+            AllTimeCard().padding(.horizontal, 16)
+        }
+        .task(id: library.snapshot.scannedAt) { await reload() }
+        .onChange(of: kind) { period = periods.first }
+        .fullScreenCover(isPresented: $showStory) {
+            if let history, let p = period ?? periods.first {
+                RecapStoryView(recap: Recap.make(p, history: history, moods: RecapLoader.moods()))
             }
-            .libraryDestinations(zoom)
         }
     }
 
@@ -104,4 +91,4 @@ struct AllTimeCard: View {
     }
 }
 
-#Preview { RecapsView().environment(PreviewData.library).environment(PreviewData.player).environment(PreviewData.passports).modelContainer(Store.shared.container).preferredColorScheme(.dark) }
+#Preview { NavigationStack { ScrollView { RecapsView() } }.environment(PreviewData.library).environment(PreviewData.player).environment(PreviewData.passports).modelContainer(Store.shared.container).preferredColorScheme(.dark) }
