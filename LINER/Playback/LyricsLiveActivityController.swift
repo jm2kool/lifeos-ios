@@ -36,7 +36,7 @@ final class LyricsLiveActivityController {
         // A new song gets a fresh activity (the title is part of its attributes).
         let old = activity
         activity = try? Activity.request(attributes: attributes, content: .init(state: state, staleDate: nil), pushType: nil)
-        if let old { Task { await old.end(nil, dismissalPolicy: .immediate) } }
+        if let old { Self.end(old) }
         lastState = state
         loop?.cancel()
         loop = Task { [weak self] in
@@ -61,7 +61,8 @@ final class LyricsLiveActivityController {
             isPlaying: player.isPlaying)
         guard state != lastState else { return }
         lastState = state
-        Task { await activity.update(.init(state: state, staleDate: nil)) }
+        let box = ActivityBox(activity: activity)
+        Task.detached { await box.activity.update(.init(state: state, staleDate: nil)) }
     }
 
     func stop() {
@@ -70,10 +71,23 @@ final class LyricsLiveActivityController {
         keepAlive.stop()
         lyrics = nil
         lastState = nil
-        if let a = activity { activity = nil; Task { await a.end(nil, dismissalPolicy: .immediate) } }
+        if let a = activity { activity = nil; Self.end(a) }
         // End any left over from a previous launch.
-        for a in Activity<LyricsActivityAttributes>.activities { Task { await a.end(nil, dismissalPolicy: .immediate) } }
+        for a in Activity<LyricsActivityAttributes>.activities { Self.end(a) }
     }
+}
+
+extension LyricsLiveActivityController {
+    /// Ends an activity off the main actor.
+    nonisolated static func end(_ activity: Activity<LyricsActivityAttributes>) {
+        let box = ActivityBox(activity: activity)
+        Task.detached { await box.activity.end(nil, dismissalPolicy: .immediate) }
+    }
+}
+
+/// Carries a Live Activity into a background task (ActivityKit's handle is safe to use from any thread).
+struct ActivityBox: @unchecked Sendable {
+    let activity: Activity<LyricsActivityAttributes>
 }
 
 /// Plays silence, mixed with other audio, so LINER. keeps running in the background while Apple Music songs
