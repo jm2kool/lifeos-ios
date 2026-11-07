@@ -34,6 +34,7 @@ struct RootView: View {
         .onOpenURL { url in Task { await openFile(url) } }
         .onChange(of: phase) { _, now in
             if now == .active && library.hasLoaded { Task { await library.refresh() } }
+            if now == .background { SnapshotService.schedule() }
         }
     }
 

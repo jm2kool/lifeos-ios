@@ -165,6 +165,8 @@ enum Coding {
     var date: Date
     var persistentID: Int64
     var playCount: Int
+    /// Made by the test-data seeder (Settings → Diagnostics), so it can be removed again.
+    var seeded: Bool = false
 
     init(date: Date, persistentID: UInt64, playCount: Int) {
         self.date = date
@@ -187,6 +189,7 @@ enum Coding {
     var albumKey: String
     var genre: String
     var duration: Double
+    var seeded: Bool = false
 
     init(record: PlayRecord) {
         let item = record.item

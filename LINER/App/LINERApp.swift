@@ -10,7 +10,10 @@ struct LINERApp: App {
         let service = LibraryService()
         LibraryService.current = service
         _library = State(initialValue: service)
-        _player = State(initialValue: PlaybackCoordinator(library: service))
+        let player = PlaybackCoordinator(library: service)
+        _player = State(initialValue: player)
+        SnapshotService.registerBackgroundTask()
+        AppWiring.connect(library: service, player: player)
     }
 
     var body: some Scene {
@@ -20,13 +23,7 @@ struct LINERApp: App {
                 .environment(player)
                 .environment(passports)
                 .modelContainer(Store.shared.container)
-                .task {
-                    library.onRefresh = { [library] snapshot in
-                        Store.shared.rematch(with: snapshot)
-                        library.reloadPersonalRatings()
-                    }
-                    library.reloadPersonalRatings()
-                }
+                .task { library.reloadPersonalRatings() }
                 .preferredColorScheme(.dark)
                 .tint(.white)
         }
