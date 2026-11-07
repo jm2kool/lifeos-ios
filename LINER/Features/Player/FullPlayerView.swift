@@ -1,12 +1,12 @@
 import SwiftUI
 
 /// The full player: the cover always fills the whole screen (never a letterboxed square), with the
-/// controls on glass tinted by the artwork. Swipe down to drop back to the mini player.
+/// controls on glass tinted by the artwork. Pull down to shrink back into the mini player: that's the system's
+/// own interactive zoom dismissal, so it tracks your finger smoothly.
 struct FullPlayerView: View {
     @Environment(PlaybackCoordinator.self) private var player
     @Environment(\.dismiss) private var dismiss
     @State private var art = PlayerArtwork()
-    @State private var drag: CGFloat = 0
     @State private var sheet: PlayerSheet?
 
     enum PlayerSheet: String, Identifiable { case queue, lyrics, songPassport, share; var id: String { rawValue } }
@@ -23,13 +23,6 @@ struct FullPlayerView: View {
             .padding(.bottom, 8)
         }
         .background(Color.black)
-        .offset(y: max(0, drag))
-        .gesture(DragGesture(minimumDistance: 20)
-            .onChanged { if $0.translation.height > 0 { drag = $0.translation.height } }
-            .onEnded { v in
-                if v.translation.height > 140 || v.predictedEndTranslation.height > 400 { dismiss() }
-                withAnimation(.liner) { drag = 0 }
-            })
         .task(id: player.current?.artworkKey) { await art.load(player.current) }
         .sheet(item: $sheet) { which in
             switch which {
@@ -39,7 +32,6 @@ struct FullPlayerView: View {
             case .share: if let item = player.current { ShareCardSheet(content: .nowPlaying(item)) }
             }
         }
-        .statusBarHidden(drag > 0)
     }
 
     private var background: some View {
