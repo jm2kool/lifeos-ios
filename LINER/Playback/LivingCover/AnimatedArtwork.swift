@@ -36,7 +36,7 @@ final class AnimatedArtwork {
                 let source = MotionCoverFiles.url(motion)
                 for (aspect, infoKey) in [(LivingCoverRenderer.Aspect.tall, MPNowPlayingInfoProperty3x4AnimatedArtwork),
                                           (.square, MPNowPlayingInfoProperty1x1AnimatedArtwork)] {
-                    guard let url = await MotionCrop.crop(source, to: aspect), let preview = MotionCrop.preview(url) else { continue }
+                    guard let url = await MotionCrop.crop(source, to: aspect), let preview = await MotionCrop.preview(url) else { continue }
                     keys[infoKey] = Self.artwork(id: "motion-\(aspect.rawValue)-\(motion)", preview: preview, video: { url })
                 }
             } else if let image = await CoverArt.image(for: item, pixels: 1400) {

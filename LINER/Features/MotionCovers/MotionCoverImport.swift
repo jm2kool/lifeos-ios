@@ -61,11 +61,11 @@ enum MotionCoverImport {
     }
 
     /// The first frame, as a still cover and lock screen preview.
-    static func firstFrame(_ url: URL) -> UIImage? {
+    static func firstFrame(_ url: URL) async -> UIImage? {
         let gen = AVAssetImageGenerator(asset: AVURLAsset(url: url))
         gen.appliesPreferredTrackTransform = true
         gen.requestedTimeToleranceBefore = .zero
-        guard let cg = try? gen.copyCGImage(at: .zero, actualTime: nil) else { return nil }
+        guard let cg = try? await gen.image(at: .zero).image else { return nil }
         return UIImage(cgImage: cg)
     }
 }

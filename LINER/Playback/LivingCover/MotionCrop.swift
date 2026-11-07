@@ -19,21 +19,13 @@ enum MotionCrop {
         let scale = max(target.width / src.width, target.height / src.height)
         let tx = (target.width - src.width * scale) / 2, ty = (target.height - src.height * scale) / 2
 
-        let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
-        layer.setTransform(transform.concatenating(CGAffineTransform(scaleX: scale, y: scale)).concatenating(CGAffineTransform(translationX: tx, y: ty)), at: .zero)
-        let instruction = AVMutableVideoCompositionInstruction()
-        instruction.timeRange = CMTimeRange(start: .zero, duration: duration)
-        instruction.layerInstructions = [layer]
-        let composition = AVMutableVideoComposition()
-        composition.renderSize = target
-        composition.frameDuration = CMTime(value: 1, timescale: 30)
-        composition.instructions = [instruction]
-
-        guard let export = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetHighestQuality) else { return nil }
+        let t = transform.concatenating(CGAffineTransform(scaleX: scale, y: scale)).concatenating(CGAffineTransform(translationX: tx, y: ty))
+        guard let composition = try? await Composition.make(asset: asset, track: track, transform: t, duration: duration, renderSize: target),
+              let export = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetHighestQuality) else { return nil }
         export.videoComposition = composition
         do { try await export.export(to: dest, as: .mp4); return dest } catch { return nil }
     }
 
     /// First frame of a cropped motion cover (the preview must match its aspect exactly).
-    static func preview(_ url: URL) -> UIImage? { MotionCoverImport.firstFrame(url) }
+    static func preview(_ url: URL) async -> UIImage? { await MotionCoverImport.firstFrame(url) }
 }

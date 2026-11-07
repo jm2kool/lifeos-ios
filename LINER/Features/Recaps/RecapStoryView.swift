@@ -26,6 +26,7 @@ struct RecapStoryView: View {
 
     var body: some View {
         let list = cards
+        GeometryReader { geo in
         ZStack {
             Color.black
             if let cover { LivingCoverView(image: cover, look: look, key: "story-\(recap.period.id)").opacity(0.75) }
@@ -45,7 +46,7 @@ struct RecapStoryView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { location in
-            let width = UIScreen.main.bounds.width
+            let width = geo.size.width
             withAnimation(.liner) {
                 if location.x < width * 0.3 { index = max(0, index - 1) } else if index < list.count - 1 { index += 1 } else { dismiss() }
             }
@@ -58,6 +59,8 @@ struct RecapStoryView: View {
             }
         }
         .statusBarHidden()
+        }
+        .ignoresSafeArea()
     }
 
     private func progress(_ count: Int) -> some View {

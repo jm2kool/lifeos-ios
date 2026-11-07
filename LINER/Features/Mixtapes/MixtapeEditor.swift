@@ -78,7 +78,7 @@ struct MixtapeEditor: View {
         defer { working = false }
         if let name = await MotionCoverImport.importVideo(item, id: "mixtape-\(mixtape.id.uuidString)") {
             mixtape.motionCoverFile = name
-            if mixtape.coverImage == nil { mixtape.coverImage = MotionCoverImport.firstFrame(MotionCoverFiles.url(name))?.jpegData(compressionQuality: 0.88) }
+            if mixtape.coverImage == nil { mixtape.coverImage = await MotionCoverImport.firstFrame(MotionCoverFiles.url(name))?.jpegData(compressionQuality: 0.88) }
         }
     }
 }

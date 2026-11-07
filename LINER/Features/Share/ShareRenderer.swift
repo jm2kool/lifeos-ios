@@ -53,11 +53,6 @@ enum ShareRenderer {
         }
         let size = CGSize(width: 1080, height: 1920)
         let natural = (try? await src.load(.naturalSize)) ?? size
-        let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
-        layer.setTransform(CGAffineTransform(scaleX: size.width / natural.width, y: size.height / natural.height), at: .zero)
-        let instruction = AVMutableVideoCompositionInstruction()
-        instruction.timeRange = CMTimeRange(start: .zero, duration: cursor)
-        instruction.layerInstructions = [layer]
 
         let parent = CALayer(), videoLayer = CALayer(), top = CALayer()
         for l in [parent, videoLayer, top] { l.frame = CGRect(origin: .zero, size: size) }
@@ -66,11 +61,9 @@ enum ShareRenderer {
         parent.addSublayer(videoLayer)
         parent.addSublayer(top)
 
-        let vc = AVMutableVideoComposition()
-        vc.renderSize = size
-        vc.frameDuration = CMTime(value: 1, timescale: 30)
-        vc.instructions = [instruction]
-        vc.animationTool = AVVideoCompositionCoreAnimationTool(postProcessingAsVideoLayer: videoLayer, in: parent)
+        let tool = AVVideoCompositionCoreAnimationTool(postProcessingAsVideoLayer: videoLayer, in: parent)
+        guard let vc = try? await Composition.make(asset: comp, track: track, transform: CGAffineTransform(scaleX: size.width / natural.width, y: size.height / natural.height),
+                                                   duration: cursor, renderSize: size, animationTool: tool) else { return nil }
 
         let out = URL.temporaryDirectory.appending(path: "liner-share-\(UUID().uuidString).mp4")
         guard let export = AVAssetExportSession(asset: comp, presetName: AVAssetExportPreset1920x1080) else { return nil }

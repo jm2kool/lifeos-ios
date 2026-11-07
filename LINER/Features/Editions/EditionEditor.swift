@@ -84,7 +84,7 @@ struct EditionEditor: View {
         defer { working = false }
         if let name = await MotionCoverImport.importVideo(item, id: "edition-\(edition.id.uuidString)") {
             edition.motionCoverFile = name
-            if edition.coverImage == nil, let still = MotionCoverImport.firstFrame(MotionCoverFiles.url(name)) {
+            if edition.coverImage == nil, let still = await MotionCoverImport.firstFrame(MotionCoverFiles.url(name)) {
                 edition.coverImage = still.jpegData(compressionQuality: 0.88)
             }
         }
