@@ -145,7 +145,9 @@ struct CrateView: View {
     private func loadBackdrop(_ r: VinylRecord?) async {
         guard let r else { return }
         if let data = r.coverData { backdrop = UIImage(data: data); return }
-        if let id = r.albumID { backdrop = CoverOverrides.shared.image(id) ?? (await ArtworkCache.shared.image(album: id, pixels: 320)) }
+        guard let id = r.albumID else { return }
+        if let mine = CoverOverrides.shared.image(id) { backdrop = mine; return }
+        backdrop = await ArtworkCache.shared.image(album: id, pixels: 320)
     }
 
     private var records: [VinylRecord] {
