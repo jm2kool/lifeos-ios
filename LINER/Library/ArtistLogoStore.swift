@@ -7,7 +7,7 @@ final class ArtistLogoStore: @unchecked Sendable {
 
     private let memory = NSCache<NSString, UIImage>()
     private let folder: URL
-    private let lookups = UserDefaults(suiteName: "liner.artistLogos") ?? .standard
+    private let lookups = UserDefaults(suiteName: "liner.artistLogos.v2") ?? .standard
     private static let limiter = RateLimiter(gap: .milliseconds(500))
 
     private struct Response: Decodable {
@@ -16,7 +16,7 @@ final class ArtistLogoStore: @unchecked Sendable {
     }
 
     private init() {
-        folder = URL.cachesDirectory.appending(path: "LINER/ArtistLogos", directoryHint: .isDirectory)
+        folder = URL.cachesDirectory.appending(path: "LINER/ArtistLogos2", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     }
 
@@ -58,19 +58,70 @@ final class ArtistLogoStore: @unchecked Sendable {
         return white
     }
 
-    /// Keeps the logo's shape (alpha) and paints it white, trimming empty edges.
+    /// Turns a logo into white lettering on transparency. Logos with a real transparent background keep their
+    /// shape; logos on a solid background (white or black) are cut out by their contrast with that background.
+    /// Returns nil when the result wouldn't read as lettering (for example, a photo), so the app uses type instead.
     static func whiten(_ image: UIImage) -> UIImage? {
-        let rect = CGRect(origin: .zero, size: image.size)
-        guard rect.width > 0, rect.height > 0 else { return nil }
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = image.scale
-        format.opaque = false
-        let white = UIGraphicsImageRenderer(size: image.size, format: format).image { ctx in
-            UIColor.white.setFill()
-            ctx.fill(rect)
-            image.draw(in: rect, blendMode: .destinationIn, alpha: 1)
+        guard let cg = image.cgImage else { return nil }
+        let w = cg.width, h = cg.height
+        guard w > 8, h > 8, w * h < 12_000_000 else { return nil }
+        var px = [UInt8](repeating: 0, count: w * h * 4)
+        let drew = px.withUnsafeMutableBytes { buf -> Bool in
+            guard let ctx = CGContext(data: buf.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+            return true
         }
-        return trimmed(white)
+        guard drew else { return nil }
+
+        let n = w * h
+        var alpha = [Double](repeating: 0, count: n), lum = [Double](repeating: 0, count: n)
+        for p in 0..<n {
+            let o = p * 4
+            let a = Double(px[o + 3]) / 255
+            alpha[p] = a
+            lum[p] = a > 0.01 ? (0.299 * Double(px[o]) + 0.587 * Double(px[o + 1]) + 0.114 * Double(px[o + 2])) / 255 / a : 0
+        }
+        func coverage(_ m: [Double]) -> Double { Double(m.reduce(0) { $0 + ($1 > 0.5 ? 1 : 0) }) / Double(n) }
+        /// How much each pixel stands out from a reference brightness (the plate or background).
+        func contrast(_ ref: Double, weighted: Bool) -> [Double] {
+            (0..<n).map { p in (weighted ? alpha[p] * alpha[p] : 1) * min(1, max(0, (abs(lum[p] - ref) - 0.12) / 0.35)) }
+        }
+
+        var candidates: [[Double]] = []
+        let opaque = (0..<n).filter { alpha[$0] > 0.78 }
+        if Double(n - opaque.count) / Double(n) > 0.08 {
+            // Transparent background. If the visible part is two-tone (lettering printed on a plate, like a
+            // sticker), keep only what stands out from the plate; otherwise keep the logo's own shape.
+            if !opaque.isEmpty {
+                let dark = opaque.filter { lum[$0] < 0.3 }, light = opaque.filter { lum[$0] > 0.7 }
+                let total = Double(opaque.count), middle = total - Double(dark.count + light.count)
+                if Double(dark.count) / total >= 0.15, Double(light.count) / total >= 0.15, middle / total < 0.15 {
+                    let plate = light.count >= dark.count ? light : dark
+                    candidates.append(contrast(plate.reduce(0) { $0 + lum[$1] } / Double(plate.count), weighted: true))
+                }
+            }
+            candidates.append(alpha)
+        } else {
+            // Solid background: cut the lettering out by its contrast with the corners.
+            let corners = [lum[0], lum[w - 1], lum[(h - 1) * w], lum[n - 1]]
+            candidates.append(contrast(corners.reduce(0, +) / 4, weighted: false))
+        }
+        // Lettering covers a modest part of its box; a solid slab or a photo doesn't.
+        guard let chosen = candidates.first(where: { (0.01..<0.6).contains(coverage($0)) }) else { return nil }
+        let mask = chosen.map { UInt8(min(255, max(0, $0 * 255))) }
+
+        var out = [UInt8](repeating: 0, count: w * h * 4)
+        for p in 0..<n {
+            let v = mask[p]
+            out[p * 4] = v; out[p * 4 + 1] = v; out[p * 4 + 2] = v; out[p * 4 + 3] = v   // premultiplied white
+        }
+        guard let provider = CGDataProvider(data: Data(out) as CFData),
+              let made = CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: w * 4,
+                                 space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+                                 provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent) else { return nil }
+        return trimmed(UIImage(cgImage: made))
     }
 
     private static func trimmed(_ image: UIImage) -> UIImage {

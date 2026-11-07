@@ -60,8 +60,7 @@ struct AnyPrimitiveButtonStyle: PrimitiveButtonStyle {
     .padding().background(LinearGradient(colors: [.orange, .black], startPoint: .top, endPoint: .bottom))
 }
 
-/// The primary action: Liquid Glass prominent, filled white with black text (the app's white tint would
-/// otherwise make the label white on white).
+/// The primary action: always white glass with black text, whatever tint is around it.
 struct LinerPrimaryStyle: PrimitiveButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         Button(role: configuration.role, action: configuration.trigger) {
@@ -72,13 +71,14 @@ struct LinerPrimaryStyle: PrimitiveButtonStyle {
     }
 }
 
-/// Liquid Glass button whose label stays on one line (shrinking a little before it would wrap).
+/// Liquid Glass button: always white on clear glass (never tinted by its surroundings), label on one line.
 struct LinerGlassStyle: PrimitiveButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         Button(role: configuration.role, action: configuration.trigger) {
-            configuration.label.singleLineLabel()
+            configuration.label.foregroundStyle(.white).singleLineLabel()
         }
         .buttonStyle(.glass)
+        .tint(.white)
     }
 }
 
