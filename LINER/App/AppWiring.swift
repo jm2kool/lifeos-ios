@@ -13,6 +13,7 @@ enum AppWiring {
             Store.shared.rematch(with: snapshot)
             library.reloadPersonalRatings()
             SnapshotService.shared.record(snapshot)
+            NewAlbumPrompts.shared.check(snapshot)
             if !refreshedMoods {
                 refreshedMoods = true
                 Task { await MoodPlaylistService.refreshDue(library: library) }

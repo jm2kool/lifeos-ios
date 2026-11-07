@@ -16,6 +16,7 @@ struct RootView: View {
     var body: some View {
         @Bindable var player = player
         @Bindable var passports = passports
+        @Bindable var prompts = NewAlbumPrompts.shared
         Group {
             if library.isAuthorized {
                 tabs
@@ -31,6 +32,7 @@ struct RootView: View {
         .sheet(item: $passports.album) { AlbumPassportSheet(subject: $0) }
         .sheet(item: $passports.editions) { EditionsSheet(subject: $0) }
         .modifier(CoverPickerHost())
+        .sheet(item: $prompts.current, onDismiss: { NewAlbumPrompts.shared.showNext(library.snapshot) }) { AlbumRatingPrompt(album: $0) }
         .task { if library.isAuthorized && !library.hasLoaded { await library.refresh() } }
         .onOpenURL { url in Task { await openFile(url) } }
         .onChange(of: phase) { _, now in
