@@ -1,12 +1,21 @@
 import SwiftUI
 
-/// Phase 0 build: a spike lab that tests the risky APIs before the real app is built.
 @main
 struct LINERApp: App {
+    @State private var library: LibraryService
+
+    init() {
+        let service = LibraryService()
+        LibraryService.current = service
+        _library = State(initialValue: service)
+    }
+
     var body: some Scene {
         WindowGroup {
-            SpikeHomeView()
+            RootView()
+                .environment(library)
                 .preferredColorScheme(.dark)
+                .tint(.white)
         }
     }
 }

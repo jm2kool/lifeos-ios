@@ -22,7 +22,7 @@ Phase 0 is a throwaway test app (bundle `com.jm2kool.liner`, shown as **LINER.**
 | 4 | **C · Deezer** | Tap *Look them up* (your 10 most-played artists). | How many come back with a real photo. Whether the B&W portrait looks good. |
 | 5 | **E · Instagram** | Tap each of the 3 *Open in Instagram* buttons. Close the story without posting, come back, and tap what you saw. | Whether the **video** background moves in Instagram. |
 
-Then go back home → **Copy report** → paste it to Claude.
+The spike lab is in Settings (gear on Home) → Spike lab. When done, tap **Copy report** and paste it to Claude.
 
 ## What the code checks for you
 - **A:** logs `MPNowPlayingInfoCenter.supportedAnimatedArtworkKeys`. It also logs whether the 3:4 key is still in `nowPlayingInfo` 2.5 s after it's written, and every time iOS asks for the preview or video ("System asked for … VIDEO"). If iOS never asks for the video during Test 1, the queue player owns Now Playing and our keys are ignored.
