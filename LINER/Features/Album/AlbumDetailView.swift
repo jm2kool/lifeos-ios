@@ -107,5 +107,5 @@ struct AlbumHistory: View {
 
 #Preview {
     NavigationStack { AlbumDetailView(album: PreviewData.snapshot.albums[0]) }
-        .environment(PreviewData.library).environment(PreviewData.player).preferredColorScheme(.dark)
+        .environment(PreviewData.library).environment(PreviewData.player).environment(PreviewData.passports).modelContainer(Store.shared.container).preferredColorScheme(.dark)
 }

@@ -24,6 +24,27 @@ final class LibraryService {
         hasLoaded = true
     }
 
+    /// Your own hearts (Song/Album Passports) by persistent ID; they win over the Music app's stars.
+    private(set) var songHearts: [UInt64: Int] = [:]
+    private(set) var albumHearts: [UInt64: Int] = [:]
+
+    func rating(_ s: Song) -> Int { songHearts[s.id] ?? s.rating }
+    func rating(_ a: Album) -> Double { albumHearts[a.id].map(Double.init) ?? a.rating }
+
+    /// Re-reads hearts from the passports.
+    func reloadPersonalRatings() {
+        var songs: [UInt64: Int] = [:]
+        for n in Store.shared.allSongNotes() {
+            if let r = n.rating, n.itemID.hasPrefix("lib-"), let id = UInt64(n.itemID.dropFirst(4)) { songs[id] = r }
+        }
+        var albums: [UInt64: Int] = [:]
+        for n in Store.shared.allAlbumNotes() {
+            if let r = n.rating, n.albumID.hasPrefix("album-"), let id = UInt64(n.albumID.dropFirst(6)) { albums[id] = r }
+        }
+        songHearts = songs
+        albumHearts = albums
+    }
+
     /// Called after every scan (play-count snapshots hook in here).
     @ObservationIgnored var onRefresh: ((LibrarySnapshot) -> Void)?
 
@@ -87,7 +108,7 @@ final class LibraryService {
         case .alphabetical: list.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         case .mostPlayed: list.sorted { $0.playCount > $1.playCount }
         case .recentlyAdded: list.sorted { $0.dateAdded > $1.dateAdded }
-        case .rating: list.sorted { ($0.rating, $0.playCount) > ($1.rating, $1.playCount) }
+        case .rating: list.sorted { (rating($0), $0.playCount) > (rating($1), $1.playCount) }
         }
     }
 
@@ -97,7 +118,7 @@ final class LibraryService {
         case .alphabetical: list.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         case .mostPlayed: list.sorted { ($0.playCount, $0.lastPlayed ?? .distantPast) > ($1.playCount, $1.lastPlayed ?? .distantPast) }
         case .recentlyAdded: list.sorted { $0.dateAdded > $1.dateAdded }
-        case .rating: list.sorted { ($0.rating, $0.playCount) > ($1.rating, $1.playCount) }
+        case .rating: list.sorted { (rating($0), $0.playCount) > (rating($1), $1.playCount) }
         }
     }
 

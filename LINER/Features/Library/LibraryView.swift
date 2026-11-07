@@ -95,4 +95,4 @@ struct LibraryView: View {
     }
 }
 
-#Preview { LibraryView().environment(PreviewData.library).environment(PreviewData.player).preferredColorScheme(.dark) }
+#Preview { LibraryView().environment(PreviewData.library).environment(PreviewData.player).environment(PreviewData.passports).modelContainer(Store.shared.container).preferredColorScheme(.dark) }

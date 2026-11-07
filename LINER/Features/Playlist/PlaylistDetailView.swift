@@ -31,5 +31,5 @@ struct PlaylistDetailView: View {
 
 #Preview {
     NavigationStack { PlaylistDetailView(playlist: PreviewData.snapshot.playlists[0]) }
-        .environment(PreviewData.library).environment(PreviewData.player).preferredColorScheme(.dark)
+        .environment(PreviewData.library).environment(PreviewData.player).environment(PreviewData.passports).modelContainer(Store.shared.container).preferredColorScheme(.dark)
 }

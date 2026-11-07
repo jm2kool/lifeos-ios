@@ -45,4 +45,4 @@ struct SearchView: View {
     }
 }
 
-#Preview { SearchView().environment(PreviewData.library).environment(PreviewData.player).preferredColorScheme(.dark) }
+#Preview { SearchView().environment(PreviewData.library).environment(PreviewData.player).environment(PreviewData.passports).modelContainer(Store.shared.container).preferredColorScheme(.dark) }

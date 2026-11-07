@@ -148,5 +148,5 @@ struct ArtistTopSongs: View {
 #Preview {
     @Previewable @Namespace var ns
     NavigationStack { ArtistDetailView(artist: PreviewData.snapshot.artists[0], namespace: ns) }
-        .environment(PreviewData.library).environment(PreviewData.player).preferredColorScheme(.dark)
+        .environment(PreviewData.library).environment(PreviewData.player).environment(PreviewData.passports).modelContainer(Store.shared.container).preferredColorScheme(.dark)
 }

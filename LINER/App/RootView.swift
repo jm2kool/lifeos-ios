@@ -8,11 +8,13 @@ struct RootView: View {
     @Environment(LibraryService.self) private var library
     @Environment(PlaybackCoordinator.self) private var player
     @Environment(\.scenePhase) private var phase
+    @Environment(PassportPresenter.self) private var passports
     @AppStorage("root.tab") private var tab: TabID = .home
     @Namespace private var playerZoom
 
     var body: some View {
         @Bindable var player = player
+        @Bindable var passports = passports
         Group {
             if library.isAuthorized {
                 tabs
@@ -24,6 +26,8 @@ struct RootView: View {
             }
         }
         .overlay(alignment: .top) { ErrorBanner() }
+        .sheet(item: $passports.song) { SongPassportSheet(item: $0) }
+        .sheet(item: $passports.album) { AlbumPassportSheet(subject: $0) }
         .task { if library.isAuthorized && !library.hasLoaded { await library.refresh() } }
         .onChange(of: phase) { _, now in
             if now == .active && library.hasLoaded { Task { await library.refresh() } }
@@ -87,5 +91,7 @@ private struct ErrorBanner: View {
     RootView()
         .environment(PreviewData.library)
         .environment(PlaybackCoordinator(library: PreviewData.library))
+        .environment(PassportPresenter())
+        .modelContainer(Store.shared.container)
         .preferredColorScheme(.dark)
 }

@@ -32,7 +32,7 @@ struct MyStatsView: View {
                         topAlbums(stats.albums)
                         topSongs(stats.songs)
                     }
-                    MyStatsExtras.sections()
+                    PersonalStatsSections()
                     libraryCard
                 }
                 .padding(.bottom, 32)
@@ -110,10 +110,5 @@ struct MyStatsView: View {
     }
 }
 
-/// My Stats sections that need personal data (most-loved albums, moods) — filled in with the passports.
-@MainActor
-enum MyStatsExtras {
-    @ViewBuilder static func sections() -> some View { EmptyView() }
-}
 
-#Preview { MyStatsView().environment(PreviewData.library).environment(PreviewData.player).preferredColorScheme(.dark) }
+#Preview { MyStatsView().environment(PreviewData.library).environment(PreviewData.player).environment(PreviewData.passports).modelContainer(Store.shared.container).preferredColorScheme(.dark) }

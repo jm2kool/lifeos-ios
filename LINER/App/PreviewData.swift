@@ -5,6 +5,7 @@ import Foundation
 enum PreviewData {
     static let library = LibraryService(preview: snapshot)
     static let player = PlaybackCoordinator(library: library)
+    static let passports = PassportPresenter()
 
     static let snapshot: LibrarySnapshot = {
         let albums: [(String, String, String, Int)] = [

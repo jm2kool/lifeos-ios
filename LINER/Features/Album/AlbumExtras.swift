@@ -12,7 +12,7 @@ enum AlbumExtras {
 
     @ViewBuilder static func editionSwitcher(album: Album) -> some View { EmptyView() }
 
-    @ViewBuilder static func passportButton(album: Album) -> some View { EmptyView() }
+    @ViewBuilder static func passportButton(album: Album) -> some View { AlbumPassportButton(album: album) }
 
     @ViewBuilder static func moreMenu(album: Album) -> some View { EmptyView() }
 }

@@ -12,11 +12,11 @@ enum PlayerExtras {
     }
 
     @ViewBuilder static func songPassport(for item: QueueItem?) -> some View {
-        EmptyStateView(symbol: "text.book.closed", title: "Song Passport", message: "Your notes on this song are coming.")
+        if let item { SongPassportSheet(item: item) }
     }
 
     @ViewBuilder static func heartButton(for item: QueueItem) -> some View {
-        GlassCircleButton(systemImage: "heart", label: "Rate", size: 44) {}
+        HeartButton(item: item)
     }
 
     @ViewBuilder static func moreMenu(dismiss: @escaping () -> Void) -> some View {

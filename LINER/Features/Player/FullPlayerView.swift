@@ -106,6 +106,6 @@ struct FullPlayerView: View {
 #Preview {
     FullPlayerView()
         .environment(PlaybackCoordinator(library: PreviewData.library))
-        .environment(PreviewData.library).environment(PreviewData.player)
+        .environment(PreviewData.library).environment(PreviewData.player).environment(PreviewData.passports).modelContainer(Store.shared.container)
         .preferredColorScheme(.dark)
 }
