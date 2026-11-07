@@ -15,12 +15,17 @@ targets:
     type: application
     platform: iOS
     sources:
-      - path: App
-      - path: DesignSystem
-      - path: Library
-      - path: Models
-      - path: Features
-      - path: Spikes
+      # Every Swift folder in LINER/ is part of the app; new feature folders need no edits here.
+      - path: .
+        excludes:
+          - "*.md"
+          - "project.yml"
+          - "Config/**"
+          - "build/**"
+          - "Payload/**"
+          - "*.ipa"
+          - "build.log"
+          - "LINER.xcodeproj/**"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jm2kool.liner
