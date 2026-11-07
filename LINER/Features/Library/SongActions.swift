@@ -57,10 +57,7 @@ struct PlayShuffleRow: View {
     @Environment(PlaybackCoordinator.self) private var player
 
     var body: some View {
-        GlassEffectContainer(spacing: 12) {
-            PlayShuffleIcons(play: { player.play(songs: songs) }, shuffle: { player.play(songs: songs, shuffled: true) })
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .disabled(songs.isEmpty)
+        PlayShuffleIcons(play: { player.play(songs: songs) }, shuffle: { player.play(songs: songs, shuffled: true) })
+            .disabled(songs.isEmpty)
     }
 }

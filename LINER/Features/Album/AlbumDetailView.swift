@@ -80,7 +80,10 @@ struct AlbumDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Menu { AlbumActionsMenu(album: album) } label: { Label("More", systemImage: "ellipsis") }
+                Menu {
+                    AlbumActionsMenu(album: album)
+                    Button("Download in Music", systemImage: "arrow.down.circle") { openInMusic() }
+                } label: { Label("More", systemImage: "ellipsis") }
             }
         }
     }
@@ -121,14 +124,7 @@ struct AlbumDetailView: View {
     }
 
     private func actions(_ list: [QueueItem]) -> some View {
-        GlassEffectContainer(spacing: 12) {
-            HStack(spacing: 12) {
-                PlayShuffleItemsRow(items: list)
-                GlassCircleButton(systemImage: "arrow.down.circle", label: "Download in Music", size: 54) { openInMusic() }
-                AlbumPassportButton(album: album)
-                Spacer(minLength: 0)
-            }
-        }
+        PlayShuffleItemsRow(items: list) { AlbumPassportButton(album: album) }
     }
 
     /// A third-party app can't download, so this opens the album in the Music app to download there.

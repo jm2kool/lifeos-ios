@@ -48,13 +48,18 @@ private struct PlayableSongRowItems: View {
     }
 }
 
-/// Play / Shuffle for a mixed list.
-struct PlayShuffleItemsRow: View {
+/// Play / Shuffle for a mixed list, with an optional circle on the right.
+struct PlayShuffleItemsRow<Trailing: View>: View {
     let items: [QueueItem]
+    @ViewBuilder var trailing: Trailing
     @Environment(PlaybackCoordinator.self) private var player
 
     var body: some View {
-        PlayShuffleIcons(play: { player.play(items) }, shuffle: { player.play(items, shuffled: true) })
+        PlayShuffleIcons(play: { player.play(items) }, shuffle: { player.play(items, shuffled: true) }) { trailing }
             .disabled(items.isEmpty)
     }
+}
+
+extension PlayShuffleItemsRow where Trailing == EmptyView {
+    init(items: [QueueItem]) { self.init(items: items) { EmptyView() } }
 }

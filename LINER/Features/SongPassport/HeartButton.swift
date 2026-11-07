@@ -50,7 +50,7 @@ struct AlbumPassportButton: View {
     @Environment(LibraryService.self) private var library
 
     var body: some View {
-        GlassCircleButton(systemImage: "text.book.closed", label: "Album Passport", size: 54) {
+        GlassCircleButton(systemImage: "text.book.closed", label: "Album Passport", size: 56) {
             passports.album = .library(album, snapshot: library.snapshot)
         }
     }

@@ -104,21 +104,56 @@ struct LinerToggleStyle: ToggleStyle {
     }
 }
 
-/// Icon-only Play (white circle) and Shuffle (glass circle), the house transport pair.
-struct PlayShuffleIcons: View {
+/// Apple Music-style transport for albums and lists: [shuffle] [ ▶ Play ] [optional circle], centred.
+struct PlayShuffleIcons<Trailing: View>: View {
     let play: () -> Void
     let shuffle: () -> Void
-    var size: CGFloat = 54
+    @ViewBuilder var trailing: Trailing
 
     var body: some View {
-        HStack(spacing: 12) {
-            Button(action: play) {
-                Image(systemName: "play.fill").font(.system(size: size * 0.36, weight: .bold)).frame(width: size, height: size)
+        GlassEffectContainer(spacing: 14) {
+            HStack(spacing: 14) {
+                GlassCircleButton(systemImage: "shuffle", label: "Shuffle", size: 56, action: shuffle)
+                Button(action: play) {
+                    Label("Play", systemImage: "play.fill")
+                        .font(.system(size: 19, weight: .bold))
+                        .frame(width: 170, height: 56)
+                }
+                .buttonStyle(.linerPrimary)
+                .buttonBorderShape(.capsule)
+                trailing
             }
-            .buttonStyle(.linerPrimary)
-            .buttonBorderShape(.circle)
-            .accessibilityLabel("Play")
-            GlassCircleButton(systemImage: "shuffle", label: "Shuffle", size: size, action: shuffle)
         }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+extension PlayShuffleIcons where Trailing == EmptyView {
+    init(play: @escaping () -> Void, shuffle: @escaping () -> Void) {
+        self.init(play: play, shuffle: shuffle) { EmptyView() }
+    }
+}
+
+/// Apple Music-style artist transport: [left circle] [big ▶] [right circle], centred.
+struct ArtistTransport<Leading: View, Trailing: View>: View {
+    let play: () -> Void
+    @ViewBuilder var leading: Leading
+    @ViewBuilder var trailing: Trailing
+
+    var body: some View {
+        GlassEffectContainer(spacing: 22) {
+            HStack(spacing: 22) {
+                leading
+                Button(action: play) {
+                    Image(systemName: "play.fill").font(.system(size: 30, weight: .bold)).offset(x: 2)
+                        .frame(width: 84, height: 84)
+                }
+                .buttonStyle(.linerPrimary)
+                .buttonBorderShape(.circle)
+                .accessibilityLabel("Play")
+                trailing
+            }
+        }
+        .frame(maxWidth: .infinity)
     }
 }

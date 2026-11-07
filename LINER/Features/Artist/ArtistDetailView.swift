@@ -6,6 +6,7 @@ struct ArtistDetailView: View {
     let artist: Artist
     let namespace: Namespace.ID
     @Environment(LibraryService.self) private var library
+    @Environment(PlaybackCoordinator.self) private var player
     @State private var titleStyle: ArtistTitleStyle = .auto
     /// How bright the photo is where the title sits (0 dark … 1 bright).
     @State private var titleBackdrop = 0.0
@@ -17,7 +18,19 @@ struct ArtistDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
                 hero(releases: albums.count, genre: genre)
-                PlayShuffleRow(songs: songs).padding(.horizontal, 16)
+                ArtistTransport(play: { player.play(songs: songs) }) {
+                    GlassCircleButton(systemImage: "shuffle", label: "Shuffle", size: 56) { player.play(songs: songs, shuffled: true) }
+                } trailing: {
+                    ShareCardButton(make: {
+                        .artist(artist, rank: library.stats.rank(of: artist), minutes: library.stats.minutes(of: artist), topSong: songs.first)
+                    }, label: "Share")
+                    .labelStyle(.iconOnly)
+                    .font(.system(size: 20, weight: .semibold))
+                    .frame(width: 56, height: 56)
+                    .buttonStyle(.plain)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                }
+                .disabled(songs.isEmpty)
                 ArtistHistoryCard(artist: artist, topSong: songs.first, topAlbum: albums.first).padding(.horizontal, 16)
                 if !songs.isEmpty { ArtistTopSongs(songs: Array(songs.prefix(10))).padding(.horizontal, 16) }
                 totals
@@ -38,11 +51,6 @@ struct ArtistDetailView: View {
                     }
                 } label: { Label("Title style", systemImage: "textformat") }
                 .onChange(of: titleStyle) { _, s in ArtistTitleStyle.save(s, for: artist.id) }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                ShareCardButton {
-                    .artist(artist, rank: library.stats.rank(of: artist), minutes: library.stats.minutes(of: artist), topSong: songs.first)
-                }
             }
         }
     }

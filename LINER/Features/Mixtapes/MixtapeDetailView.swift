@@ -28,12 +28,8 @@ struct MixtapeDetailView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(mixtape.title).font(.itemTitle).lineLimit(3)
                     Text(mixtape.artist).linerLabel(size: 12)
-                    GlassEffectContainer(spacing: 12) {
-                        HStack(spacing: 12) {
-                            PlayShuffleItemsRow(items: list)
-                            GlassCircleButton(systemImage: "text.book.closed", label: "Passport", size: 54) { passports.album = .mixtape(mixtape) }
-                            Spacer(minLength: 0)
-                        }
+                    PlayShuffleItemsRow(items: list) {
+                        GlassCircleButton(systemImage: "text.book.closed", label: "Passport", size: 56) { passports.album = .mixtape(mixtape) }
                     }
                     .padding(.top, 10)
                     Text(facts(list)).linerLabel(size: 10).padding(.top, 8)
