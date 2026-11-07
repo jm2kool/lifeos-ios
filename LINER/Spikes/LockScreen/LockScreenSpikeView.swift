@@ -18,7 +18,7 @@ struct LockScreenSpikeView: View {
 
     var body: some View {
         SpikePage(spike: .lockScreen,
-                  intro: "Hands iOS a looping 3:4 video for the lock screen. Before you start: Low Power Mode OFF, Reduce Motion OFF, and Settings → Accessibility → Motion → Auto-Play Animated Images ON.") {
+                  intro: "Hands iOS a looping 3:4 video for the lock screen. Run each test twice: once with Low Power Mode off (does full-screen work at all?) and once with it on (iOS itself freezes lock screen animation in Low Power Mode; the in-app player keeps moving). Keep Reduce Motion off.") {
             Card {
                 SectionLabel("System support")
                 Text("Animated keys this iPhone accepts: \(spike.supportedKeys)").font(.footnote)

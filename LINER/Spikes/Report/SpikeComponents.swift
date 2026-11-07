@@ -1,31 +1,5 @@
 import SwiftUI
 
-/// Tiny letter-spaced caps label, the house style for section labels.
-struct SectionLabel: View {
-    let text: String
-    init(_ text: String) { self.text = text }
-    var body: some View {
-        Text(text.uppercased())
-            .font(.system(size: 11, weight: .semibold))
-            .tracking(2.5)
-            .foregroundStyle(.white.opacity(0.55))
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-/// A dark card with the hairline stroke from the design system.
-struct Card<Content: View>: View {
-    @ViewBuilder var content: Content
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) { content }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(LinearGradient(colors: [Color(white: 0.055), Color(white: 0.086)], startPoint: .top, endPoint: .bottom),
-                        in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(.white.opacity(0.06), lineWidth: 1))
-    }
-}
-
 /// The verdict as a small coloured capsule.
 struct VerdictBadge: View {
     let verdict: Verdict

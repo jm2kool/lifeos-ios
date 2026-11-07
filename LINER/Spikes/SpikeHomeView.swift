@@ -9,8 +9,7 @@ struct SpikeHomeView: View {
     private let order: [SpikeID] = [.libraryPlayback, .lockScreen, .intelligence, .deezer, .instagram]
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
+        ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(alignment: .leading, spacing: 6) {
                         SectionLabel("Phase 0 · Spike lab")
@@ -45,10 +44,11 @@ struct SpikeHomeView: View {
                     .padding(.top, 8)
                 }
                 .padding(16)
-            }
-            .background(Color.black.ignoresSafeArea())
-            .navigationDestination(for: SpikeID.self) { destination($0) }
         }
+        .background(Color.black.ignoresSafeArea())
+        .navigationTitle("Spike lab")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(for: SpikeID.self) { destination($0) }
     }
 
     private func row(_ step: Int, _ spike: SpikeID) -> some View {
@@ -78,4 +78,4 @@ struct SpikeHomeView: View {
     }
 }
 
-#Preview { SpikeHomeView().preferredColorScheme(.dark) }
+#Preview { NavigationStack { SpikeHomeView() }.preferredColorScheme(.dark) }
