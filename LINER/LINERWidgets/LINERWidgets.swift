@@ -33,29 +33,44 @@ struct LyricsLiveActivity: Widget {
     }
 }
 
+/// The Lock Screen card: the song, then the lyrics as a short scroll — each new line slides up from below as
+/// the old one moves up and fades, like the lyrics screen in the app.
 struct LyricsLockScreen: View {
     let state: LyricsActivityAttributes.ContentState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: state.isPlaying ? "waveform" : "pause.fill").font(.system(size: 10, weight: .bold))
+                    .contentTransition(.symbolEffect(.replace))
                 Text("\(state.title) · \(state.artist)".uppercased())
                     .font(.system(size: 10, weight: .semibold)).tracking(1.6).lineLimit(1)
+                    .id(state.title + state.artist)
+                    .transition(.push(from: .bottom))
             }
             .foregroundStyle(.white.opacity(0.55))
-            if !state.previous.isEmpty {
-                Text(state.previous).font(.system(size: 14, design: .serif)).foregroundStyle(.white.opacity(0.35)).lineLimit(1)
-            }
-            Text(state.current.isEmpty ? "♪" : state.current)
-                .font(.system(size: 24, weight: .semibold, design: .serif)).foregroundStyle(.white)
-                .lineLimit(2).minimumScaleFactor(0.7)
-                .contentTransition(.opacity)
-            if !state.next.isEmpty {
-                Text(state.next).font(.system(size: 14, design: .serif)).foregroundStyle(.white.opacity(0.45)).lineLimit(1)
-            }
+
+            lines
+                .id("\(state.title)|\(state.index)")
+                .transition(.push(from: .bottom))
+                .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
+                .clipped()
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(.smooth(duration: 0.55), value: state.index)
+        .animation(.smooth(duration: 0.55), value: state.title)
+    }
+
+    private var lines: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(state.previous.isEmpty ? " " : state.previous)
+                .font(.system(size: 14, design: .serif)).foregroundStyle(.white.opacity(0.32)).lineLimit(1)
+            Text(state.current.isEmpty ? "♪" : state.current)
+                .font(.system(size: 23, weight: .semibold, design: .serif)).foregroundStyle(.white)
+                .lineLimit(2).minimumScaleFactor(0.7)
+            Text(state.next.isEmpty ? " " : state.next)
+                .font(.system(size: 14, design: .serif)).foregroundStyle(.white.opacity(0.45)).lineLimit(1)
+        }
     }
 }
