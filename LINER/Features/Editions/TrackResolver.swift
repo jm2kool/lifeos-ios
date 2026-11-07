@@ -18,7 +18,8 @@ enum MixtapeFiles {
     /// The mixtape's cover written to disk (the lock screen and player read files, not SwiftData).
     static func coverURL(for mixtape: Mixtape) -> URL? {
         guard let data = mixtape.coverImage else { return nil }
-        let url = covers.appending(path: "\(mixtape.id.uuidString).jpg")
+        // The size in the name means a new cover gets a new file (and a new lock screen artwork ID).
+        let url = covers.appending(path: "\(mixtape.id.uuidString)-\(data.count).jpg")
         if !FileManager.default.fileExists(atPath: url.path) { try? data.write(to: url, options: .atomic) }
         return url
     }

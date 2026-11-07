@@ -15,6 +15,8 @@ final class PlaybackCoordinator {
     var repeatMode: RepeatMode = .off
     private(set) var engine: Engine = .none
     var errorMessage: String?
+    /// A friendly confirmation (imports and saves), shown in the same banner.
+    var notice: String?
     var showFullPlayer = false
     /// Bumped on every seek, so views reading time refresh at once.
     private(set) var seekGeneration = 0

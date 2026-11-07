@@ -8,7 +8,7 @@ enum PlayerExtras {
     }
 
     @ViewBuilder static func lyrics() -> some View {
-        EmptyStateView(symbol: "quote.bubble", title: "Lyrics", message: "Sing-along lyrics are coming.")
+        LyricsView().presentationDetents([.large]).presentationBackground(.black)
     }
 
     @ViewBuilder static func songPassport(for item: QueueItem?) -> some View {

@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 /// The Search tab: artists, albums and songs from your library as you type.
@@ -5,6 +6,7 @@ struct SearchView: View {
     @Environment(LibraryService.self) private var library
     @Namespace private var zoom
     @State private var query = ""
+    @Query(sort: \Mixtape.title) private var mixtapes: [Mixtape]
 
     var body: some View {
         NavigationStack {
@@ -13,7 +15,7 @@ struct SearchView: View {
                 LazyVStack(alignment: .leading, spacing: 18) {
                     if query.isEmpty {
                         EmptyStateView(symbol: "magnifyingglass", title: "Search your library", message: "Artists, albums and songs.")
-                    } else if results.isEmpty {
+                    } else if results.isEmpty && !mixtapes.contains(where: { $0.title.localizedStandardContains(query) }) {
                         EmptyStateView(symbol: "magnifyingglass", title: "No matches", message: "Nothing in your library matches “\(query)”.")
                     }
                     if !results.artists.isEmpty {
@@ -28,6 +30,20 @@ struct SearchView: View {
                                     NavigationLink(value: album) { AlbumTile(album: album, namespace: zoom).frame(width: 140) }.buttonStyle(.plain)
                                 }
                             }
+                        }
+                    }
+                    let tapes = query.isEmpty ? [] : mixtapes.filter { $0.title.localizedStandardContains(query) || $0.artist.localizedStandardContains(query) }
+                    if !tapes.isEmpty {
+                        SectionLabel("Mixtapes")
+                        ForEach(tapes) { m in
+                            NavigationLink(value: m) {
+                                HStack(spacing: 12) {
+                                    MixtapeCover(mixtape: m, cornerRadius: 6).frame(width: 46)
+                                    VStack(alignment: .leading) { Text(m.title); Text(m.artist).font(.caption).foregroundStyle(Palette.secondary) }
+                                    Spacer()
+                                }
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                     if !results.songs.isEmpty {

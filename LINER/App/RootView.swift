@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 /// The glass tab bar (SPEC §8): Home, Library, Recaps, My LINER., Search — or the permission screen.
@@ -30,9 +31,24 @@ struct RootView: View {
         .sheet(item: $passports.album) { AlbumPassportSheet(subject: $0) }
         .sheet(item: $passports.editions) { EditionsSheet(subject: $0) }
         .task { if library.isAuthorized && !library.hasLoaded { await library.refresh() } }
+        .onOpenURL { url in Task { await openFile(url) } }
         .onChange(of: phase) { _, now in
             if now == .active && library.hasLoaded { Task { await library.refresh() } }
         }
+    }
+
+    /// "Open in LINER." from Files, Safari downloads or the share sheet: import into a mixtape.
+    private func openFile(_ url: URL) async {
+        guard url.isFileURL else { return }
+        let files = await MixtapeImporter.importFiles([url])
+        try? FileManager.default.removeItem(at: url)   // the system's Inbox copy
+        guard let first = files.first else { player.errorMessage = "Couldn't import that file."; return }
+        let title = first.album ?? "Inbox"
+        let existing = (try? Store.shared.context.fetch(FetchDescriptor<Mixtape>()))?.first { $0.title == title }
+        let mixtape = MixtapeImporter.makeMixtape(from: files, into: existing)
+        tab = .library
+        UserDefaults.standard.set("Mixtapes", forKey: "library.section")
+        player.notice = "Imported “\(first.title)” into \(mixtape?.title ?? title)."
     }
 
     private var tabs: some View {
@@ -69,11 +85,12 @@ private struct ErrorBanner: View {
     @Environment(PlaybackCoordinator.self) private var player
 
     var body: some View {
-        if let message = player.errorMessage {
+        if let message = player.errorMessage ?? player.notice {
+            let isError = player.errorMessage != nil
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)
+                Image(systemName: isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill").foregroundStyle(isError ? .yellow : .green)
                 Text(message).font(.footnote).frame(maxWidth: .infinity, alignment: .leading)
-                Button { withAnimation { player.errorMessage = nil } } label: { Image(systemName: "xmark") }
+                Button { withAnimation { player.errorMessage = nil; player.notice = nil } } label: { Image(systemName: "xmark") }
                     .buttonStyle(.plain).accessibilityLabel("Dismiss")
             }
             .padding(14)
@@ -81,8 +98,8 @@ private struct ErrorBanner: View {
             .padding(.horizontal, 16)
             .transition(.move(edge: .top).combined(with: .opacity))
             .task(id: message) {
-                try? await Task.sleep(for: .seconds(8))
-                withAnimation { player.errorMessage = nil }
+                try? await Task.sleep(for: .seconds(isError ? 8 : 4))
+                withAnimation { player.errorMessage = nil; player.notice = nil }
             }
         }
     }

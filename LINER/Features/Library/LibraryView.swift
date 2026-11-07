@@ -87,8 +87,7 @@ struct LibraryView: View {
                     .padding(.horizontal, 16).padding(.vertical, 6)
             }
         case .mixtapes:
-            EmptyStateView(symbol: "recordingtape", title: "No mixtapes yet",
-                           message: "Soon you'll be able to import your own audio files, like SoundCloud downloads, and keep them here as albums.")
+            MixtapesSection(query: query)
         }
     }
 
