@@ -8,6 +8,10 @@ struct PermissionView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Spacer()
+            Image("Logo").resizable().scaledToFit().frame(width: 96, height: 96)
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Palette.stroke))
+                .accessibilityHidden(true)
             Text(AppBrand.name).font(.serif(64))
             Text(AppBrand.tagline).linerLabel()
             Text(message).font(.title3).foregroundStyle(Palette.secondary).fixedSize(horizontal: false, vertical: true)

@@ -21,7 +21,7 @@ struct InstagramSpikeView: View {
                 Card {
                     Text(kind.rawValue).font(.system(size: 20, design: .serif))
                     Button("Open in Instagram", systemImage: "camera.circle.fill") { Task { await spike.share(kind) } }
-                        .buttonStyle(.glassProminent).disabled(spike.working)
+                        .buttonStyle(.linerPrimary).disabled(spike.working)
                     ObservationButtons(spike: .instagram, question: "\(kind.rawValue): what did Instagram show?", options: options(for: kind))
                 }
             }

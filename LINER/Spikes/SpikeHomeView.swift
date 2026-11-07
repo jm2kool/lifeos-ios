@@ -33,7 +33,7 @@ struct SpikeHomeView: View {
                                 Label(copied ? "Copied" : "Copy report", systemImage: copied ? "checkmark" : "doc.on.doc")
                                     .frame(maxWidth: .infinity)
                             }
-                            .buttonStyle(.glassProminent)
+                            .buttonStyle(.linerPrimary)
                             ShareLink(item: report.text) {
                                 Label("Share", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity)
                             }

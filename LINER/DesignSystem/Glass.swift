@@ -33,7 +33,7 @@ struct GlassPillButton: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 6)
         }
-        .buttonStyle(prominent ? AnyPrimitiveButtonStyle(.glassProminent) : AnyPrimitiveButtonStyle(.glass))
+        .buttonStyle(prominent ? AnyPrimitiveButtonStyle(.linerPrimary) : AnyPrimitiveButtonStyle(.glass))
         .controlSize(.large)
     }
 }
@@ -56,4 +56,27 @@ struct AnyPrimitiveButtonStyle: PrimitiveButtonStyle {
         HStack { GlassPillButton(title: "Play", systemImage: "play.fill", prominent: true) {}; GlassPillButton(title: "Shuffle", systemImage: "shuffle") {} }
     }
     .padding().background(LinearGradient(colors: [.orange, .black], startPoint: .top, endPoint: .bottom))
+}
+
+/// The primary action: Liquid Glass prominent, filled white with black text (the app's white tint would
+/// otherwise make the label white on white).
+struct LinerPrimaryStyle: PrimitiveButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button(role: configuration.role, action: configuration.trigger) {
+            configuration.label.foregroundStyle(.black)
+        }
+        .buttonStyle(.glassProminent)
+        .tint(.white)
+    }
+}
+
+extension PrimitiveButtonStyle where Self == LinerPrimaryStyle {
+    static var linerPrimary: LinerPrimaryStyle { LinerPrimaryStyle() }
+}
+
+/// Switches with a grey "on" track, so the white knob stays visible in the monochrome theme.
+struct LinerToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Toggle(configuration).toggleStyle(.switch).tint(Color(white: 0.42))
+    }
 }

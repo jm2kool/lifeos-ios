@@ -10,7 +10,7 @@ struct LibrarySpikeView: View {
                   intro: "Checks that a free-signed app can read your library and play it with applicationQueuePlayer (no MusicKit). Pick a song here — the lock screen test uses the same one.") {
             if lib.status != .authorized {
                 Button("Allow Apple Music access") { Task { await lib.requestAccess() } }
-                    .buttonStyle(.glassProminent).controlSize(.large)
+                    .buttonStyle(.linerPrimary).controlSize(.large)
                 if lib.status == .denied {
                     Text("Access was denied. Turn it on in Settings → Apps → LINER. → Media & Apple Music.")
                         .font(.footnote).foregroundStyle(.orange)

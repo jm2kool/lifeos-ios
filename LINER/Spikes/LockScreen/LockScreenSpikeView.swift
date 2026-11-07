@@ -89,7 +89,7 @@ struct LockScreenSpikeView: View {
             Text(title).font(.system(size: 22, design: .serif))
             Text(how).font(.footnote).foregroundStyle(.white.opacity(0.65))
             Button("Start test \(number)", systemImage: "play.fill", action: start)
-                .buttonStyle(.glassProminent).disabled(spike.working)
+                .buttonStyle(.linerPrimary).disabled(spike.working)
             ObservationButtons(spike: .lockScreen, question: "Test \(number): what did the lock screen show?", options: options) {
                 result.wrappedValue = $0
             }

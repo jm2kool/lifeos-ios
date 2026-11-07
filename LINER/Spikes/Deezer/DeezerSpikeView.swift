@@ -29,7 +29,7 @@ struct DeezerSpikeView: View {
                 Button(spike.running ? "Looking up…" : "Look them up", systemImage: "magnifyingglass") {
                     Task { await spike.run(names) }
                 }
-                .buttonStyle(.glassProminent).disabled(spike.running)
+                .buttonStyle(.linerPrimary).disabled(spike.running)
                 HStack {
                     TextField("Or type one artist", text: $custom).textFieldStyle(.roundedBorder)
                     Button("Go") { Task { await spike.run([custom]) } }.buttonStyle(.glass).disabled(custom.isEmpty)

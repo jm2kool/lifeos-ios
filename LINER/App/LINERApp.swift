@@ -26,6 +26,7 @@ struct LINERApp: App {
                 .task { library.reloadPersonalRatings() }
                 .preferredColorScheme(.dark)
                 .tint(.white)
+                .toggleStyle(LinerToggleStyle())
         }
     }
 }

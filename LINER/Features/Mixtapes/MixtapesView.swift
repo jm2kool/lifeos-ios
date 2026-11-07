@@ -18,7 +18,7 @@ struct MixtapesSection: View {
             Button { importing = true } label: {
                 Label(busy ? "Importing…" : "Import audio files", systemImage: "plus").frame(maxWidth: .infinity)
             }
-            .buttonStyle(.glassProminent).controlSize(.large).disabled(busy)
+            .buttonStyle(.linerPrimary).controlSize(.large).disabled(busy)
             .padding(.horizontal, 16)
 
             if shown.isEmpty {

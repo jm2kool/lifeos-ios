@@ -85,7 +85,10 @@ struct SettingsView: View {
                     Text("The spike lab re-runs the Phase 0 checks. Test plays are made-up recaps data, marked so they can be removed.")
                 }
                 Section("About") {
-                    LabeledContent(AppBrand.name, value: version)
+                    HStack(spacing: 14) {
+                        Image("Logo").resizable().frame(width: 52, height: 52).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        VStack(alignment: .leading) { Text(AppBrand.name).font(.serif(22)); Text(version).font(.caption).foregroundStyle(.secondary) }
+                    }
                     TextField("App name (LINER.)", text: $brandName)
                     Text("Your notes on the music. Inspired by @sakisgraphics' MONO. concept and MD Vinyl. Reads your Apple Music library and never changes it, except a mood playlist you save. Artist photos from Deezer, lyrics from LRCLIB.")
                         .font(.footnote).foregroundStyle(.secondary)

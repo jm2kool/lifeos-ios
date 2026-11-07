@@ -19,7 +19,7 @@ struct IntelligenceSpikeView: View {
                 Button(spike.running ? "Thinking…" : "Run the model", systemImage: "sparkles") {
                     Task { await spike.run(vibe: vibe) }
                 }
-                .buttonStyle(.glassProminent).disabled(spike.running || !spike.available)
+                .buttonStyle(.linerPrimary).disabled(spike.running || !spike.available)
                 if let r = spike.recipeText { Text(r).font(.footnote).textSelection(.enabled) }
                 if let o = spike.orderText { Text(o).font(.footnote).foregroundStyle(.white.opacity(0.7)) }
             }
