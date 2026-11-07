@@ -46,6 +46,7 @@ struct AlbumPassportSheet: View {
                 PassportEditionsLink(subject: subject)
             }
             .buttonStyle(.plain)
+            if subject.album != nil { CoverPickerSection(note: note) }
             if let album = subject.album { history(album) }
             fullRanking
         }

@@ -11,8 +11,9 @@ final class NowPlayingManager {
     private var artworkTask: Task<Void, Never>?
     private var artwork: (key: String, image: UIImage)?
 
-    /// Extra keys (animated artwork) another part of the app wants in Now Playing.
-    var extraInfo: (QueueItem) -> [String: Any] = { _ in [:] }
+    /// The lock screen's animated artwork (motion covers and Living Covers).
+    let animated = AnimatedArtwork()
+    init() { animated.nowPlaying = self }
 
     func useSystemNowPlaying() {
         guard ownsNowPlaying else { return }
@@ -43,7 +44,7 @@ final class NowPlayingManager {
             MPNowPlayingInfoPropertyElapsedPlaybackTime: elapsed ?? c.currentTime,
             MPNowPlayingInfoPropertyPlaybackRate: c.isPlaying ? 1.0 : 0.0,
         ]
-        let extra = extraInfo(item)
+        let extra = animated.keys(for: item)
         guard ownsNowPlaying || !extra.isEmpty else { return }
         if let artwork, artwork.key == item.artworkKey {
             info[MPMediaItemPropertyArtwork] = Self.staticArtwork(artwork.image)

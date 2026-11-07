@@ -3,8 +3,17 @@ import SwiftUI
 /// Pieces of the full player that later phases fill in (motion backgrounds, lyrics, passports, hearts).
 @MainActor
 enum PlayerExtras {
+    /// Full-screen background: your motion cover, else a Living Cover, else the still (always filling the screen).
     @ViewBuilder static func background(item: QueueItem?, image: UIImage?, look: ArtworkLook) -> some View {
-        if let image { FocusedFillImage(image: image, focus: look.focus) } else { Color.clear }
+        if let item, let motion = MotionLookup.file(for: item) {
+            LoopingVideo(url: MotionCoverFiles.url(motion))
+        } else if let image, let item, MotionSettings.livingCoversOn {
+            LivingCoverView(image: image, look: look, key: item.artworkKey)
+        } else if let image {
+            FocusedFillImage(image: image, focus: look.focus)
+        } else {
+            Color.clear
+        }
     }
 
     @ViewBuilder static func lyrics() -> some View {
