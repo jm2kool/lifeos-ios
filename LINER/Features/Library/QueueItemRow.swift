@@ -54,12 +54,7 @@ struct PlayShuffleItemsRow: View {
     @Environment(PlaybackCoordinator.self) private var player
 
     var body: some View {
-        GlassEffectContainer(spacing: 12) {
-            HStack(spacing: 12) {
-                GlassPillButton(title: "Play", systemImage: "play.fill", prominent: true) { player.play(items) }
-                GlassPillButton(title: "Shuffle", systemImage: "shuffle") { player.play(items, shuffled: true) }
-            }
-        }
-        .disabled(items.isEmpty)
+        PlayShuffleIcons(play: { player.play(items) }, shuffle: { player.play(items, shuffled: true) })
+            .disabled(items.isEmpty)
     }
 }

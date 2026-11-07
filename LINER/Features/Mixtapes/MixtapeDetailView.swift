@@ -31,7 +31,8 @@ struct MixtapeDetailView: View {
                     GlassEffectContainer(spacing: 12) {
                         HStack(spacing: 12) {
                             PlayShuffleItemsRow(items: list)
-                            GlassCircleButton(systemImage: "text.book.closed", label: "Passport") { passports.album = .mixtape(mixtape) }
+                            GlassCircleButton(systemImage: "text.book.closed", label: "Passport", size: 54) { passports.album = .mixtape(mixtape) }
+                            Spacer(minLength: 0)
                         }
                     }
                     .padding(.top, 10)

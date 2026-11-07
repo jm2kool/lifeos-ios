@@ -58,11 +58,9 @@ struct PlayShuffleRow: View {
 
     var body: some View {
         GlassEffectContainer(spacing: 12) {
-            HStack(spacing: 12) {
-                GlassPillButton(title: "Play", systemImage: "play.fill", prominent: true) { player.play(songs: songs) }
-                GlassPillButton(title: "Shuffle", systemImage: "shuffle") { player.play(songs: songs, shuffled: true) }
-            }
+            PlayShuffleIcons(play: { player.play(songs: songs) }, shuffle: { player.play(songs: songs, shuffled: true) })
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .disabled(songs.isEmpty)
     }
 }

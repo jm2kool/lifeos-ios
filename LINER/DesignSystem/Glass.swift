@@ -103,3 +103,22 @@ struct LinerToggleStyle: ToggleStyle {
         Toggle(configuration).toggleStyle(.switch).tint(Color(white: 0.42))
     }
 }
+
+/// Icon-only Play (white circle) and Shuffle (glass circle), the house transport pair.
+struct PlayShuffleIcons: View {
+    let play: () -> Void
+    let shuffle: () -> Void
+    var size: CGFloat = 54
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button(action: play) {
+                Image(systemName: "play.fill").font(.system(size: size * 0.36, weight: .bold)).frame(width: size, height: size)
+            }
+            .buttonStyle(.linerPrimary)
+            .buttonBorderShape(.circle)
+            .accessibilityLabel("Play")
+            GlassCircleButton(systemImage: "shuffle", label: "Shuffle", size: size, action: shuffle)
+        }
+    }
+}

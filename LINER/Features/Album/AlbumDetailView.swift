@@ -60,7 +60,7 @@ struct AlbumDetailView: View {
 
                 VStack(spacing: 0) {
                     ForEach(Array(list.enumerated()), id: \.offset) { i, item in
-                        PlayableQueueRow(item: item, list: list, number: activeEdition == nil ? (item.song?.trackNumber ?? i + 1) : i + 1)
+                        PlayableQueueRow(item: item, list: list, number: trackNumbersLookRight(list) ? (item.song?.trackNumber ?? i + 1) : i + 1)
                             .padding(.vertical, 10)
                         Divider().overlay(Palette.stroke)
                     }
@@ -83,6 +83,13 @@ struct AlbumDetailView: View {
                 Menu { AlbumActionsMenu(album: album) } label: { Label("More", systemImage: "ellipsis") }
             }
         }
+    }
+
+    /// Use the album's own track numbers only when they run 1, 2, 3… (an EP of later tracks would show "2").
+    private func trackNumbersLookRight(_ list: [QueueItem]) -> Bool {
+        guard activeEdition == nil else { return false }
+        let numbers = list.compactMap { $0.song?.trackNumber }
+        return numbers.count == list.count && numbers.first == 1 && Set(numbers).count == numbers.count
     }
 
     private var editionSwitcher: some View {
@@ -117,8 +124,9 @@ struct AlbumDetailView: View {
         GlassEffectContainer(spacing: 12) {
             HStack(spacing: 12) {
                 PlayShuffleItemsRow(items: list)
-                GlassCircleButton(systemImage: "arrow.down.circle", label: "Download in Music") { openInMusic() }
+                GlassCircleButton(systemImage: "arrow.down.circle", label: "Download in Music", size: 54) { openInMusic() }
                 AlbumPassportButton(album: album)
+                Spacer(minLength: 0)
             }
         }
     }
