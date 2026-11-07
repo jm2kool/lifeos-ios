@@ -7,6 +7,8 @@ import SwiftUI
 final class LibraryService {
     private(set) var status: MPMediaLibraryAuthorizationStatus
     private(set) var snapshot = LibrarySnapshot()
+    /// Ranks and totals for the current snapshot.
+    private(set) var stats = LibraryStats()
     private(set) var isLoading = false
     private(set) var hasLoaded = false
     private var observing = false
@@ -18,8 +20,12 @@ final class LibraryService {
     init(preview: LibrarySnapshot) {
         status = .authorized
         snapshot = preview
+        stats = LibraryStats(preview)
         hasLoaded = true
     }
+
+    /// Called after every scan (play-count snapshots hook in here).
+    @ObservationIgnored var onRefresh: ((LibrarySnapshot) -> Void)?
 
     var isAuthorized: Bool { status == .authorized }
 
@@ -39,7 +45,12 @@ final class LibraryService {
         isLoading = true
         startObserving()
         let fresh = await LibraryScanner.scan()
-        withAnimation(.liner) { snapshot = fresh }
+        let freshStats = await StatsEngine.build(fresh)
+        withAnimation(.liner) {
+            snapshot = fresh
+            stats = freshStats
+        }
+        onRefresh?(fresh)
         hasLoaded = true
         isLoading = false
         if pendingRefresh { pendingRefresh = false; await refresh() }
