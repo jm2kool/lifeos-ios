@@ -7,8 +7,9 @@ Install it with Sideloadly using your Apple ID.
 | Area | What's there |
 |---|---|
 | Library | Artists · Albums · Songs · Playlists with search and sort; one-song "albums" are treated as songs (Mixtapes have their own tab); albums as a moving crate with haptic ticks; black-and-white artist photos from Deezer |
+| Artist pages | A Page like Apple Music's (latest release, Top Songs, Albums, Singles & EPs from the Apple Music catalogue via the iTunes Search API, streamed by Apple Music ID) and LINER. stats (your history with them) |
 | Artist titles | iOS 27-style stylised names: the artist's logo (TheAudioDB) in white, or genre-matched lettering; pick a style per artist in Settings → Artist titles; pages tinted from the artwork |
-| Playback | Library songs via `applicationQueuePlayer`, imported files via AVPlayer, mixed in one queue; shuffle, repeat, Up Next |
+| Playback | Library songs via `applicationQueuePlayer` (iCloud and catalogue songs stream by Apple Music ID, with one automatic retry), imported files via AVPlayer, mixed in one queue; shuffle, repeat, Up Next |
 | Player | Always full-screen artwork aimed at the subject, motion covers or Living Covers behind it, glass controls tinted by the art |
 | Lock screen | Animated 3:4 / 1:1 artwork (motion cover or Living Cover); guaranteed for mixtapes, best effort for Apple Music songs |
 | Stats | My LINER.: totals, ranked artists/albums/songs; artist and album pages with your history and ranks |
@@ -19,7 +20,7 @@ Install it with Sideloadly using your Apple ID.
 | Recaps | In My LINER.: week / month / year from the day you install, story mode, Monday notification |
 | Share | 9:16 still and animated cards to Instagram Stories, Photos or anywhere |
 | Mood playlists | On-device Apple Intelligence recipe + local scoring; Mood Mix without AI; save to Apple Music |
-| Vinyl Mode | Home becomes the record crate; albums open their page, "Put it on" plays at once on the turntable; needle drop, 33⅓ rpm spin, scratch-scrub, Side B; Cover/Record switch in the player opens a turntable deck whose tonearm follows the song — move it to seek, set it down off the record to pause |
+| Vinyl Mode | Double-tap Home to switch; Home becomes the record crate (with a rise-and-focus transition); the lyric being sung is printed round the record; albums open their page, "Put it on" plays at once on the turntable; needle drop, 33⅓ rpm spin, scratch-scrub, Side B; Cover/Record switch in the player opens a turntable deck whose tonearm follows the song — move it to seek, set it down off the record to pause |
 | Settings | Covers, Low Power, lyrics, sounds, notifications, artist titles, recalibrate Apple Music, rebuild stats, JSON backup, test data, spike lab |
 
 Limits of free signing: no MusicKit (MediaPlayer only), re-sign every 7 days. The live lyrics widget extension uses one extra App ID.

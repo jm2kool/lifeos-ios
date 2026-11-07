@@ -20,6 +20,9 @@ final class LyricsLiveActivityController {
     /// Updates go out one at a time, newest wins, so an older line can never land after a newer one.
     private var queued: LyricsActivityAttributes.ContentState?
     private var sending = false
+    private var sendStarted = Date.distantPast
+    private var lastSent = Date.distantPast
+    private var sender = 0
 
     static var enabled: Bool { UserDefaults.standard.object(forKey: "liveLyrics") as? Bool ?? true }
 
@@ -71,7 +74,8 @@ final class LyricsLiveActivityController {
         guard activity != nil else { return }
         let i = lyrics?.activeIndex(at: player.currentTime + 0.3) ?? -1
         let state = makeState(index: i, playing: player.isPlaying)
-        guard state != lastState else { return }
+        // A heartbeat every 10 s even when nothing changed, which also keeps the card from being marked stale.
+        guard state != lastState || Date.now.timeIntervalSince(lastSent) > 10 else { return }
         lastState = state
         send(state)
     }
@@ -94,15 +98,21 @@ final class LyricsLiveActivityController {
 
     private func send(_ state: LyricsActivityAttributes.ContentState) {
         queued = state
+        lastSent = .now
+        // An update that hasn't come back in 3 s is stuck: stop waiting for it, so the card keeps moving.
+        if sending && Date.now.timeIntervalSince(sendStarted) > 3 { sending = false }
         guard !sending, let activity else { return }
         sending = true
+        sender += 1
+        let me = sender
         let box = ActivityBox(activity: activity)
         Task {
-            while let next = queued {
+            while let next = queued, me == sender {
                 queued = nil
+                sendStarted = .now
                 await box.update(Self.content(next))
             }
-            sending = false
+            if me == sender { sending = false }
         }
     }
 
@@ -121,9 +131,10 @@ final class LyricsLiveActivityController {
 }
 
 extension LyricsLiveActivityController {
-    /// Lowest relevance, so when the system's Now Playing is also live it gets the Dynamic Island, not us.
+    /// Lowest relevance, so when the system's Now Playing is also live it gets the Dynamic Island, not us. Stale
+    /// after 45 s without news (the heartbeat is every 10 s), so a card that can't update says so.
     nonisolated static func content(_ state: LyricsActivityAttributes.ContentState) -> ActivityContent<LyricsActivityAttributes.ContentState> {
-        ActivityContent(state: state, staleDate: nil, relevanceScore: 0)
+        ActivityContent(state: state, staleDate: .now.addingTimeInterval(45), relevanceScore: 0)
     }
 
     /// Ends an activity off the main actor.

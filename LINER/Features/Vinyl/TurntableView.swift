@@ -22,7 +22,8 @@ struct TurntableView: View {
                 Spacer(minLength: 0)
                 deck
                     .rotation3DEffect(.degrees(flipped), axis: (x: 1, y: 0, z: 0))
-                    .offset(y: landed ? 0 : -600)
+                    .scaleEffect(landed ? 1 : 0.86)
+                    .opacity(landed ? 1 : 0)
                     .simultaneousGesture(DragGesture(minimumDistance: 40).onEnded { v in
                         if v.translation.height < -120 && abs(v.translation.width) < 60 { flip() }
                     })
@@ -31,7 +32,7 @@ struct TurntableView: View {
             }
             .padding(20)
         }
-        .task { startPlaying() }
+        .task { startPlaying(sound: false) }
         .onDisappear { VinylSounds.shared.stopCrackle() }
         .statusBarHidden()
     }
@@ -72,14 +73,16 @@ struct TurntableView: View {
     // MARK: Actions
 
     /// Plays (or resumes) this record at once; the record lands and the pop plays alongside, never before it.
-    private func startPlaying() {
-        if mine != nil {
+    private func startPlaying(sound: Bool = true) {
+        let already = mine != nil
+        if already {
             if !player.isPlaying { player.resume() }
         } else {
             player.play(record.tracks, startAt: side == "A" ? 0 : record.tracks.count / 2)
         }
-        VinylSounds.shared.needleDrop()
-        withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) { landed = true }
+        // From the crate the music and the pop have already started; don't play the pop twice.
+        if sound || !already { VinylSounds.shared.needleDrop() }
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.86)) { landed = true }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
 

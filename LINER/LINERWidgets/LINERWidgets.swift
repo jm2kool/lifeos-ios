@@ -15,7 +15,7 @@ struct LINERWidgets: WidgetBundle {
 struct LyricsLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: LyricsActivityAttributes.self) { context in
-            LyricsLockScreen(state: context.state)
+            LyricsLockScreen(state: context.state, stale: context.isStale)
                 .activityBackgroundTint(Color.black.opacity(0.82))
                 .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { _ in
@@ -37,6 +37,8 @@ struct LyricsLiveActivity: Widget {
 /// the old one moves up and fades, like the lyrics screen in the app.
 struct LyricsLockScreen: View {
     let state: LyricsActivityAttributes.ContentState
+    /// LINER. couldn't update for a while (iOS paused it): dim the lyrics rather than show a wrong line.
+    var stale = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -55,6 +57,10 @@ struct LyricsLockScreen: View {
                 .transition(.push(from: .bottom))
                 .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
                 .clipped()
+                .opacity(stale ? 0.4 : 1)
+            if stale {
+                Text("Open \u{201C}LINER.\u{201D} to resume live lyrics").font(.system(size: 10, weight: .semibold)).foregroundStyle(.white.opacity(0.5))
+            }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)

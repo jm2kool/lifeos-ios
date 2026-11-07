@@ -106,18 +106,24 @@ final class PlaybackCoordinator {
                 fail(Self.explain(error, item))
                 return
             }
-        case .library:
+        case .library(let first):
             if engine == .local { local.stop() }
             nowPlaying.useSystemNowPlaying()
-            var run: [MPMediaItem] = []
+            // One run for the system player: iCloud and Apple Music songs stream by their Apple Music ID,
+            // downloaded songs play as library items; the run ends where the kind changes.
+            let items = library.snapshot.items
+            let stream = MusicEngine.streams(first, item: items[first.id])
+            var run: [Song] = []
             var j = i
-            while j < queue.count, run.count < 150, case .library(let s) = queue[j], !s.playsInLINER, let mp = library.snapshot.items[s.id] {
-                run.append(mp)
+            while j < queue.count, run.count < 150, case .library(let s) = queue[j], !s.playsInLINER {
+                let fits = stream ? s.hasStoreID : (items[s.id] != nil && !MusicEngine.streams(s, item: items[s.id]))
+                guard fits else { break }
+                run.append(s)
                 j += 1
             }
             guard !run.isEmpty else { fail("“\(item.title)” isn't in your library any more."); return }
             engine = .music
-            music.load(run, startTime: time) { [weak self] error in
+            music.load(run, items: items, stream: stream, startTime: time) { [weak self] error in
                 guard let self, self.current?.id == item.id else { return }
                 self.fail(Self.explain(error, item))
             }
@@ -145,8 +151,8 @@ final class PlaybackCoordinator {
     }
 
     private static func explain(_ error: Error, _ item: QueueItem) -> String {
-        if item.song?.isCloudOnly == true {
-            return "Couldn't play “\(item.title)”. It's in iCloud, so it needs an active Apple Music subscription and a connection — or download it in the Music app."
+        if item.song?.isCloudOnly == true || item.song?.isCatalog == true {
+            return "Couldn't stream “\(item.title)” from Apple Music. Check your connection; if it keeps happening, try Settings → Recalibrate Apple Music."
         }
         return "Couldn't play “\(item.title)”: \(error.localizedDescription)"
     }

@@ -16,7 +16,6 @@ struct CrateView: View {
     @State private var playing: VinylRecord?
     @State private var backdrop: UIImage?
     @State private var taps = 0
-    @Namespace private var sleeve
 
     var body: some View {
         let list = records
@@ -42,7 +41,7 @@ struct CrateView: View {
         .task(id: current?.id) { await loadBackdrop(current) }
         .task { VinylSounds.shared.prepare() }
         .fullScreenCover(item: $playing) { r in
-            TurntableView(record: r).navigationTransition(.zoom(sourceID: r.id, in: sleeve))
+            TurntableView(record: r)
         }
         .sensoryFeedback(.impact(weight: .medium), trigger: taps)
         .toolbar(.hidden, for: .navigationBar)
@@ -108,7 +107,6 @@ struct CrateView: View {
                                 .mask(LinearGradient(colors: [.white, .clear], startPoint: .top, endPoint: .bottom))
                         }
                     }
-                    .matchedTransitionSource(id: r.id, in: sleeve)
                     .scrollTransition(axis: .horizontal) { content, phase in
                         content
                             .rotation3DEffect(.degrees(phase.value * -42), axis: (x: 0, y: 1, z: 0))
@@ -136,23 +134,35 @@ struct CrateView: View {
         case .album(let a): NavigationLink(value: a, label: label).buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { taps += 1 })
         case .mixtape(let m): NavigationLink(value: m, label: label).buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { taps += 1 })
         case .mood(let p): NavigationLink(value: p, label: label).buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { taps += 1 })
-        case nil: Button(action: { playing = r }, label: label).buttonStyle(.plain)
+        case nil: Button(action: { putOn(r) }, label: label).buttonStyle(.plain)
         }
     }
 
+    /// The record in front's name, and the one "Put it on" button. Only the words change as you flip — the
+    /// button itself stays put, so it never flickers or jumps under your thumb.
     private func details(_ r: VinylRecord) -> some View {
         VStack(spacing: 6) {
-            Text(r.title).font(.serif(26)).lineLimit(1).padding(.horizontal, 24)
-            Text([r.artist, r.year.map(String.init)].compactMap { $0 }.joined(separator: " · ")).linerLabel(size: 10)
-            Button { playing = r } label: {
+            VStack(spacing: 6) {
+                Text(r.title).font(.serif(26)).lineLimit(1).padding(.horizontal, 24)
+                Text([r.artist, r.year.map(String.init)].compactMap { $0 }.joined(separator: " · ")).linerLabel(size: 10)
+            }
+            .contentTransition(.opacity)
+            .animation(.easeInOut(duration: 0.2), value: r.id)
+            Button { putOn(r) } label: {
                 Label("Put it on", systemImage: "record.circle").font(.system(size: 17, weight: .bold)).frame(width: 190, height: 52)
             }
             .buttonStyle(.linerPrimary).buttonBorderShape(.capsule)
             .padding(.top, 14)
         }
-        .id(r.id)
-        .transition(.opacity)
-        .animation(.easeInOut(duration: 0.25), value: r.id)
+    }
+
+    /// Starts the music first, then slides the turntable up on the next frame, so the queue loading never
+    /// stutters the animation (and the song still starts at once).
+    private func putOn(_ r: VinylRecord) {
+        taps += 1
+        PlaybackCoordinator.shared?.play(r.tracks)
+        VinylSounds.shared.needleDrop()
+        Task { await Task.yield(); playing = r }
     }
 
     private func loadBackdrop(_ r: VinylRecord?) async {

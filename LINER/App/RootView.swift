@@ -15,6 +15,9 @@ struct RootView: View {
     @Namespace private var playerZoom
     /// Wiped when the app is deleted, so a fresh install always walks through connecting Apple Music again.
     @AppStorage("musicConnected") private var connected = false
+    @AppStorage("vinylMode") private var vinylMode = false
+    @State private var lastHomeTap = Date.distantPast
+    @State private var lastToggle = Date.distantPast
 
     var body: some View {
         @Bindable var player = player
@@ -44,6 +47,29 @@ struct RootView: View {
         }
     }
 
+    /// Tab selection that also notices Home being tapped twice quickly (SwiftUI reports a re-tap here on some
+    /// iOS versions; the tab bar hook catches it on the rest).
+    private var tabSelection: Binding<TabID> {
+        Binding(get: { tab }, set: { new in
+            if new == .home && tab == .home {
+                if Date.now.timeIntervalSince(lastHomeTap) < 0.45 { lastHomeTap = .distantPast; toggleVinyl(); return }
+                lastHomeTap = .now
+            } else if new == .home {
+                lastHomeTap = .now
+            }
+            tab = new
+        })
+    }
+
+    /// Double-tap Home: Vinyl Mode on or off (once, however many ways the double tap was noticed).
+    private func toggleVinyl() {
+        guard Date.now.timeIntervalSince(lastToggle) > 0.6 else { return }
+        lastToggle = .now
+        tab = .home
+        vinylMode.toggle()
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
     /// "Open in LINER." from Files, Safari downloads or the share sheet: import into a mixtape.
     private func openFile(_ url: URL) async {
         guard url.isFileURL else { return }
@@ -58,8 +84,8 @@ struct RootView: View {
     }
 
     private var tabs: some View {
-        TabView(selection: $tab) {
-            Tab("Home", systemImage: "house", value: TabID.home) { HomeView() }
+        TabView(selection: tabSelection) {
+            Tab("Home", systemImage: "house", value: TabID.home) { HomeView().onHomeTabDoubleTap { toggleVinyl() } }
             Tab("Library", systemImage: "square.stack", value: TabID.library) { LibraryView() }
             Tab("Mixtapes", systemImage: "recordingtape", value: TabID.mixtapes) { MixtapesTab() }
             Tab("My \(AppBrand.name)", systemImage: "chart.bar.xaxis", value: TabID.stats) { MyStatsView() }
@@ -67,6 +93,7 @@ struct RootView: View {
         }
         .tabBarMinimizeBehavior(.onScrollDown)
         .onAppear { if tab == .recaps { tab = .stats } }
+
         .modifier(MiniPlayerAccessory(enabled: player.current != nil, namespace: playerZoom))
     }
 }

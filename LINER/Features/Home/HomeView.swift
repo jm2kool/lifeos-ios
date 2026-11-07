@@ -6,13 +6,23 @@ struct HomeView: View {
     @Namespace private var zoom
     @State private var showSettings = false
     @AppStorage("vinylMode") private var vinylMode = false
+    /// What's on screen, following `vinylMode` with an animation (the switch can come from anywhere: the
+    /// crate's toggle, Settings, the player menu or a double tap on Home).
+    @State private var showCrate = UserDefaults.standard.bool(forKey: "vinylMode")
 
     var body: some View {
         NavigationStack {
-            Group {
-                if vinylMode { CrateView(onSettings: { showSettings = true }).transition(.opacity) } else { home.transition(.opacity) }
+            ZStack {
+                if showCrate {
+                    CrateView(onSettings: { showSettings = true }).transition(.crateIn)
+                } else {
+                    home.transition(.homeOut)
+                }
             }
-            .animation(.liner, value: vinylMode)
+            .onChange(of: vinylMode) { _, on in
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.86)) { showCrate = on }
+            }
+            .sensoryFeedback(.impact(weight: .medium), trigger: showCrate)
             .sheet(isPresented: $showSettings) { SettingsView() }
             .libraryDestinations(zoom)
         }
@@ -56,6 +66,28 @@ struct HomeView: View {
                 Button("Settings", systemImage: "gearshape") { showSettings = true }
             }
         }
+    }
+}
+
+extension AnyTransition {
+    /// The crate rises up from below like a drawer pulled out, coming into focus.
+    static var crateIn: AnyTransition {
+        .modifier(active: FocusShift(blur: 14, scale: 1.04, y: 160, opacity: 0), identity: FocusShift(blur: 0, scale: 1, y: 0, opacity: 1))
+    }
+    /// Home sinks back and softens as the crate comes up (and returns the same way).
+    static var homeOut: AnyTransition {
+        .modifier(active: FocusShift(blur: 12, scale: 0.92, y: 0, opacity: 0), identity: FocusShift(blur: 0, scale: 1, y: 0, opacity: 1))
+    }
+}
+
+/// Blur, scale, rise and fade together, for the Home ↔ crate switch.
+private struct FocusShift: ViewModifier {
+    let blur: CGFloat
+    let scale: CGFloat
+    let y: CGFloat
+    let opacity: Double
+    func body(content: Content) -> some View {
+        content.blur(radius: blur).scaleEffect(scale).offset(y: y).opacity(opacity)
     }
 }
 

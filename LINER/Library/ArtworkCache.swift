@@ -11,6 +11,8 @@ final class ArtworkCache: @unchecked Sendable {
     private let folder: URL
     private let lock = NSLock()
     private var index: [UInt64: MPMediaItem] = [:]
+    /// Covers that come from the web (Apple Music songs on artist pages that aren't in the library).
+    private var remote: [UInt64: URL] = [:]
     private let gate = Gate(limit: 4)
 
     private init() {
@@ -25,6 +27,9 @@ final class ArtworkCache: @unchecked Sendable {
         for (albumID, songID) in snapshot.artworkSongs { if let item = snapshot.items[songID] { map[albumID] = item } }
         lock.withLock { index = map }
     }
+
+    /// Registers a web cover for an album ID that isn't in the library.
+    func register(remote url: URL, for album: UInt64) { lock.withLock { remote[album] = url } }
 
     /// Sizes are rounded up to a few buckets so a grid and a list share files.
     static func bucket(_ pixels: CGFloat) -> Int {
@@ -51,6 +56,12 @@ final class ArtworkCache: @unchecked Sendable {
         await gate.enter()
         defer { Task { await gate.leave() } }
         if let hit = memory.object(forKey: k as NSString) { return hit }
+        if let url = lock.withLock({ remote[album] }) {
+            guard let (data, _) = try? await URLSession.shared.data(from: url), let web = UIImage(data: data) else { return nil }
+            let img = Self.resize(web, to: side)
+            store(img, k)
+            return img
+        }
         guard !Task.isCancelled, let art = artwork(album: album, side: side) else { return nil }
         let img = Self.resize(art, to: side)
         store(img, k)

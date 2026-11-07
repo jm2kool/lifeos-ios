@@ -21,6 +21,8 @@ enum AppWiring {
         }
         player.onStarted = { item in LyricsLiveActivityController.shared.itemStarted(item) }
         player.onFinished = { [library] record in
+            // Apple Music songs played from an artist page aren't in the library: nothing to count yet.
+            guard record.item.song?.isCatalog != true else { return }
             SnapshotService.shared.log(record)
             guard record.item.isLibrary else { return }
             if record.viaOwnPlayer && record.completed {

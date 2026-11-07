@@ -3,7 +3,7 @@ import SwiftUI
 /// The player's vinyl look, after MD Vinyl: a matte turntable deck with the song as a spinning record. The
 /// tonearm follows the song from the outer groove in. Pick the arm up and move it to go anywhere in the song —
 /// it seeks once when you let go, so nothing stutters — or set it down off the record to pause. Tap the record
-/// to pause or play; drag the record round to scratch.
+/// to pause or play; drag the record round to scratch. The line being sung is printed round the grooves.
 struct PlayerVinyl: View {
     let item: QueueItem
     var side = "A"
@@ -15,6 +15,7 @@ struct PlayerVinyl: View {
     @State private var cover: Data?
     @State private var ticks = 0
     @State private var drops = 0
+    @State private var lyrics: Lyrics?
 
     private enum Drag: Equatable {
         case arm(Double)
@@ -53,6 +54,9 @@ struct PlayerVinyl: View {
         .onChange(of: item.id) { arm.sample(0) }
         .task(id: item.id) {
             if case .local(let t) = item, let url = t.coverURL { cover = try? Data(contentsOf: url) } else { cover = nil }
+            lyrics = nil
+            let found = await LyricsStore.lyrics(for: item)
+            lyrics = found?.isSynced == true ? found : nil
         }
         .accessibilityElement()
         .accessibilityLabel("Turntable: \(item.title)")
@@ -80,6 +84,14 @@ struct PlayerVinyl: View {
                 .rotationEffect(.radians(angle))
                 .overlay(RecordSheen())
                 .position(d.center)
+            if let lyrics {
+                let i = lyrics.activeIndex(at: time + 0.25) ?? -1
+                RecordLyrics(current: lyrics.lines.indices.contains(i) ? lyrics.lines[i].text : "",
+                             next: lyrics.lines.indices.contains(i + 1) ? lyrics.lines[i + 1].text : "",
+                             index: i, radius: d.radius)
+                    .position(d.center)
+                    .allowsHitTesting(false)
+            }
             Canvas { ctx, _ in TonearmDrawing.draw(&ctx, deck: d, angle: armAngle, lifted: lifted) }
                 .allowsHitTesting(false)
             readout(d, duration: duration, armAngle: armAngle, time: time)

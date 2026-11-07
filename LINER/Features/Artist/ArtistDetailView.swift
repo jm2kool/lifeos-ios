@@ -1,8 +1,11 @@
 import SwiftUI
 
-/// An artist (SPEC §6.3): black-and-white portrait, serif name, Play/Shuffle, your history with them,
-/// My Top Songs, totals, albums and songs. The title style is picked in Settings → Artist titles.
+/// An artist (SPEC §6.3): black-and-white portrait, serif name, Play/Shuffle, then a switch between their Page
+/// (Apple Music's catalogue: top songs, albums, singles) and LINER. stats (your history with them, My Top
+/// Songs, totals, your albums and songs). The title style is picked in Settings → Artist titles.
 struct ArtistDetailView: View {
+    enum Tab: String, CaseIterable, Identifiable { case page = "Page", stats = "Stats"; var id: String { rawValue } }
+
     let artist: Artist
     let namespace: Namespace.ID
     @Environment(LibraryService.self) private var library
@@ -11,6 +14,9 @@ struct ArtistDetailView: View {
     @State private var titleStyle: ArtistTitleStyle = .auto
     /// How bright the photo is where the title sits (0 dark … 1 bright).
     @State private var titleBackdrop = 0.0
+    @AppStorage("artist.tab") private var tab: Tab = .page
+    @State private var page: AppleCatalog.ArtistPage?
+    @State private var loadingPage = true
 
     var body: some View {
         let albums = library.snapshot.albums(of: artist).sorted { $0.playCount > $1.playCount }
@@ -19,8 +25,9 @@ struct ArtistDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
                 hero(releases: albums.count, genre: genre)
-                ArtistTransport(play: { player.play(songs: songs) }) {
-                    GlassCircleButton(systemImage: "shuffle", label: "Shuffle", size: 56) { player.play(songs: songs, shuffled: true) }
+                let playable = tab == .page && !(page?.topSongs.isEmpty ?? true) ? catalogSongs : songs
+                ArtistTransport(play: { player.play(songs: playable) }) {
+                    GlassCircleButton(systemImage: "shuffle", label: "Shuffle", size: 56) { player.play(songs: playable, shuffled: true) }
                 } trailing: {
                     ShareCardButton(make: {
                         .artist(artist, rank: library.stats.rank(of: artist), minutes: library.stats.minutes(of: artist), topSong: songs.first)
@@ -31,12 +38,25 @@ struct ArtistDetailView: View {
                     .buttonStyle(.plain)
                     .glassEffect(.regular.interactive(), in: .circle)
                 }
-                .disabled(songs.isEmpty)
-                ArtistHistoryCard(artist: artist, topSong: songs.first, topAlbum: albums.first).padding(.horizontal, 16)
-                if !songs.isEmpty { ArtistTopSongs(songs: Array(songs.prefix(10))).padding(.horizontal, 16) }
-                totals
-                albumsRow(albums)
-                songsList(songs)
+                .disabled(playable.isEmpty)
+                Picker("Show", selection: $tab.animation(.liner)) {
+                    ForEach(Tab.allCases) { t in Text(t == .stats ? "\(AppBrand.name) stats" : t.rawValue).tag(t) }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .sensoryFeedback(.selection, trigger: tab)
+                if tab == .page {
+                    ArtistCatalogPage(artist: artist, page: page, loading: loadingPage).transition(.opacity)
+                } else {
+                    Group {
+                        ArtistHistoryCard(artist: artist, topSong: songs.first, topAlbum: albums.first).padding(.horizontal, 16)
+                        if !songs.isEmpty { ArtistTopSongs(songs: Array(songs.prefix(10))).padding(.horizontal, 16) }
+                        totals
+                        albumsRow(albums)
+                        songsList(songs)
+                    }
+                    .transition(.opacity)
+                }
             }
             .padding(.bottom, 32)
         }
@@ -44,6 +64,10 @@ struct ArtistDetailView: View {
         .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { titleStyle = ArtistTitleStyle.saved(for: artist.id) }
+        .task(id: artist.id) {
+            page = await AppleCatalog.artistPage(name: artist.name)
+            loadingPage = false
+        }
         // One back button of our own: the system one could show twice over the full-bleed photo after a zoom
         // transition. Swipe-back still works. Title styles live in Settings → Artist titles.
         .navigationBarBackButtonHidden(true)
@@ -53,6 +77,12 @@ struct ArtistDetailView: View {
                 Button("Back", systemImage: "chevron.left") { dismiss() }
             }
         }
+    }
+
+    /// The Page's top songs, ready to queue (your copies where you have them).
+    private var catalogSongs: [Song] {
+        let mine = library.snapshot.songsByStoreID
+        return (page?.topSongs ?? []).map { $0.song(in: library.snapshot, byStoreID: mine) }
     }
 
     private func hero(releases: Int, genre: String) -> some View {
