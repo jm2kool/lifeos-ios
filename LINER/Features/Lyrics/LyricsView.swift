@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Sing-along lyrics (SPEC §6.6): big serif lines over the blurred cover. The active line is bright, past lines
-/// fade, future lines are dim; it scrolls to keep the active line about a third of the way down. Tap a line to
+/// fade, future lines are dim; it opens on the line being sung and scrolls to keep it about a third of the way down. Tap a line to
 /// jump there; hold it to save the line or make it a favourite moment.
 struct LyricsView: View {
     @Environment(PlaybackCoordinator.self) private var player
@@ -81,7 +81,7 @@ struct LyricsView: View {
     }
 
     private func synced(_ lyrics: Lyrics) -> some View {
-        TimelineView(.animation) { _ in
+        TimelineView(.periodic(from: .now, by: 0.1)) { _ in
             let active = lyrics.activeIndex(at: player.currentTime + 0.25)
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
@@ -98,6 +98,13 @@ struct LyricsView: View {
                 .onChange(of: active) { _, now in
                     guard let now else { return }
                     withAnimation(.liner) { proxy.scrollTo(now, anchor: UnitPoint(x: 0.5, y: 0.35)) }
+                }
+                // Opening the lyrics lands straight on the line being sung, not the top of the song.
+                .task(id: lyrics) {
+                    let now = lyrics.activeIndex(at: player.currentTime + 0.25) ?? 0
+                    proxy.scrollTo(now, anchor: UnitPoint(x: 0.5, y: 0.35))
+                    try? await Task.sleep(for: .milliseconds(50))
+                    proxy.scrollTo(now, anchor: UnitPoint(x: 0.5, y: 0.35))
                 }
             }
         }

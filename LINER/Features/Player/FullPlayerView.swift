@@ -99,6 +99,7 @@ struct FullPlayerView: View {
 
     private func bottom(_ item: QueueItem) -> some View {
         VStack(alignment: .leading, spacing: 18) {
+            NowPlayingLyrics(item: item) { sheet = .lyrics }
             HStack(alignment: .bottom, spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(item.title).font(.serif(32)).lineLimit(2).minimumScaleFactor(0.7)
