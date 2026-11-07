@@ -5,6 +5,7 @@ struct HomeView: View {
     @Environment(LibraryService.self) private var library
     @Namespace private var zoom
     @State private var showSettings = false
+    @AppStorage("vinylMode") private var vinylMode = false
 
     var body: some View {
         NavigationStack {
@@ -37,6 +38,7 @@ struct HomeView: View {
             }
             .background(Palette.background)
             .refreshable { await library.refresh() }
+            .safeAreaInset(edge: .bottom) { if vinylMode { VinylDrawerHandle() } }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Settings", systemImage: "gearshape") { showSettings = true }
