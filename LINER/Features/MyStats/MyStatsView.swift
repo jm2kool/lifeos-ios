@@ -74,7 +74,7 @@ struct MyStatsView: View {
                 LazyHStack(spacing: 14) {
                     ForEach(Array(albums.prefix(10).enumerated()), id: \.element.id) { i, album in
                         NavigationLink(value: album) {
-                            AlbumTile(album: album, namespace: zoom).frame(width: 150)
+                            AlbumTile(album: album, namespace: zoom, showPlays: true).frame(width: 150)
                                 .overlay(alignment: .topLeading) { RankBadge(rank: i + 1).padding(8) }
                         }
                         .buttonStyle(.plain)

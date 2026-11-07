@@ -48,7 +48,7 @@ struct AlbumGridPage: View {
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)], spacing: 20) {
                 ForEach(Array(albums.enumerated()), id: \.element.id) { i, album in
                     NavigationLink(value: album) {
-                        AlbumTile(album: album, namespace: namespace).overlay(alignment: .topLeading) {
+                        AlbumTile(album: album, namespace: namespace, showPlays: ranked).overlay(alignment: .topLeading) {
                             if ranked { RankBadge(rank: i + 1).padding(8) }
                         }
                     }

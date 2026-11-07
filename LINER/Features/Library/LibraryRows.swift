@@ -4,11 +4,22 @@ import SwiftUI
 struct AlbumTile: View {
     let album: Album
     var namespace: Namespace.ID?
+    /// Shows the album's play count in the cover's bottom-right corner (top albums).
+    var showPlays = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ArtworkView(albumID: album.id, cornerRadius: 12)
                 .aspectRatio(1, contentMode: .fit)
+                .overlay(alignment: .bottomTrailing) {
+                    if showPlays {
+                        Text(album.playCount.playsLabel)
+                            .font(.system(size: 11, weight: .bold)).monospacedDigit()
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .glassEffect(.regular, in: Capsule())
+                            .padding(7)
+                    }
+                }
                 .modifier(ZoomSource(id: album.id, namespace: namespace))
             Text(album.title).font(.system(size: 14, weight: .medium)).lineLimit(1)
             Text(album.artist).font(.system(size: 13)).foregroundStyle(Palette.secondary).lineLimit(1)
