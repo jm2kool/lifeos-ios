@@ -25,3 +25,14 @@ struct Card<Content: View>: View {
     Card { SectionLabel("Most played artist"); Text("Lorde").font(.itemTitle) }
         .padding().background(.black)
 }
+
+/// An image that fills whatever space it's given and never grows past it (a bare `scaledToFill` image reports
+/// its own oversized width, which pushes whole screens off the edge).
+struct FillImage: View {
+    let image: UIImage
+    var body: some View {
+        Color.clear
+            .overlay { Image(uiImage: image).resizable().scaledToFill() }
+            .clipped()
+    }
+}

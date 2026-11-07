@@ -13,7 +13,7 @@ struct ArtworkView: View {
             ZStack {
                 Palette.placeholder
                 if let image {
-                    Image(uiImage: image).resizable().scaledToFill()
+                    FillImage(image: image)
                         .transition(.opacity)
                 } else {
                     Image(systemName: "music.note").font(.system(size: max(12, geo.size.width * 0.22))).foregroundStyle(Palette.faint)
@@ -43,7 +43,7 @@ struct ArtistPortraitView: View {
     var body: some View {
         ZStack {
             if let portrait {
-                Image(uiImage: portrait).resizable().scaledToFill().transition(.opacity)
+                FillImage(image: portrait).transition(.opacity)
             } else if tried {
                 ArtworkView(albumID: fallbackAlbumID, cornerRadius: 0).grayscale(1)
             } else {

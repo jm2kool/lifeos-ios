@@ -190,6 +190,8 @@ enum Coding {
     var genre: String
     var duration: Double
     var seeded: Bool = false
+    /// A library song played by LINER.'s own player: the Music app didn't count it, so LINER. adds it.
+    var countedLocally: Bool = false
 
     init(record: PlayRecord) {
         let item = record.item
@@ -205,6 +207,7 @@ enum Coding {
         albumKey = item.artworkKey
         genre = item.song?.genre ?? "Mixtape"
         duration = item.duration
+        countedLocally = item.isLibrary && record.viaOwnPlayer
     }
 }
 

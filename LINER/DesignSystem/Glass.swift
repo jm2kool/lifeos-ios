@@ -30,6 +30,8 @@ struct GlassPillButton: View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
                 .font(.system(size: 15, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 6)
         }

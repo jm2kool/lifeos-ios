@@ -11,6 +11,7 @@ struct SettingsView: View {
     @AppStorage("livingCoverStyle") private var coverStyle = LivingCoverRenderer.Style.drift.rawValue
     @AppStorage("respectLowPower") private var respectLowPower = false
     @AppStorage("animatedLockForLibrary") private var lockForLibrary = true
+    @AppStorage("ownPlayerForFiles") private var ownPlayer = true
     @AppStorage("lyricsSource") private var lyricsSource = "lrclib"
     @AppStorage("needleSounds") private var needleSounds = true
     @AppStorage("recapNotifications") private var recapNotifications = false
@@ -45,11 +46,12 @@ struct SettingsView: View {
                     }
                     .disabled(!livingCovers)
                     Toggle("Respect Low Power Mode", isOn: $respectLowPower)
-                    Toggle("Animated lock screen for Apple Music songs", isOn: $lockForLibrary)
+                    Toggle("Play my own files in LINER.", isOn: $ownPlayer)
+                    Toggle("Try animated lock screen for Apple Music songs", isOn: $lockForLibrary)
                     LabeledContent("Living Cover cache", value: cacheSize)
                     Button("Clear Living Cover cache") { LivingCoverRenderer.clearCache(); updateCache() }
                 } header: { Text("Covers") } footer: {
-                    Text("Covers keep moving in Low Power Mode inside the app unless you turn on Respect Low Power Mode. On the lock screen iOS always shows a still picture in Low Power Mode. Animated lock screen artwork for Apple Music songs is best effort; it always works for mixtapes.")
+                    Text("Covers keep moving in Low Power Mode inside the app unless you turn on Respect Low Power Mode. On the lock screen iOS always shows a still picture in Low Power Mode. Full-screen lock screen artwork works for mixtapes and for songs without copy protection (iTunes purchases, synced or ripped music) when “Play my own files in LINER.” is on; those plays are added to your stats by LINER. Streaming Apple Music songs are played by iOS itself, which keeps its standard lock screen.")
                 }
                 Section("Recaps") {
                     Toggle("Monday morning recap notification", isOn: $recapNotifications)

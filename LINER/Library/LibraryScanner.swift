@@ -3,11 +3,17 @@
 /// Reads the whole library off the main thread and turns it into plain values (SPEC §7: 10k songs in under 1 s).
 enum LibraryScanner {
     @concurrent
-    static func scan() async -> LibrarySnapshot {
+    /// `extraPlays`: completed plays LINER. made with its own player, which the Music app doesn't count.
+    static func scan(extraPlays: [UInt64: Int] = [:]) async -> LibrarySnapshot {
         let clock = ContinuousClock()
         let start = clock.now
         let items = MPMediaQuery.songs().items ?? []
-        let songs = items.map(song(from:))
+        let songs = items.map { item -> Song in
+            var s = song(from: item, extra: extraPlays[item.persistentID] ?? 0)
+            s.assetURL = item.assetURL
+            s.isProtected = item.hasProtectedAsset
+            return s
+        }
 
         // Albums, from songs grouped by album ID.
         var albumSongs: [UInt64: [Song]] = [:]
@@ -61,13 +67,13 @@ enum LibraryScanner {
         return snapshot
     }
 
-    private static func song(from item: MPMediaItem) -> Song {
+    private static func song(from item: MPMediaItem, extra: Int) -> Song {
         let artist = item.artist ?? "Unknown Artist"
         let albumArtist = (item.albumArtist?.isEmpty == false ? item.albumArtist : nil) ?? artist
         return Song(id: item.persistentID, title: item.title ?? "Untitled", artist: artist,
                     albumTitle: item.albumTitle ?? "", albumArtist: albumArtist, albumID: item.albumPersistentID,
                     genre: item.genre ?? "", composer: item.composer ?? "", duration: item.playbackDuration,
-                    playCount: item.playCount, rating: item.rating, trackNumber: item.albumTrackNumber,
+                    playCount: item.playCount + extra, rating: item.rating, trackNumber: item.albumTrackNumber,
                     discNumber: max(1, item.discNumber), dateAdded: item.dateAdded, lastPlayed: item.lastPlayedDate,
                     releaseDate: item.releaseDate, storeID: item.playbackStoreID, isCloudOnly: item.isCloudItem,
                     hasArtwork: item.artwork != nil)

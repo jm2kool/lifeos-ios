@@ -21,6 +21,11 @@ enum AppWiring {
         player.onFinished = { [library] record in
             SnapshotService.shared.log(record)
             guard record.item.isLibrary else { return }
+            if record.viaOwnPlayer && record.completed {
+                // Our own player's plays aren't in the Music app's counts: rescan to fold them into the stats.
+                Task { await library.refresh() }
+                return
+            }
             rescan?.cancel()
             rescan = Task {
                 try? await Task.sleep(for: .seconds(45))

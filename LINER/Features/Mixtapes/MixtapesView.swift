@@ -54,7 +54,7 @@ struct MixtapeCover: View {
         ZStack {
             Palette.placeholder
             if let data = mixtape.coverImage, let img = UIImage(data: data) {
-                Image(uiImage: img).resizable().scaledToFill()
+                FillImage(image: img)
             } else {
                 Image(systemName: "recordingtape").font(.largeTitle).foregroundStyle(Palette.faint)
             }

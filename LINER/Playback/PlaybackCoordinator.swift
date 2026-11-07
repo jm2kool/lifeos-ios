@@ -92,12 +92,24 @@ final class PlaybackCoordinator {
         defer { loading = false }
         let item = queue[i]
         switch item {
+        case .library(let song) where song.playsInLINER:
+            // Not copy-protected: our own player, so we own the lock screen (full-screen animated artwork).
+            if engine == .music { music.stop() }
+            engine = .local
+            do {
+                try local.load(song.assetURL!, startTime: time)
+                isPlaying = true
+                nowPlaying.useOwnNowPlaying()
+            } catch {
+                fail(Self.explain(error, item))
+                return
+            }
         case .library:
             if engine == .local { local.stop() }
             nowPlaying.useSystemNowPlaying()
             var run: [MPMediaItem] = []
             var j = i
-            while j < queue.count, run.count < 150, case .library(let s) = queue[j], let mp = library.snapshot.items[s.id] {
+            while j < queue.count, run.count < 150, case .library(let s) = queue[j], !s.playsInLINER, let mp = library.snapshot.items[s.id] {
                 run.append(mp)
                 j += 1
             }
@@ -266,7 +278,7 @@ final class PlaybackCoordinator {
 
     private func finishCurrent() {
         guard let item = current, listened > 1 else { return }
-        onFinished?(PlayRecord(item: item, startedAt: startedAt, listened: listened))
+        onFinished?(PlayRecord(item: item, startedAt: startedAt, listened: listened, viaOwnPlayer: engine == .local))
         listened = 0
     }
 }

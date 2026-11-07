@@ -32,6 +32,8 @@ enum QueueItem: Hashable, Sendable, Identifiable {
     var song: Song? { if case .library(let s) = self { s } else { nil } }
     var local: LocalTrack? { if case .local(let t) = self { t } else { nil } }
     var libraryID: UInt64? { song?.id }
+    /// Library songs on the system queue player (copy-protected Apple Music songs, or when the own-player route is off).
+    var usesQueuePlayer: Bool { song.map { !$0.playsInLINER } ?? false }
 
     /// Identifies the cover for caching and lock screen `artworkID`s: one per album or mixtape.
     var artworkKey: String {
@@ -53,6 +55,7 @@ struct PlayRecord: Sendable {
     let item: QueueItem
     let startedAt: Date
     let listened: Double
+    var viaOwnPlayer = false
     /// ≥ 50 % or ≥ 4 minutes (SPEC §5).
     var completed: Bool { listened >= 240 || (item.duration > 0 && listened >= item.duration * 0.5) }
 }

@@ -43,7 +43,7 @@ struct LyricsView: View {
         ZStack {
             Color.black
             if let img = art.image {
-                Image(uiImage: img).resizable().scaledToFill().blur(radius: 60).opacity(0.55).scaleEffect(1.3)
+                FillImage(image: img).blur(radius: 60).opacity(0.55).scaleEffect(1.3)
             }
             Color.black.opacity(0.35)
         }

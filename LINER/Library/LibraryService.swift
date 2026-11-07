@@ -65,7 +65,7 @@ final class LibraryService {
         guard !isLoading else { pendingRefresh = true; return }
         isLoading = true
         startObserving()
-        let fresh = await LibraryScanner.scan()
+        let fresh = await LibraryScanner.scan(extraPlays: Store.shared.localPlayCounts())
         let freshStats = await StatsEngine.build(fresh)
         withAnimation(.liner) {
             snapshot = fresh

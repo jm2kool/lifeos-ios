@@ -63,7 +63,7 @@ struct EditionEditor: View {
 
     @ViewBuilder private var coverPreview: some View {
         if let data = edition.coverImage, let img = UIImage(data: data) {
-            Image(uiImage: img).resizable().scaledToFill().clipShape(RoundedRectangle(cornerRadius: 10))
+            FillImage(image: img).clipShape(RoundedRectangle(cornerRadius: 10))
         } else if let first = items.first {
             QueueItemArtwork(item: first, cornerRadius: 10)
         } else {

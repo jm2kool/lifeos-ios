@@ -35,7 +35,7 @@ struct QueueItemArtwork: View {
             } else {
                 ZStack {
                     Palette.placeholder
-                    if let image { Image(uiImage: image).resizable().scaledToFill() }
+                    if let image { FillImage(image: image) }
                     else { Image(systemName: "recordingtape").foregroundStyle(Palette.faint) }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))

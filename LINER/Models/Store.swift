@@ -46,6 +46,14 @@ final class Store {
 
     func allAlbumNotes() -> [AlbumNote] { (try? context.fetch(FetchDescriptor<AlbumNote>())) ?? [] }
 
+    /// Completed plays of library songs made with LINER.'s own player, by persistent ID.
+    func localPlayCounts() -> [UInt64: Int] {
+        let events = (try? context.fetch(FetchDescriptor<PlayEvent>(predicate: #Predicate { $0.countedLocally && $0.completed }))) ?? []
+        var out: [UInt64: Int] = [:]
+        for e in events { if let pid = e.persistentID { out[UInt64(bitPattern: pid), default: 0] += 1 } }
+        return out
+    }
+
     func allSongNotes() -> [SongNote] { (try? context.fetch(FetchDescriptor<SongNote>())) ?? [] }
 
     // MARK: Albums

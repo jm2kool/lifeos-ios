@@ -7,7 +7,6 @@ struct ArtistDetailView: View {
     let namespace: Namespace.ID
     @Environment(LibraryService.self) private var library
     @State private var titleStyle: ArtistTitleStyle = .auto
-    @State private var tint = Color(white: 0.2)
 
     var body: some View {
         let albums = library.snapshot.albums(of: artist).sorted { $0.playCount > $1.playCount }
@@ -16,7 +15,7 @@ struct ArtistDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
                 hero(releases: albums.count, genre: genre)
-                PlayShuffleRow(songs: songs).padding(.horizontal, 16).tint(tint)
+                PlayShuffleRow(songs: songs).padding(.horizontal, 16)
                 ArtistHistoryCard(artist: artist, topSong: songs.first, topAlbum: albums.first).padding(.horizontal, 16)
                 if !songs.isEmpty { ArtistTopSongs(songs: Array(songs.prefix(10))).padding(.horizontal, 16) }
                 totals
@@ -25,19 +24,10 @@ struct ArtistDetailView: View {
             }
             .padding(.bottom, 32)
         }
-        .background {
-            // Like iOS 27's artist pages: the page takes a deep tint from the artist's artwork.
-            LinearGradient(colors: [tint.mix(with: .black, by: 0.7), .black], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.6))
-                .ignoresSafeArea()
-        }
+        .background(Palette.background)
         .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { titleStyle = ArtistTitleStyle.saved(for: artist.id) }
-        .task(id: artist.id) {
-            guard let id = artist.albumIDs.first, let img = await ArtworkCache.shared.image(album: id, pixels: 400) else { return }
-            let look = await ArtworkAnalysis.look(for: img, key: "album-\(id)")
-            withAnimation(.easeInOut(duration: 0.6)) { tint = look.dominant }
-        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -59,8 +49,7 @@ struct ArtistDetailView: View {
         ZStack(alignment: .bottomLeading) {
             ArtistPortraitView(name: artist.name, fallbackAlbumID: artist.albumIDs.first)
                 .frame(height: 480).frame(maxWidth: .infinity).clipped()
-            LinearGradient(colors: [.clear, tint.mix(with: .black, by: 0.7).opacity(0.7), tint.mix(with: .black, by: 0.7)],
-                           startPoint: UnitPoint(x: 0.5, y: 0.45), endPoint: .bottom)
+            LinearGradient(colors: [.clear, .black.opacity(0.55), .black], startPoint: UnitPoint(x: 0.5, y: 0.45), endPoint: .bottom)
             VStack(alignment: .leading, spacing: 6) {
                 ArtistTitleView(name: artist.name, artistID: artist.id, genre: genre, style: titleStyle).id(titleStyle)
                 Text("Artist · \(releases) release\(releases == 1 ? "" : "s")").linerLabel()

@@ -141,7 +141,7 @@ struct RecordCover: View {
     var cornerRadius: CGFloat = 0
     var body: some View {
         if let data = record.coverData, let img = UIImage(data: data) {
-            Image(uiImage: img).resizable().scaledToFill().clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+            FillImage(image: img).clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         } else {
             ArtworkView(albumID: record.albumID, cornerRadius: cornerRadius)
         }

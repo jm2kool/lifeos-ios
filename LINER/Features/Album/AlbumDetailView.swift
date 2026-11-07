@@ -146,7 +146,7 @@ struct AlbumHeaderArt: View {
         let still = edition?.coverImage ?? note?.coverOverride
         ZStack {
             if let data = still, let img = UIImage(data: data) {
-                Image(uiImage: img).resizable().scaledToFill()
+                FillImage(image: img)
             } else {
                 ArtworkView(albumID: albumID, cornerRadius: 0)
             }

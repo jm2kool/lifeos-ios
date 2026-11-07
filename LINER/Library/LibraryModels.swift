@@ -22,6 +22,13 @@ struct Song: Identifiable, Hashable, Sendable {
     let storeID: String
     let isCloudOnly: Bool
     let hasArtwork: Bool
+    /// A playable file for songs without copy protection (iTunes purchases, synced or ripped music).
+    var assetURL: URL? = nil
+    /// Apple Music (DRM) songs can only be played by the system's queue player.
+    var isProtected = false
+
+    /// Songs LINER. can play with its own player, which gives them the full-screen animated lock screen.
+    var playsInLINER: Bool { assetURL != nil && !isProtected && UserDefaults.standard.object(forKey: "ownPlayerForFiles") as? Bool ?? true }
 
     var key: MediaKey {
         MediaKey(persistentID: id, storeID: storeID.isEmpty ? nil : storeID, title: title, artist: artist, album: albumTitle, duration: duration)
