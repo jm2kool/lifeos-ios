@@ -68,14 +68,16 @@ struct ArtistTitleView: View {
     var body: some View {
         Group {
             if resolved == .logo, let logo {
-                Image(uiImage: logo).resizable().scaledToFit()
+                Image(uiImage: logo).renderingMode(.template).resizable().scaledToFit()
                     .frame(maxWidth: 300, maxHeight: size * 1.7, alignment: .leading)
-                    .shadow(color: .black.opacity(0.5), radius: 12, y: 4)
                     .transition(.opacity.combined(with: .scale(scale: 0.96)))
             } else {
                 lettering(resolved)
             }
         }
+        .foregroundStyle(LinearGradient(colors: [.white, Color(white: 0.8)], startPoint: .top, endPoint: .bottom))
+        .shadow(color: .black.opacity(0.7), radius: 6, y: 2)
+        .shadow(color: .black.opacity(0.45), radius: 22)
         .animation(.liner, value: logo != nil)
         .accessibilityElement()
         .accessibilityLabel(name)

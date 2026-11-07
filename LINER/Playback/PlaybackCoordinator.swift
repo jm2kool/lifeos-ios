@@ -33,7 +33,8 @@ final class PlaybackCoordinator {
     @ObservationIgnored private var startedAt = Date.now
     @ObservationIgnored private var listened: Double = 0
     @ObservationIgnored private var lastTick: Date?
-    @ObservationIgnored private var loading = false
+    @ObservationIgnored private var settleUntil = Date.distantPast
+    private var settling: Bool { Date.now < settleUntil }
 
     static weak var shared: PlaybackCoordinator?
 
@@ -72,10 +73,10 @@ final class PlaybackCoordinator {
         shuffle = shuffled
         if shuffled {
             queue = items.shuffled()
-            Task { await start(at: 0) }
+            start(at: 0)
         } else {
             queue = items
-            Task { await start(at: min(max(0, startAt), items.count - 1)) }
+            start(at: min(max(0, startAt), items.count - 1))
         }
     }
 
@@ -83,13 +84,14 @@ final class PlaybackCoordinator {
         play(songs.map(QueueItem.library), startAt: startAt, shuffled: shuffled)
     }
 
-    private func start(at i: Int, time: Double = 0) async {
+    /// Starts an item at once. Synchronous on purpose: the tap, the highlight and the sound happen together.
+    private func start(at i: Int, time: Double = 0) {
         guard queue.indices.contains(i) else { stopAll(); return }
         finishCurrent()
         index = i
         resetListening()
-        loading = true
-        defer { loading = false }
+        // The engines send a burst of item/state notifications while switching; ignore them briefly.
+        settleUntil = .now.addingTimeInterval(1.2)
         let item = queue[i]
         switch item {
         case .library(let song) where song.playsInLINER:
@@ -115,13 +117,11 @@ final class PlaybackCoordinator {
             }
             guard !run.isEmpty else { fail("“\(item.title)” isn't in your library any more."); return }
             engine = .music
-            do {
-                try await music.load(run, startTime: time)
-                isPlaying = true
-            } catch {
-                fail(Self.explain(error, item))
-                return
+            music.load(run, startTime: time) { [weak self] error in
+                guard let self, self.current?.id == item.id else { return }
+                self.fail(Self.explain(error, item))
             }
+            isPlaying = true
         case .local(let track):
             if engine == .music { music.stop() }
             engine = .local
@@ -174,23 +174,23 @@ final class PlaybackCoordinator {
         switch engine {
         case .music: music.play()
         case .local: local.play()
-        case .none: if current != nil { Task { await start(at: index) } }; return
+        case .none: if current != nil { start(at: index) }; return
         }
         isPlaying = true
         nowPlaying.update()
     }
 
     func next() {
-        if index + 1 < queue.count { Task { await start(at: index + 1) } }
-        else if repeatMode == .all { Task { await start(at: 0) } }
+        if index + 1 < queue.count { start(at: index + 1) }
+        else if repeatMode == .all { start(at: 0) }
         else { seek(to: duration); pause() }
     }
 
     func previous() {
-        if currentTime > 3 || index == 0 { seek(to: 0) } else { Task { await start(at: index - 1) } }
+        if currentTime > 3 || index == 0 { seek(to: 0) } else { start(at: index - 1) }
     }
 
-    func jump(to i: Int) { Task { await start(at: i) } }
+    func jump(to i: Int) { start(at: i) }
 
     func seek(to t: Double) {
         let clamped = min(max(0, t), max(0, duration - 0.5))
@@ -225,10 +225,10 @@ final class PlaybackCoordinator {
     // MARK: Engine events
 
     private func musicItemChanged(_ id: UInt64?) {
-        guard engine == .music, !loading else { return }
+        guard engine == .music, !settling else { return }
         guard let id else { itemEnded(); return }
         if id == current?.libraryID { return }
-        if repeatMode == .one { Task { await start(at: index) }; return }
+        if repeatMode == .one { start(at: index); return }
         if index + 1 < queue.count, queue[index + 1].libraryID == id {
             finishCurrent()
             index += 1
@@ -241,23 +241,24 @@ final class PlaybackCoordinator {
             resetListening()
         } else {
             // The engine's run no longer matches our queue (shuffle or edits): take over.
-            Task { await start(at: index + 1) }
+            start(at: index + 1)
         }
     }
 
     private func musicStateChanged() {
-        guard engine == .music, !loading else { return }
+        guard engine == .music else { return }
         let state = music.player.playbackState
+        if settling { if state == .playing { isPlaying = true }; return }
         if state == .stopped && isPlaying { itemEnded(); return }
         isPlaying = state == .playing
     }
 
     /// The current item played to its end (local file, or the last song of a library run).
     private func itemEnded() {
-        guard !loading else { return }
-        if repeatMode == .one { Task { await start(at: index) }; return }
-        if index + 1 < queue.count { Task { await start(at: index + 1) } }
-        else if repeatMode == .all { Task { await start(at: 0) } }
+        guard !settling else { return }
+        if repeatMode == .one { start(at: index); return }
+        if index + 1 < queue.count { start(at: index + 1) }
+        else if repeatMode == .all { start(at: 0) }
         else { finishCurrent(); isPlaying = false; nowPlaying.update() }
     }
 

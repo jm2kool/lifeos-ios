@@ -16,18 +16,17 @@ final class MusicEngine {
     var nowPlayingID: UInt64? { player.nowPlayingItem?.persistentID }
     var indexInRun: Int { player.indexOfNowPlayingItem }
 
-    /// Starts a run. Throws the MediaPlayer error (for example no subscription for a cloud song).
-    func load(_ items: [MPMediaItem], startTime: Double = 0) async throws {
+    /// Starts a run straight away (no waiting for preparation, so a tap plays at once). A MediaPlayer error —
+    /// for example no subscription for a cloud song — arrives later through `onError`.
+    func load(_ items: [MPMediaItem], startTime: Double = 0, onError: @escaping @MainActor @Sendable (Error) -> Void) {
         observe()
         runIDs = items.map(\.persistentID)
         player.repeatMode = .none
         player.shuffleMode = .off
         player.setQueue(with: MPMediaItemCollection(items: items))
         if let first = items.first { player.nowPlayingItem = first }
-        try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in
-            player.prepareToPlay { @Sendable error in
-                if let error { c.resume(throwing: error) } else { c.resume() }
-            }
+        player.prepareToPlay { @Sendable error in
+            if let error { Task { @MainActor in onError(error) } }
         }
         if startTime > 0 { player.currentPlaybackTime = startTime }
         player.play()

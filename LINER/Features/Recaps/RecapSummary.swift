@@ -41,7 +41,7 @@ struct RecapSummary: View {
             ranked("Top Albums", recap.topAlbums)
             ranked("Top Songs", recap.topSongs)
 
-            HStack(spacing: 12) {
+            StatRow {
                 StatTile("Top genre", text: recap.topGenre ?? "—")
                 StatTile("New discoveries", value: recap.discoveries.count)
             }

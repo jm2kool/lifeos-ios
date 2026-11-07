@@ -7,6 +7,8 @@ struct ArtistDetailView: View {
     let namespace: Namespace.ID
     @Environment(LibraryService.self) private var library
     @State private var titleStyle: ArtistTitleStyle = .auto
+    /// How bright the photo is where the title sits (0 dark … 1 bright).
+    @State private var titleBackdrop = 0.0
 
     var body: some View {
         let albums = library.snapshot.albums(of: artist).sorted { $0.playCount > $1.playCount }
@@ -47,9 +49,19 @@ struct ArtistDetailView: View {
 
     private func hero(releases: Int, genre: String) -> some View {
         ZStack(alignment: .bottomLeading) {
-            ArtistPortraitView(name: artist.name, fallbackAlbumID: artist.albumIDs.first)
-                .frame(height: 480).frame(maxWidth: .infinity).clipped()
-            LinearGradient(colors: [.clear, .black.opacity(0.55), .black], startPoint: UnitPoint(x: 0.5, y: 0.45), endPoint: .bottom)
+            ArtistPortraitView(name: artist.name, fallbackAlbumID: artist.albumIDs.first) { img in
+                Task {
+                    let look = await ArtworkAnalysis.look(for: img, key: "artist-\(artist.id)")
+                    withAnimation(.easeOut(duration: 0.3)) { titleBackdrop = look.secondaryBrightness }
+                }
+            }
+            .frame(height: 480).frame(maxWidth: .infinity).clipped()
+            // Darker behind the title when the photo is bright there, so the name always reads.
+            LinearGradient(stops: [.init(color: .clear, location: 0.2),
+                                   .init(color: .black.opacity(0.35 + 0.3 * titleBackdrop), location: 0.5),
+                                   .init(color: .black.opacity(0.8 + 0.15 * titleBackdrop), location: 0.78),
+                                   .init(color: .black, location: 1)],
+                           startPoint: .top, endPoint: .bottom)
             VStack(alignment: .leading, spacing: 6) {
                 ArtistTitleView(name: artist.name, artistID: artist.id, genre: genre, style: titleStyle).id(titleStyle)
                 Text("Artist · \(releases) release\(releases == 1 ? "" : "s")").linerLabel()
@@ -61,7 +73,7 @@ struct ArtistDetailView: View {
 
     private var totals: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
+            StatRow {
                 StatTile("Total plays", value: artist.playCount)
                 StatTile("Minutes", value: library.stats.minutes(of: artist), footnote: "Estimated")
             }

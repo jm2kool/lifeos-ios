@@ -10,6 +10,14 @@ struct ArtworkLook: Sendable, Equatable {
     /// Where the subject is, in unit coordinates (0,0 top-left). Used to aim aspect-fill crops.
     var focus: CGPoint
 
+    /// Perceived brightness of the bottom third (where titles sit), 0…1.
+    var secondaryBrightness: Double {
+        let c = UIColor(secondary)
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        c.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return Double(0.299 * r + 0.587 * g + 0.114 * b)
+    }
+
     static let neutral = ArtworkLook(dominant: Color(white: 0.2), secondary: Color(white: 0.08), focus: CGPoint(x: 0.5, y: 0.4))
 }
 

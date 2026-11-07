@@ -69,11 +69,11 @@ struct AlbumPassportSheet: View {
     private func history(_ album: Album) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             SectionLabel("My Listening History")
-            HStack(spacing: 10) {
+            StatRow {
                 StatTile("Total plays", value: album.playCount)
                 StatTile("Avg plays", text: LibraryStats.averagePlays(album).formatted(.number.precision(.fractionLength(0...1))))
             }
-            HStack(spacing: 10) {
+            StatRow {
                 StatTile("Listening", text: "\(library.stats.minutes(of: album).grouped) min", footnote: "Estimated")
                 StatTile("Library rank", text: library.stats.rank(of: album).map { "#\($0)" } ?? "—")
             }

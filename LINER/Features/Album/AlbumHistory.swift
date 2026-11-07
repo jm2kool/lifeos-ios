@@ -10,7 +10,7 @@ struct AlbumHistory: View {
         let top = songs.sorted { $0.playCount > $1.playCount }.prefix(3).filter { $0.playCount > 0 }
         VStack(alignment: .leading, spacing: 14) {
             Text("My Listening History").font(.sectionTitle)
-            HStack(spacing: 12) {
+            StatRow {
                 StatTile("Avg plays", text: LibraryStats.averagePlays(album).formatted(.number.precision(.fractionLength(0...1))))
                 StatTile("Minutes", value: library.stats.minutes(of: album), footnote: "Estimated")
                 StatTile("Rank", text: library.stats.rank(of: album).map { "#\($0)" } ?? "—", footnote: "Top albums")

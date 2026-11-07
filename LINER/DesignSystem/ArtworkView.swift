@@ -45,6 +45,8 @@ struct ArtworkView: View {
 struct ArtistPortraitView: View {
     let name: String
     var fallbackAlbumID: UInt64?
+    /// Told about the photo once it's loaded (the artist page uses it to keep the title readable).
+    var onLoad: ((UIImage) -> Void)?
     @State private var portrait: UIImage?
     @State private var tried = false
 
@@ -60,9 +62,10 @@ struct ArtistPortraitView: View {
         }
         .clipped()
         .task(id: name) {
-            if let hit = ArtistImageStore.shared.cached(name) { portrait = hit; tried = true; return }
+            if let hit = ArtistImageStore.shared.cached(name) { portrait = hit; tried = true; onLoad?(hit); return }
             let loaded = await ArtistImageStore.shared.portrait(for: name)
             withAnimation(.easeOut(duration: 0.25)) { portrait = loaded; tried = true }
+            if let loaded { onLoad?(loaded) }
         }
         .accessibilityHidden(true)
     }

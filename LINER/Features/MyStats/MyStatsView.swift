@@ -17,7 +17,7 @@ struct MyStatsView: View {
                     .padding(.horizontal, 16)
 
                     VStack(alignment: .leading, spacing: 8) {
-                        HStack(spacing: 12) {
+                        StatRow {
                             StatTile("Total plays", value: stats.totalPlays)
                             StatTile("Minutes", value: stats.totalMinutes, footnote: "Estimated")
                         }
@@ -98,7 +98,7 @@ struct MyStatsView: View {
         let snap = library.snapshot
         return VStack(alignment: .leading, spacing: 12) {
             Text("Your Library").font(.sectionTitle)
-            HStack(spacing: 12) {
+            StatRow {
                 StatTile("Songs", value: snap.songs.count)
                 StatTile("Albums", value: snap.albums.count)
                 StatTile("Artists", value: snap.artists.count)
