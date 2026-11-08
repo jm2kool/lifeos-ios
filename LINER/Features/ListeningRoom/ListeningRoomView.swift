@@ -19,6 +19,8 @@ struct ListeningRoomView: View {
     @State private var dropKey: UUID?
     @State private var busy = false
     @State private var tint = Color.white
+    /// The held record's cover, loaded once (the sleeve changes size as it moves, so it isn't reloaded per frame).
+    @State private var cover: UIImage?
 
     enum Phase { case shelf, out, open }
 
@@ -157,7 +159,7 @@ struct ListeningRoomView: View {
             .accessibilityLabel("The record").accessibilityHint("Drag it onto the turntable, or double-tap to put it on")
             .accessibilityAction { putOn(album) }
             .position(x: discAt.x + (flying ? 0 : drag.width), y: discAt.y + (flying ? 0 : drag.height))
-            .opacity(phase == .open && !recordGone ? 1 : 0)
+            .opacity(phase == .open && (recordOut || flying) && !recordGone ? 1 : 0)
             .zIndex(drag == .zero && !flying ? 0 : 3)
         // The tracklist side, folded behind the cover until it opens.
         RoomTracklist(record: record, tint: tint)
@@ -171,8 +173,9 @@ struct ListeningRoomView: View {
             .zIndex(1)
             .allowsHitTesting(false)
         // The cover.
-        ArtworkView(albumID: album.id, cornerRadius: 3)
+        Group { if let cover { FillImage(image: cover) } else { Color(white: 0.12) } }
             .frame(width: rect.width, height: rect.height)
+            .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
             .shadow(color: .black.opacity(0.75), radius: 18, y: 12)
             .rotation3DEffect(.degrees(phase == .shelf ? -70 : 0), axis: (x: 0, y: 1, z: 0), perspective: 0.6)
             .onTapGesture { if phase == .out { Task { await openSleeve() } } }
@@ -180,13 +183,15 @@ struct ListeningRoomView: View {
             .position(x: rect.midX, y: rect.midY)
             .zIndex(1)
             .task(id: album.id) {
-                guard let img = await ArtworkCache.shared.image(album: album.id, pixels: 96) else { return }
+                cover = CoverOverrides.shared.image(album.id)
+                if cover == nil { cover = await ArtworkCache.shared.image(album: album.id, pixels: 900) }
+                guard let img = cover else { return }
                 tint = await ArtworkAnalysis.look(for: img, key: "room-\(album.id)").dominant.mix(with: .white, by: 0.35)
             }
     }
 
     private func recordDrag(_ L: RoomLayout) -> some Gesture {
-        DragGesture(minimumDistance: 0)
+        DragGesture(minimumDistance: 0, coordinateSpace: .global)
             .onChanged { v in
                 guard phase == .open, !busy else { return }
                 drag = v.translation
@@ -207,7 +212,7 @@ struct ListeningRoomView: View {
         guard !busy, albums.indices.contains(i) else { return }
         if let h = held { if h.id == albums[i].id { return }; await stow(playing: false) }
         busy = true
-        heldIndex = i; phase = .shelf; recordOut = false; drag = .zero; flying = false; recordGone = false
+        heldIndex = i; cover = CoverOverrides.shared.image(albums[i].id) ?? ArtworkCache.shared.cached(album: albums[i].id, pixels: 900); phase = .shelf; recordOut = false; drag = .zero; flying = false; recordGone = false
         held = albums[i]
         try? await Task.sleep(for: .milliseconds(30))
         withAnimation(.timingCurve(0.65, 0, 0.25, 1, duration: 0.7)) { phase = .out }
@@ -254,7 +259,7 @@ struct ListeningRoomView: View {
         }
         withAnimation(.timingCurve(0.65, 0, 0.25, 1, duration: 0.55)) { phase = .shelf }
         try? await Task.sleep(for: .milliseconds(560))
-        held = nil; flying = false; recordGone = false; recordOut = false; drag = .zero
+        held = nil; cover = nil; flying = false; recordGone = false; recordOut = false; drag = .zero
         busy = false
     }
 }
