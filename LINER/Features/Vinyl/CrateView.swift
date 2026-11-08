@@ -101,7 +101,9 @@ struct CrateView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(CrateFilter.allCases) { f in
-                    Button(f.rawValue) { withAnimation(.liner) { filter = f; focused = nil } }
+                    Button { withAnimation(.liner) { filter = f; focused = nil } } label: {
+                        Text(f.rawValue).lineLimit(1).fixedSize()
+                    }
                         .font(.system(size: 13, weight: .semibold)).padding(.horizontal, 14).padding(.vertical, 8)
                         .foregroundStyle(filter == f ? Color.black : Color.white)
                         .background(filter == f ? Color.white : Color.white.opacity(0.1), in: Capsule())

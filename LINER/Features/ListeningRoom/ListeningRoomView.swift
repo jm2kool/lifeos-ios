@@ -71,8 +71,8 @@ struct ListeningRoomView: View {
             Spacer()
             GlassCircleButton(systemImage: "xmark", label: "Leave the Listening Room", size: 42) { dismiss() }
         }
-        .frame(width: L.headerWidth)
-        .offset(x: L.headerX, y: L.land ? L.shelf.minY - 78 : 6)
+        .frame(width: L.headerWidth, height: 60)
+        .position(x: L.headerX + L.headerWidth / 2, y: (L.land ? L.shelf.minY - 78 : 6) + 30)
     }
 
     private var hint: String {
@@ -83,27 +83,36 @@ struct ListeningRoomView: View {
         }
     }
 
+    /// Laid out for real (not shifted into place), so every spine can be tapped wherever the shelf is.
     private func shelf(_ L: RoomLayout) -> some View {
-        ZStack(alignment: .topLeading) {
+        let first = L.spine(0, of: albums.count)
+        return ZStack(alignment: .bottomLeading) {
             RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.black)
                 .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(.white.opacity(0.06)))
                 .shadow(color: .white.opacity(0.05), radius: 0, y: 8)
-                .frame(width: L.shelf.width, height: L.shelf.height)
-                .offset(x: L.shelf.minX, y: L.shelf.minY)
-            ForEach(Array(albums.enumerated()), id: \.element.id) { i, a in
-                let r = L.spine(i, of: albums.count), playing = a.id == playingAlbumID
-                Button { Task { await pull(i) } } label: { RoomSpine(album: a, rect: r) }
-                    .buttonStyle(.plain)
-                    .opacity(held?.id == a.id ? 0 : 1)
-                    .offset(x: r.minX, y: r.minY - (playing ? r.height * 0.07 : 0))
-                    .shadow(color: playing ? tint.opacity(0.4) : .clear, radius: 8)
-                    .accessibilityLabel("\(a.title) by \(a.artist)\(playing ? ", playing" : "")")
-                    .accessibilityHint("Takes the record off the shelf")
+            HStack(alignment: .bottom, spacing: 2) {
+                ForEach(Array(albums.enumerated()), id: \.element.id) { i, a in
+                    let playing = a.id == playingAlbumID
+                    RoomSpine(album: a, rect: first)
+                        .contentShape(Rectangle())
+                        .onTapGesture { Task { await pull(i) } }
+                        .opacity(held?.id == a.id ? 0 : 1)
+                        .offset(y: playing ? -first.height * 0.07 : 0)
+                        .shadow(color: playing ? tint.opacity(0.4) : .clear, radius: 8)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityLabel("\(a.title) by \(a.artist)\(playing ? ", playing" : "")")
+                        .accessibilityHint("Takes the record off the shelf")
+                        .accessibilityAction { Task { await pull(i) } }
+                }
             }
+            .padding(.leading, 8)
             .brightness(held == nil ? 0 : -0.45)
             .animation(.easeInOut(duration: 0.4), value: held?.id)
             .animation(.liner, value: playingAlbumID)
         }
+        .frame(width: L.shelf.width, height: L.shelf.height)
+        .position(x: L.shelf.midX, y: L.shelf.midY)
     }
 
     @ViewBuilder private func deck(_ L: RoomLayout) -> some View {
@@ -121,7 +130,7 @@ struct ListeningRoomView: View {
                 .opacity(near ? 0.8 : 0).animation(.easeOut(duration: 0.2), value: near)
                 .allowsHitTesting(false)
         }
-        .offset(x: L.deck.minX, y: L.deck.minY)
+        .position(x: L.deck.midX, y: L.deck.midY)
     }
 
     private func status(_ L: RoomLayout) -> some View {
@@ -136,7 +145,7 @@ struct ListeningRoomView: View {
         }
         .multilineTextAlignment(L.land ? .leading : .center)
         .frame(width: L.status.width, height: L.status.height, alignment: L.land ? .topLeading : .center)
-        .offset(x: L.status.minX, y: L.status.minY)
+        .position(x: L.status.midX, y: L.status.midY)
         .opacity(held == nil ? 1 : 0)
         .animation(.easeInOut(duration: 0.3), value: held?.id)
     }
