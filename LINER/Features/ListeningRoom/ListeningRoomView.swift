@@ -17,7 +17,9 @@ struct ListeningRoomView: View {
     @State private var flying = false
     @State private var recordGone = false
     @State private var dropKey: UUID?
-    @State private var busy = false
+    /// The sleeve is going back to the shelf; a record tapped meanwhile comes out once it's in.
+    @State private var stowing = false
+    @State private var pending: Int?
     @State private var tint = Color.white
     /// The held record's cover, loaded once (the sleeve changes size as it moves, so it isn't reloaded per frame).
     @State private var cover: UIImage?
@@ -34,7 +36,7 @@ struct ListeningRoomView: View {
         GeometryReader { geo in
             let L = RoomLayout(size: geo.size)
             ZStack(alignment: .topLeading) {
-                Color.clear.contentShape(Rectangle()).onTapGesture { if held != nil { Task { await stow(playing: false) } } }
+                Color.clear.contentShape(Rectangle()).onTapGesture { if held != nil, !flying { stow() } }
                 header(L)
                 shelf(L)
                 deck(L)
@@ -95,7 +97,7 @@ struct ListeningRoomView: View {
                     let playing = a.id == playingAlbumID
                     RoomSpine(album: a, rect: first)
                         .contentShape(Rectangle())
-                        .onTapGesture { Task { await pull(i) } }
+                        .onTapGesture { pull(i) }
                         .opacity(held?.id == a.id ? 0 : 1)
                         .offset(y: playing ? -first.height * 0.07 : 0)
                         .shadow(color: playing ? tint.opacity(0.4) : .clear, radius: 8)
@@ -103,7 +105,7 @@ struct ListeningRoomView: View {
                         .accessibilityAddTraits(.isButton)
                         .accessibilityLabel("\(a.title) by \(a.artist)\(playing ? ", playing" : "")")
                         .accessibilityHint("Takes the record off the shelf")
-                        .accessibilityAction { Task { await pull(i) } }
+                        .accessibilityAction { pull(i) }
                 }
             }
             .padding(.leading, 8)
@@ -187,13 +189,16 @@ struct ListeningRoomView: View {
             .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
             .shadow(color: .black.opacity(0.75), radius: 18, y: 12)
             .rotation3DEffect(.degrees(phase == .shelf ? -70 : 0), axis: (x: 0, y: 1, z: 0), perspective: 0.6)
-            .onTapGesture { if phase == .out { Task { await openSleeve() } } }
+            .contentShape(Rectangle())
+            .onTapGesture { openSleeve() }
+            // Comes off the shelf as soon as it's there (no timers to miss).
+            .onAppear { withAnimation(.timingCurve(0.65, 0, 0.25, 1, duration: 0.7)) { phase = .out } }
             .accessibilityLabel(album.title).accessibilityHint(phase == .out ? "Opens the sleeve" : "")
             .position(x: rect.midX, y: rect.midY)
             .zIndex(1)
             .task(id: album.id) {
                 cover = CoverOverrides.shared.image(album.id)
-                if cover == nil { cover = await ArtworkCache.shared.image(album: album.id, pixels: 900) }
+                if cover == nil { cover = await ArtworkCache.shared.image(album: album.id, pixels: 640) }
                 guard let img = cover else { return }
                 tint = await ArtworkAnalysis.look(for: img, key: "room-\(album.id)").dominant.mix(with: .white, by: 0.35)
             }
@@ -202,12 +207,12 @@ struct ListeningRoomView: View {
     private func recordDrag(_ L: RoomLayout) -> some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .global)
             .onChanged { v in
-                guard phase == .open, !busy else { return }
+                guard phase == .open, recordOut, !flying, !stowing else { return }
                 drag = v.translation
                 near = hypot(L.discOut.x + v.translation.width - L.deckCenter.x, L.discOut.y + v.translation.height - L.deckCenter.y) < L.deckRecord * 0.4
             }
             .onEnded { v in
-                guard phase == .open, !busy, let album = held else { return }
+                guard phase == .open, recordOut, !flying, !stowing, let album = held else { return }
                 let tapped = hypot(v.translation.width, v.translation.height) < 6
                 if near || tapped { putOn(album) } else { withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { drag = .zero } }
                 near = false
@@ -216,60 +221,60 @@ struct ListeningRoomView: View {
 
     // MARK: Actions
 
-    /// Takes a record off the shelf; whatever you were holding goes back first.
-    private func pull(_ i: Int) async {
-        guard !busy, albums.indices.contains(i) else { return }
-        if let h = held { if h.id == albums[i].id { return }; await stow(playing: false) }
-        busy = true
-        heldIndex = i; cover = CoverOverrides.shared.image(albums[i].id) ?? ArtworkCache.shared.cached(album: albums[i].id, pixels: 900); phase = .shelf; recordOut = false; drag = .zero; flying = false; recordGone = false
+    /// Takes a record off the shelf (it comes out from its slot as it appears); whatever you were holding goes
+    /// back first.
+    private func pull(_ i: Int) {
+        guard albums.indices.contains(i), !flying else { return }
+        if let h = held {
+            guard h.id != albums[i].id else { return }
+            pending = i
+            stow()
+            return
+        }
+        heldIndex = i; phase = .shelf; recordOut = false; drag = .zero; recordGone = false
+        cover = CoverOverrides.shared.image(albums[i].id) ?? ArtworkCache.shared.cached(album: albums[i].id, pixels: 640)
         held = albums[i]
-        try? await Task.sleep(for: .milliseconds(30))
-        withAnimation(.timingCurve(0.65, 0, 0.25, 1, duration: 0.7)) { phase = .out }
-        try? await Task.sleep(for: .milliseconds(700))
-        busy = false
     }
 
     /// Opens it like the gatefold, then the record slips out of the bottom of the tracklist.
-    private func openSleeve() async {
-        guard !busy, phase == .out else { return }
-        busy = true
-        withAnimation(.timingCurve(0.65, 0, 0.25, 1, duration: 0.8)) { phase = .open }
-        try? await Task.sleep(for: .milliseconds(820))
-        withAnimation(.timingCurve(0.3, 0, 0.3, 1, duration: 0.55)) { recordOut = true }
-        try? await Task.sleep(for: .milliseconds(560))
-        busy = false
+    private func openSleeve() {
+        guard held != nil, phase == .out, !stowing else { return }
+        withAnimation(.timingCurve(0.65, 0, 0.25, 1, duration: 0.8)) { phase = .open } completion: {
+            guard phase == .open, !stowing else { return }
+            withAnimation(.timingCurve(0.3, 0, 0.3, 1, duration: 0.55)) { recordOut = true }
+        }
     }
 
     /// Carries the record over the turntable; the deck takes over from there and drops it onto the plain record.
     private func putOn(_ album: Album) {
-        guard !busy else { return }
-        busy = true
-        withAnimation(.easeInOut(duration: 0.4)) { flying = true; drag = .zero }
-        Task {
-            try? await Task.sleep(for: .milliseconds(400))
+        guard !flying else { return }
+        withAnimation(.easeInOut(duration: 0.4)) { flying = true; drag = .zero } completion: {
             player.play(library.snapshot.songs(album.songIDs).map(QueueItem.library))
             dropKey = UUID()
             recordGone = true
-            try? await Task.sleep(for: .milliseconds(250))
-            busy = false
-            await stow(playing: true)
+            stow(playing: true)
         }
     }
 
     /// Folds the sleeve shut and slides it back into its slot.
-    private func stow(playing: Bool) async {
-        guard !busy, held != nil else { return }
-        busy = true
+    private func stow(playing: Bool = false) {
+        guard held != nil, !stowing else { return }
+        stowing = true
         if phase == .open {
-            if !playing { withAnimation(.easeInOut(duration: 0.3)) { recordOut = false; drag = .zero } ; try? await Task.sleep(for: .milliseconds(280)) }
-            recordGone = true
-            withAnimation(.timingCurve(0.65, 0, 0.25, 1, duration: 0.5)) { phase = .out }
-            try? await Task.sleep(for: .milliseconds(480))
+            withAnimation(.easeInOut(duration: 0.3)) { if !playing { recordOut = false }; drag = .zero } completion: {
+                recordGone = true
+                withAnimation(.timingCurve(0.65, 0, 0.25, 1, duration: 0.5)) { phase = .out } completion: { toShelf() }
+            }
+        } else {
+            toShelf()
         }
-        withAnimation(.timingCurve(0.65, 0, 0.25, 1, duration: 0.55)) { phase = .shelf }
-        try? await Task.sleep(for: .milliseconds(560))
-        held = nil; cover = nil; flying = false; recordGone = false; recordOut = false; drag = .zero
-        busy = false
+    }
+
+    private func toShelf() {
+        withAnimation(.timingCurve(0.65, 0, 0.25, 1, duration: 0.55)) { phase = .shelf } completion: {
+            held = nil; cover = nil; flying = false; recordGone = false; recordOut = false; drag = .zero; stowing = false
+            if let next = pending { pending = nil; pull(next) }
+        }
     }
 }
 

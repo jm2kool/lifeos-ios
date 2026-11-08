@@ -83,15 +83,29 @@ struct RoomSpine: View {
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: 2, topTrailingRadius: 2))
         .overlay(alignment: .top) { Rectangle().fill(.white.opacity(0.12)).frame(height: 1) }
         .task(id: album.id) {
-            guard let img = await ArtworkCache.shared.image(album: album.id, pixels: 96) else { return }
-            let look = await ArtworkAnalysis.look(for: img, key: "spine-\(album.id)")
-            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-            UIColor(look.dominant).getRed(&r, green: &g, blue: &b, alpha: &a)
+            guard let img = await ArtworkCache.shared.image(album: album.id, pixels: 96),
+                  let rgb = Self.average(img) else { return }
+            let (r, g, b) = rgb
             withAnimation(.easeOut(duration: 0.3)) {
-                colour = look.dominant
+                colour = Color(red: r, green: g, blue: b)
                 light = 0.299 * r + 0.587 * g + 0.114 * b > 0.62
             }
         }
+    }
+
+    /// The cover's average colour: the small image squeezed into one pixel (quick, unlike the full analysis).
+    static func average(_ image: UIImage) -> (Double, Double, Double)? {
+        guard let cg = image.cgImage else { return nil }
+        var px = [UInt8](repeating: 0, count: 4)
+        let ok = px.withUnsafeMutableBytes { buf -> Bool in
+            guard let ctx = CGContext(data: buf.baseAddress, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            ctx.interpolationQuality = .medium
+            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+            return true
+        }
+        guard ok else { return nil }
+        return (Double(px[0]) / 255, Double(px[1]) / 255, Double(px[2]) / 255)
     }
 }
 

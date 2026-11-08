@@ -5,6 +5,7 @@ struct HomeView: View {
     @Environment(LibraryService.self) private var library
     @Namespace private var zoom
     @State private var showSettings = false
+    @State private var showMoods = false
     @AppStorage("vinylMode") private var vinylMode = false
     /// What's on screen, following `vinylMode` with an animation (the switch can come from anywhere: the
     /// crate's toggle, Settings, the player menu or a double tap on Home).
@@ -58,7 +59,11 @@ struct HomeView: View {
         }
         .background(Palette.background)
         .refreshable { await library.refresh() }
+        .sheet(isPresented: $showMoods) { MoodPlaylistsSheet() }
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Mood Playlists", systemImage: "sparkles") { showMoods = true }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Vinyl Mode", systemImage: "record.circle") { withAnimation(.liner) { vinylMode = true } }
             }
