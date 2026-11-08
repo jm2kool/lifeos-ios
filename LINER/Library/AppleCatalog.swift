@@ -62,11 +62,47 @@ enum AppleCatalog {
         return page
     }
 
-    /// A release's tracks, in order.
+    /// A release's tracks, in order. Apple's lookup sometimes returns a release with no songs (new singles,
+    /// streaming-only releases), so it falls back to searching for the release's songs by name.
     static func tracks(of release: Release) async -> [Track] {
-        results(await fetch("lookup", ["id": String(release.id), "entity": "song", "limit": "200"])).compactMap(track)
-            .sorted { ($0.discNumber, $0.trackNumber) < ($1.discNumber, $1.trackNumber) }
+        func ordered(_ t: [Track]) -> [Track] {
+            var seen = Set<Int>()
+            return t.filter { seen.insert($0.id).inserted }.sorted { ($0.discNumber, $0.trackNumber) < ($1.discNumber, $1.trackNumber) }
+        }
+        let looked = results(await fetch("lookup", ["id": String(release.id), "entity": "song", "limit": "200"])).compactMap(track)
+        if !looked.isEmpty { return ordered(looked) }
+        let found = results(await fetch("search", ["term": "\(release.title) \(release.artist)", "entity": "song", "limit": "100"]))
+            .compactMap(track)
+        let onRelease = found.filter { $0.collectionID == release.id }
+        if !onRelease.isEmpty { return ordered(onRelease) }
+        // A single listed under another release: the song with the single's name, by the same artist.
+        guard release.isSingleOrEP else { return [] }
+        let title = MediaKey.normalise(release.title)
+        let lead = MediaKey.normalise(release.artist.components(separatedBy: CharacterSet(charactersIn: "&,")).first ?? release.artist)
+        let named = found.filter {
+            MediaKey.normalise($0.name).hasPrefix(title) && MediaKey.normalise($0.artist).contains(lead)
+        }
+        return Array(ordered(named).prefix(1))
     }
+
+    /// The whole album as Apple Music lists it, found from the Apple Music ID of any song of yours on it (nil
+    /// when none of your songs has one, or Apple doesn't answer). Asks with a few of your songs in case one has
+    /// moved to another edition.
+    static func fullAlbum(songStoreIDs ids: [String]) async -> [Track]? {
+        let key = ids.sorted().joined(separator: ",")
+        if let hit = await albumCache.album(key) { return hit }
+        for id in ids.prefix(3) {
+            guard let song = results(await fetch("lookup", ["id": id])).compactMap(track).first, song.collectionID != 0 else { continue }
+            let all = results(await fetch("lookup", ["id": String(song.collectionID), "entity": "song", "limit": "200"]))
+                .compactMap(track).sorted { ($0.discNumber, $0.trackNumber) < ($1.discNumber, $1.trackNumber) }
+            guard !all.isEmpty else { continue }
+            await albumCache.store(all, for: key)
+            return all
+        }
+        return nil
+    }
+
+    private static let albumCache = AlbumCache()
 
     // MARK: Requests
 
@@ -77,7 +113,7 @@ enum AppleCatalog {
         return match?["artistId"] as? Int
     }
 
-    private static func fetch(_ path: String, _ query: [String: String]) async -> Data? {
+    static func fetch(_ path: String, _ query: [String: String]) async -> Data? {
         var parts = URLComponents(string: "https://itunes.apple.com/\(path)")!
         parts.queryItems = (query.merging(["country": country]) { a, _ in a }).map { URLQueryItem(name: $0.key, value: $0.value) }
         guard let url = parts.url else { return nil }
@@ -88,7 +124,7 @@ enum AppleCatalog {
         return data
     }
 
-    private static func results(_ data: Data?) -> [[String: Any]] {
+    static func results(_ data: Data?) -> [[String: Any]] {
         guard let data, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [] }
         return json["results"] as? [[String: Any]] ?? []
     }
@@ -103,8 +139,8 @@ enum AppleCatalog {
         (r["artworkUrl100"] as? String).flatMap { URL(string: $0.replacingOccurrences(of: "100x100bb", with: "1000x1000bb")) }
     }
 
-    private static func track(_ r: [String: Any]) -> Track? {
-        guard r["wrapperType"] as? String == "track", r["kind"] as? String == "song", let id = r["trackId"] as? Int else { return nil }
+    static func track(_ r: [String: Any]) -> Track? {
+        guard r["wrapperType"] as? String == "track", (r["kind"] as? String ?? "song") == "song", let id = r["trackId"] as? Int else { return nil }
         return Track(id: id, name: r["trackName"] as? String ?? "", artist: r["artistName"] as? String ?? "",
                      album: r["collectionName"] as? String ?? "", collectionID: r["collectionId"] as? Int ?? 0,
                      artwork: artwork(r), duration: Double(r["trackTimeMillis"] as? Int ?? 0) / 1000,
@@ -113,7 +149,7 @@ enum AppleCatalog {
                      releaseDate: date(r["releaseDate"]))
     }
 
-    private static func release(_ r: [String: Any]) -> Release? {
+    static func release(_ r: [String: Any]) -> Release? {
         guard r["wrapperType"] as? String == "collection", let id = r["collectionId"] as? Int else { return nil }
         return Release(id: id, name: r["collectionName"] as? String ?? "", artist: r["artistName"] as? String ?? "",
                        artwork: artwork(r), releaseDate: date(r["releaseDate"]),
@@ -146,4 +182,11 @@ private actor PageCache {
     private var pages: [String: AppleCatalog.ArtistPage] = [:]
     func page(_ name: String) -> AppleCatalog.ArtistPage? { pages[name] }
     func store(_ page: AppleCatalog.ArtistPage, for name: String) { pages[name] = page }
+}
+
+/// Full albums fetched this session.
+private actor AlbumCache {
+    private var albums: [String: [AppleCatalog.Track]] = [:]
+    func album(_ key: String) -> [AppleCatalog.Track]? { albums[key] }
+    func store(_ album: [AppleCatalog.Track], for key: String) { albums[key] = album }
 }

@@ -249,7 +249,7 @@ struct ListeningRoomView: View {
     private func putOn(_ album: Album) {
         guard !flying else { return }
         withAnimation(.easeInOut(duration: 0.4)) { flying = true; drag = .zero } completion: {
-            player.play(library.snapshot.songs(album.songIDs).map(QueueItem.library))
+            player.play(library.snapshot.songs(album.songIDs).map(QueueItem.library), openPlayer: false)
             dropKey = UUID()
             recordGone = true
             stow(playing: true)

@@ -9,6 +9,7 @@ struct EditionsSheet: View {
     @Query private var editions: [Edition]
     @Query private var notes: [AlbumNote]
     @State private var editing: Edition?
+    @AppStorage(AlbumTracklist.storageKey) private var savedOnlyAlbums = ""
 
     init(subject: AlbumSubject) {
         self.subject = subject
@@ -18,12 +19,21 @@ struct EditionsSheet: View {
     }
 
     private var activeID: UUID? { notes.first?.activeEditionID }
+    private var savedOnly: Bool { AlbumTracklist.savedOnly(subject.id, in: savedOnlyAlbums) }
 
     var body: some View {
         NavigationStack {
             List {
                 Section {
-                    row(title: "Original Album", subtitle: "\(subject.tracks.count) songs", active: activeID == nil) { setActive(nil) }
+                    if subject.album != nil {
+                        row(title: "Full Album", subtitle: "Every song on the album, from Apple Music", active: activeID == nil && !savedOnly) {
+                            setTracklist(savedOnly: false)
+                        }
+                        row(title: "Saved Album", subtitle: "The \(subject.tracks.count) song\(subject.tracks.count == 1 ? "" : "s") in your library",
+                            active: activeID == nil && savedOnly) { setTracklist(savedOnly: true) }
+                    } else {
+                        row(title: "Original", subtitle: "\(subject.tracks.count) songs", active: activeID == nil) { setActive(nil) }
+                    }
                     ForEach(editions) { e in
                         row(title: e.title, subtitle: "\(e.tracks.count) songs", active: activeID == e.id) { setActive(e) }
                             .swipeActions {
@@ -61,6 +71,11 @@ struct EditionsSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    private func setTracklist(savedOnly: Bool) {
+        savedOnlyAlbums = AlbumTracklist.setting(subject.id, savedOnly: savedOnly, in: savedOnlyAlbums)
+        setActive(nil)
     }
 
     private func setActive(_ e: Edition?) {

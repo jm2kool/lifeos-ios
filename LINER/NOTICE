@@ -1,0 +1,15 @@
+LINER.
+
+Third-party code
+----------------
+
+Lyricar (https://github.com/noluyorAbi/lyricar)
+  Copyright 2026 Alperen Adatepe
+  Licensed under the Apache License, Version 2.0
+  (https://www.apache.org/licenses/LICENSE-2.0).
+  Playback/SilentKeepAlive.swift is adapted from Lyricar's
+  Lyricar/Services/BackgroundKeepAlive.swift, and the live lyrics loop and
+  Live Activity follow its approach (sleeping until the next line in the
+  background, one update at a time, a stale date once a line is overdue).
+  Changes: renamed, messages routed to LINER.'s live lyrics log, session
+  handed back to LINER.'s own player when stopped.

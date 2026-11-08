@@ -45,8 +45,10 @@ final class NowPlayingManager {
             MPNowPlayingInfoPropertyPlaybackRate: c.isPlaying ? 1.0 : 0.0,
         ]
         let extra = animated.keys(for: item)
-        guard ownsNowPlaying || !extra.isEmpty else { return }
-        if let artwork, artwork.key == item.coverKey {
+        // On the system player's Now Playing we only step in for extras: animated artwork, or a cover of yours
+        // (an edition's or your own album cover) in place of the album artwork.
+        guard ownsNowPlaying || !extra.isEmpty || CoverArt.hasOwnCover(item) else { return }
+        if let artwork, artwork.key == CoverArt.key(for: item) {
             info[MPMediaItemPropertyArtwork] = Self.staticArtwork(artwork.image)
         } else {
             loadArtwork(for: item)
@@ -59,7 +61,7 @@ final class NowPlayingManager {
         artworkTask?.cancel()
         artworkTask = Task {
             guard let image = await CoverArt.image(for: item, pixels: 1000), !Task.isCancelled else { return }
-            artwork = (item.coverKey, image)
+            artwork = (CoverArt.key(for: item), image)
             update()
         }
     }

@@ -81,7 +81,7 @@ struct TurntableView: View {
         if already {
             if !player.isPlaying { player.resume() }
         } else {
-            player.play(record.tracks, startAt: side == "A" ? 0 : record.tracks.count / 2)
+            player.play(record.tracks, startAt: side == "A" ? 0 : record.tracks.count / 2, openPlayer: false)
         }
         // From the crate the music and the pop have already started; don't play the pop twice.
         // With the drop-in, the needle sound comes when the record lands instead.
@@ -96,7 +96,7 @@ struct TurntableView: View {
         withAnimation(.easeInOut(duration: 0.6)) { flipped += 180 }
         side = side == "A" ? "B" : "A"
         UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
-        player.play(record.tracks, startAt: side == "A" ? 0 : record.tracks.count / 2)
+        player.play(record.tracks, startAt: side == "A" ? 0 : record.tracks.count / 2, openPlayer: false)
         VinylSounds.shared.needleDrop()
     }
 }

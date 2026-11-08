@@ -106,7 +106,7 @@ struct PlayerVinyl: View {
                 let i = lyrics.activeIndex(at: time + 0.25) ?? -1
                 RecordLyrics(current: lyrics.lines.indices.contains(i) ? lyrics.lines[i].text : "",
                              next: lyrics.lines.indices.contains(i + 1) ? lyrics.lines[i + 1].text : "",
-                             index: i, radius: d.radius)
+                             index: i, radius: d.radius, spin: angle)
                     .position(d.center)
                     .allowsHitTesting(false)
             }

@@ -35,11 +35,12 @@ struct PinnedPlaylistsShelf: View {
     }
 }
 
-/// Home shelves that later features fill (mixtapes). Mood playlists sit behind the sparkles button instead.
+/// Home shelves that later features fill (mixtapes, mood playlists).
 struct HomeShelves: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             MixtapesShelf()
+            MoodPlaylistsShelf()
         }
     }
 }

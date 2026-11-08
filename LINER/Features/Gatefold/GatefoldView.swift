@@ -21,6 +21,10 @@ struct GatefoldView: View {
     @State private var recordOut = false
     @State private var turntable: VinylRecord?
     @State private var busy = false
+    /// Full Album (as Apple Music lists it, the songs you don't have streamed) or Saved Album, shared with the
+    /// album page.
+    @AppStorage(AlbumTracklist.storageKey) private var savedOnlyAlbums = ""
+    @State private var catalog: [AppleCatalog.Track]?
 
     enum Stage { case closed, lifted, opening, flat, inside }
 
@@ -124,13 +128,13 @@ struct GatefoldView: View {
     }
 
     private func coverPanel(_ size: CGSize, inside: Bool) -> some View {
-        GatefoldCover(record: record, album: album, cover: cover, tint: tint, width: size.width, showsHint: size.width < size.height)
+        GatefoldCover(record: shown, album: album, cover: cover, tint: tint, width: size.width, showsHint: size.width < size.height)
             .environment(\.gatefoldMetaVisible, inside)
     }
 
     private func tracksPanel(_ size: CGSize) -> some View {
-        GatefoldTracks(record: record, cover: cover, tint: tint, width: size.width, tall: size.height > size.width + 1, recordOut: recordOut,
-                       nowPlayingID: player.current?.id) { putOn(at: $0) }
+        GatefoldTracks(record: shown, cover: cover, tint: tint, width: size.width, tall: size.height > size.width + 1, recordOut: recordOut,
+                       nowPlayingID: player.current?.id, tracklist: tracklistChoice) { putOn(at: $0) }
     }
 
     private func chrome(land: Bool) -> some View {
@@ -156,11 +160,40 @@ struct GatefoldView: View {
 
     private var album: Album? { if case .album(let a) = record.source { a } else { nil } }
 
+    private var savedOnly: Bool { AlbumTracklist.savedOnly(record.id, in: savedOnlyAlbums) }
+
+    /// Every song on the album: yours where you have them, the rest streamed from Apple Music.
+    private var full: [QueueItem]? {
+        guard let album, let catalog, catalog.count >= album.songIDs.count else { return nil }
+        let mine = library.snapshot.songsByStoreID
+        return catalog.map { .library($0.song(in: library.snapshot, byStoreID: mine)) }
+    }
+
+    /// The record as shown: the full album unless you chose Saved Album for it.
+    private var shown: VinylRecord {
+        guard album != nil, !savedOnly, let full else { return record }
+        return VinylRecord(id: record.id, title: record.title, artist: record.artist, year: record.year, albumID: record.albumID,
+                           coverData: record.coverData, tracks: full, source: record.source)
+    }
+
+    /// The Full Album / Saved Album switch on the tracklist side (albums only).
+    private var tracklistChoice: GatefoldTracks.Choice? {
+        guard album != nil else { return nil }
+        return GatefoldTracks.Choice(savedOnly: savedOnly || full == nil, fullAvailable: full != nil, fullCount: full?.count,
+                                     savedCount: record.tracks.count) { saved in
+            savedOnlyAlbums = AlbumTracklist.setting(record.id, savedOnly: saved, in: savedOnlyAlbums)
+        }
+    }
+
     private func load() async {
         if let data = record.coverData { cover = UIImage(data: data) }
         else if let id = record.albumID {
             cover = CoverOverrides.shared.image(id)
             if cover == nil { cover = await ArtworkCache.shared.image(album: id, pixels: 1400) }
+        }
+        if let album {
+            let ids = library.snapshot.songs(album.songIDs).filter(\.hasStoreID).map(\.storeID)
+            if !ids.isEmpty { catalog = await AppleCatalog.fullAlbum(songStoreIDs: ids) }
         }
         if let cover { tint = await ArtworkAnalysis.look(for: cover, key: "gatefold-\(record.id)").dominant.mix(with: .white, by: 0.35) }
     }
@@ -205,13 +238,14 @@ struct GatefoldView: View {
     /// The music starts at once; the record slides out of the inner sleeve and the turntable comes up, where it
     /// drops onto the plain record waiting there.
     private func putOn(at index: Int) {
-        guard !record.tracks.isEmpty else { return }
-        player.play(record.tracks, startAt: index)
+        let r = shown
+        guard !r.tracks.isEmpty else { return }
+        player.play(r.tracks, startAt: index, openPlayer: false)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         withAnimation(.easeIn(duration: 0.35)) { recordOut = true }
         Task {
             try? await Task.sleep(for: .milliseconds(320))
-            turntable = record
+            turntable = r
         }
     }
 }

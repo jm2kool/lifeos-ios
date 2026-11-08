@@ -34,7 +34,7 @@ struct FullPlayerView: View {
         }
         .background(Color.black)
         .keepsScreenAwake()
-        .task(id: player.current?.coverKey) { await art.load(player.current) }
+        .task(id: player.current.map { CoverArt.key(for: $0) }) { await art.load(player.current) }
         .sheet(item: $sheet) { which in
             switch which {
             case .queue: QueueSheet().presentationDetents([.medium, .large])

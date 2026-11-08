@@ -10,6 +10,9 @@ struct AlbumDetailView: View {
     @Environment(\.openURL) private var openURL
     @Query private var notes: [AlbumNote]
     @Query private var editions: [Edition]
+    @AppStorage(AlbumTracklist.storageKey) private var savedOnlyAlbums = ""
+    /// The album as Apple Music lists it (nil until fetched, or when Apple doesn't know it).
+    @State private var catalog: [AppleCatalog.Track]?
 
     init(album: Album) {
         self.album = album
@@ -23,14 +26,32 @@ struct AlbumDetailView: View {
         return editions.first { $0.id == id }
     }
 
+    private var subjectID: String { "album-\(album.id)" }
+    private var savedOnly: Bool { AlbumTracklist.savedOnly(subjectID, in: savedOnlyAlbums) }
+    private var saved: [QueueItem] { library.snapshot.songs(album.songIDs).map(QueueItem.library) }
+
+    /// Every song on the album: yours where you have them, the rest streamed from Apple Music.
+    private var full: [QueueItem]? {
+        guard let catalog, catalog.count >= album.songIDs.count else { return nil }
+        let mine = library.snapshot.songsByStoreID
+        return catalog.map { .library($0.song(in: library.snapshot, byStoreID: mine)) }
+    }
+
     private var tracks: [QueueItem] {
         if let e = activeEdition { return TrackResolver.items(e.tracks, snapshot: library.snapshot) }
-        return library.snapshot.songs(album.songIDs).map(QueueItem.library)
+        if !savedOnly, let full { return full }
+        return saved
+    }
+
+    private var tracklistName: String {
+        if let e = activeEdition { return e.title }
+        if savedOnly { return "Saved Album" }
+        return full == nil ? "Album" : "Full Album"
     }
 
     private var facts: String {
         let list = tracks
-        var parts = [activeEdition == nil ? "ALBUM" : "EDITION", "\(list.count) SONG\(list.count == 1 ? "" : "S")",
+        var parts = [activeEdition != nil ? "EDITION" : (savedOnly && full != nil ? "SAVED" : "ALBUM"), "\(list.count) SONG\(list.count == 1 ? "" : "S")",
                      list.reduce(0) { $0 + $1.duration }.minutesLabel]
         if activeEdition == nil, album.editionIDs.count > 1 { parts.append("\(album.editionIDs.count) EDITIONS") }
         if !album.genre.isEmpty { parts.append(album.genre.uppercased()) }
@@ -47,7 +68,11 @@ struct AlbumDetailView: View {
                     LinearGradient(colors: [.clear, .black], startPoint: UnitPoint(x: 0.5, y: 0.55), endPoint: .bottom)
                 }
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(activeEdition?.title ?? album.title).font(.itemTitle).lineLimit(3)
+                    if let edition = activeEdition {
+                        Text(edition.title).font(.itemTitle).lineLimit(3)
+                    } else {
+                        AlbumTitle(albumID: album.id, title: album.title)
+                    }
                     if let artist = library.snapshot.artist(named: album.artist) {
                         NavigationLink(value: artist) { Text(album.artist).linerLabel(size: 12) }.buttonStyle(.plain)
                     } else {
@@ -76,8 +101,14 @@ struct AlbumDetailView: View {
             }
             .padding(.bottom, 32)
         }
+        .environment(\.editionCover, activeEdition.map { EditionCover(editionID: $0.id, itemIDs: Set(list.map(\.id))) })
         .background(Palette.background)
         .ignoresSafeArea(edges: .top)
+        .task(id: album.id) {
+            let ids = library.snapshot.songs(album.songIDs).filter(\.hasStoreID).map(\.storeID)
+            guard !ids.isEmpty else { return }
+            catalog = await AppleCatalog.fullAlbum(songStoreIDs: ids)
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -98,7 +129,13 @@ struct AlbumDetailView: View {
 
     private var editionSwitcher: some View {
         Menu {
-            Button { setEdition(nil) } label: { checked("Original Album", activeEdition == nil) }
+            Button { setTracklist(savedOnly: false) } label: {
+                checked(full.map { "Full Album · \($0.count) songs" } ?? "Full Album", activeEdition == nil && !savedOnly)
+            }
+            .disabled(full == nil && catalog != nil)
+            Button { setTracklist(savedOnly: true) } label: {
+                checked("Saved Album · \(album.songIDs.count) song\(album.songIDs.count == 1 ? "" : "s")", activeEdition == nil && savedOnly)
+            }
             ForEach(editions) { e in
                 Button { setEdition(e) } label: { checked(e.title, activeEdition?.id == e.id) }
             }
@@ -106,15 +143,21 @@ struct AlbumDetailView: View {
             Button("Manage Editions", systemImage: "square.stack.3d.up") { passports.editions = .library(album, snapshot: library.snapshot) }
         } label: {
             HStack(spacing: 4) {
-                Text(activeEdition?.title ?? "Original Album").linerLabel(size: 10)
+                Text(tracklistName).linerLabel(size: 10)
                 Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold)).foregroundStyle(Palette.label)
             }
         }
-        .accessibilityLabel("Edition: \(activeEdition?.title ?? "Original Album")")
+        .accessibilityLabel("Edition: \(tracklistName)")
     }
 
     @ViewBuilder private func checked(_ title: String, _ on: Bool) -> some View {
         if on { Label(title, systemImage: "checkmark") } else { Text(title) }
+    }
+
+    /// Full Album or Saved Album (and back off any edition).
+    private func setTracklist(savedOnly: Bool) {
+        savedOnlyAlbums = AlbumTracklist.setting(subjectID, savedOnly: savedOnly, in: savedOnlyAlbums)
+        if activeEdition != nil { setEdition(nil) }
     }
 
     private func setEdition(_ e: Edition?) {

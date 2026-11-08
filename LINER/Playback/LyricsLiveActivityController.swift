@@ -1,10 +1,17 @@
 import ActivityKit
 @preconcurrency import AVFoundation
 import Foundation
+import UIKit
 
 /// Live lyrics on the Lock Screen: while something plays, one Live Activity shows the song and the line being
 /// sung, and carries on from song to song (iOS won't let an app start a new one from the background, so it's
 /// never ended between songs). Setting: Settings → Listening → Live lyrics on the Lock Screen.
+///
+/// How it keeps moving: a silent keep-alive keeps LINER. running in the background from the moment the card
+/// appears until it ends (checked every tick, not only on start); the line is worked out from LINER.'s own clock,
+/// re-synced whenever the system player reports a new position, so a player that stops answering in the
+/// background can't freeze it; and the card is only updated when the line, song or play state changes (plus a
+/// slow heartbeat), which keeps well inside iOS's update budget.
 @MainActor
 final class LyricsLiveActivityController {
     static let shared = LyricsLiveActivityController()
@@ -19,10 +26,19 @@ final class LyricsLiveActivityController {
     private var pausedSince: Date?
     /// Updates go out one at a time, newest wins, so an older line can never land after a newer one.
     private var queued: LyricsActivityAttributes.ContentState?
+    private var queuedStale: Date?
     private var sending = false
     private var sendStarted = Date.distantPast
     private var lastSent = Date.distantPast
+    /// When iOS last accepted an update.
+    private var lastDelivered = Date.now
     private var sender = 0
+    /// LINER.'s own playhead: the last position the player reported, and when.
+    private var anchor: (time: Double, at: Date, item: String, seek: Int)?
+    private var lastReported: Double = -1
+    /// The song's start and end as last sent, kept unless the playhead drifts, so the timing alone never
+    /// causes an update.
+    private var timing: (start: Date, end: Date, item: String)?
 
     static var enabled: Bool { UserDefaults.standard.object(forKey: "liveLyrics") as? Bool ?? true }
 
@@ -32,6 +48,7 @@ final class LyricsLiveActivityController {
         itemID = item.id
         song = (item.title, item.artist)
         lyrics = nil
+        LiveLyricsLog.add("Song: \(item.title) — \(item.artist)")
         ensureActivity()
         tick()
         Task {
@@ -47,9 +64,16 @@ final class LyricsLiveActivityController {
     private func ensureActivity() {
         if let a = activity, a.activityState == .active || a.activityState == .stale { startLoop(); return }
         activity = nil
+        // iOS refuses new cards from the background; the next song started in the app tries again.
+        guard UIApplication.shared.applicationState != .background else { startLoop(); return }
         for a in Activity<LyricsActivityAttributes>.activities { Self.end(a) }
         let state = makeState(index: -1, playing: true)
-        activity = try? Activity.request(attributes: LyricsActivityAttributes(), content: Self.content(state), pushType: nil)
+        do {
+            activity = try Activity.request(attributes: LyricsActivityAttributes(), content: Self.content(state, stale: nil), pushType: nil)
+            LiveLyricsLog.add("Card started")
+        } catch {
+            LiveLyricsLog.add("Couldn't start the card: \(error.localizedDescription)")
+        }
         lastState = state
         startLoop()
     }
@@ -58,34 +82,82 @@ final class LyricsLiveActivityController {
         guard loop == nil else { return }
         loop = Task { [weak self] in
             while !Task.isCancelled {
-                self?.tick()
-                try? await Task.sleep(for: .milliseconds(300))
+                let wait = self?.tick() ?? 1
+                try? await Task.sleep(for: .seconds(wait))
             }
         }
     }
 
-    private func tick() {
-        guard let player = PlaybackCoordinator.shared else { return }
-        guard let current = player.current else { stop(); return }
-        if current.id != itemID { itemStarted(current); return }   // a change we weren't told about
+    /// Brings the card up to date, and says how long to wait before the next look: 0.3 s in the app; in the
+    /// background, until just before the next line (at most 1 s), which keeps LINER. nearly idle there.
+    @discardableResult
+    private func tick() -> Double {
+        guard let player = PlaybackCoordinator.shared else { return 1 }
+        guard let current = player.current else { stop(); return 1 }
+        // A song change we weren't told about — including the music simply moving on to the next song.
+        if current.id != itemID { itemStarted(current); return 0.3 }
         // Swiped away on the Lock Screen: leave it gone until the next song starts in the app.
-        if let a = activity, a.activityState == .dismissed || a.activityState == .ended { activity = nil }
+        if let a = activity, a.activityState == .dismissed || a.activityState == .ended {
+            LiveLyricsLog.add("Card \(a.activityState == .dismissed ? "dismissed" : "ended") by iOS or by you")
+            activity = nil
+        }
         keepAwake(player)
-        guard activity != nil else { return }
-        let i = lyrics?.activeIndex(at: player.currentTime + 0.3) ?? -1
-        let state = makeState(index: i, playing: player.isPlaying)
-        // A heartbeat every 10 s even when nothing changed, which also keeps the card from being marked stale.
-        guard state != lastState || Date.now.timeIntervalSince(lastSent) > 10 else { return }
+        LiveLyricsLog.heartbeat(keepAlive: keepAlive.isRunning, playing: player.isPlaying, lastUpdate: lastDelivered)
+        guard activity != nil else { return 1 }
+        let time = playhead(player)
+        let i = lyrics?.activeIndex(at: time + 0.3) ?? -1
+        var state = makeState(index: i, playing: player.isPlaying)
+        if player.isPlaying, player.duration > 0 {
+            let start = Date.now.addingTimeInterval(-time)
+            if let t = timing, t.item == itemID, abs(t.start.timeIntervalSince(start)) < 1.5 {
+                state.songStart = t.start; state.songEnd = t.end
+            } else {
+                timing = (start, start.addingTimeInterval(player.duration), itemID ?? "")
+                state.songStart = start; state.songEnd = timing?.end
+            }
+        } else {
+            timing = nil
+        }
+        // Due times of the next line, for the stale date and the next look.
+        let untilNext: Double? = lyrics.flatMap { l in
+            l.lines.indices.contains(i + 1) ? max(0, l.lines[i + 1].time - (time + 0.3)) : nil
+        }
+        let wait: Double = UIApplication.shared.applicationState == .background
+            ? min(1, max(0.15, (untilNext ?? 1) - 0.05)) : 0.3
+        // A heartbeat every 30 s even when nothing changed.
+        guard state != lastState || Date.now.timeIntervalSince(lastSent) > 30 else { return wait }
         lastState = state
-        send(state)
+        // Stale a few seconds after the next line is due, so iOS dims a lyric that froze rather than leave it up.
+        let stale: Date? = player.isPlaying ? Date.now.addingTimeInterval((untilNext ?? max(30, player.duration - time)) + 4) : nil
+        send(state, stale: stale)
+        return wait
     }
 
-    /// Apple Music songs play outside LINER., so iOS would freeze us in the background: silence keeps us awake,
-    /// also for a while after a pause so a resume from the Lock Screen is noticed.
+    /// Where the song is. Trusts the player whenever its position moves (or after a seek, a pause or a new song);
+    /// while it plays but the reported position stands still, carries on by the clock instead.
+    private func playhead(_ player: PlaybackCoordinator) -> Double {
+        let reported = player.currentTime
+        let now = Date.now
+        let item = itemID ?? ""
+        defer { lastReported = reported }
+        guard let a = anchor, a.item == item, a.seek == player.seekGeneration, player.isPlaying else {
+            anchor = (reported, now, item, player.seekGeneration)
+            return reported
+        }
+        if reported != lastReported {
+            anchor = (reported, now, item, player.seekGeneration)
+            return reported
+        }
+        let predicted = a.time + now.timeIntervalSince(a.at)
+        return player.duration > 0 ? min(predicted, player.duration) : predicted
+    }
+
+    /// Apple Music songs play outside LINER., so iOS would freeze us in the background: silence keeps us awake
+    /// while the card is up, also for a while after a pause so a resume from the Lock Screen is noticed.
     private func keepAwake(_ player: PlaybackCoordinator) {
         if player.isPlaying { pausedSince = nil } else if pausedSince == nil { pausedSince = .now }
         let recentlyPaused = pausedSince.map { Date.now.timeIntervalSince($0) < 15 * 60 } ?? true
-        if player.engine == .music && recentlyPaused { keepAlive.start() } else { keepAlive.stop() }
+        if player.engine == .music && recentlyPaused && activity != nil { keepAlive.start() } else { keepAlive.stop() }
     }
 
     private func makeState(index i: Int, playing: Bool) -> LyricsActivityAttributes.ContentState {
@@ -96,11 +168,15 @@ final class LyricsLiveActivityController {
             previous: line(i - 1), current: line(i), next: i < 0 ? line(0) : line(i + 1), isPlaying: playing)
     }
 
-    private func send(_ state: LyricsActivityAttributes.ContentState) {
+    private func send(_ state: LyricsActivityAttributes.ContentState, stale: Date?) {
         queued = state
+        queuedStale = stale
         lastSent = .now
         // An update that hasn't come back in 3 s is stuck: stop waiting for it, so the card keeps moving.
-        if sending && Date.now.timeIntervalSince(sendStarted) > 3 { sending = false }
+        if sending && Date.now.timeIntervalSince(sendStarted) > 3 {
+            sending = false
+            LiveLyricsLog.add("An update got stuck for 3 s; sending the next one anyway")
+        }
         guard !sending, let activity else { return }
         sending = true
         sender += 1
@@ -110,7 +186,8 @@ final class LyricsLiveActivityController {
             while let next = queued, me == sender {
                 queued = nil
                 sendStarted = .now
-                await box.update(Self.content(next))
+                await box.update(Self.content(next, stale: queuedStale))
+                lastDelivered = .now
             }
             if me == sender { sending = false }
         }
@@ -124,6 +201,8 @@ final class LyricsLiveActivityController {
         lastState = nil
         itemID = nil
         queued = nil
+        anchor = nil
+        timing = nil
         if let a = activity { activity = nil; Self.end(a) }
         // End any left over from a previous launch.
         for a in Activity<LyricsActivityAttributes>.activities { Self.end(a) }
@@ -131,10 +210,10 @@ final class LyricsLiveActivityController {
 }
 
 extension LyricsLiveActivityController {
-    /// Lowest relevance, so when the system's Now Playing is also live it gets the Dynamic Island, not us. Stale
-    /// after 45 s without news (the heartbeat is every 10 s), so a card that can't update says so.
-    nonisolated static func content(_ state: LyricsActivityAttributes.ContentState) -> ActivityContent<LyricsActivityAttributes.ContentState> {
-        ActivityContent(state: state, staleDate: .now.addingTimeInterval(45), relevanceScore: 0)
+    /// Lowest relevance, so when the system's Now Playing is also live it gets the Dynamic Island, not us. The
+    /// stale date is when the card should have heard about the next line (nil while paused).
+    nonisolated static func content(_ state: LyricsActivityAttributes.ContentState, stale: Date?) -> ActivityContent<LyricsActivityAttributes.ContentState> {
+        ActivityContent(state: state, staleDate: stale, relevanceScore: 0)
     }
 
     /// Ends an activity off the main actor.
@@ -150,62 +229,5 @@ struct ActivityBox: @unchecked Sendable {
 
     nonisolated func update(_ content: ActivityContent<LyricsActivityAttributes.ContentState>) async {
         await activity.update(content)
-    }
-}
-
-/// Plays silence, mixed with other audio, so LINER. keeps running in the background while Apple Music songs
-/// play in the system player (it never interrupts the music or takes over Now Playing).
-@MainActor
-final class SilentKeepAlive {
-    private var engine: AVAudioEngine?
-
-    private var observers: [NSObjectProtocol] = []
-
-    func start() {
-        // An interruption (a call, Siri) or a route change (AirPods) stops the engine: start a fresh one.
-        if let e = engine, !e.isRunning { e.stop(); engine = nil }
-        guard engine == nil, PlaybackCoordinator.shared?.engine == .music else { return }
-        observe()
-        let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
-        try? session.setActive(true)
-        let e = AVAudioEngine()
-        let player = AVAudioPlayerNode()
-        e.attach(player)
-        let format = e.mainMixerNode.outputFormat(forBus: 0)
-        e.connect(player, to: e.mainMixerNode, format: format)
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(format.sampleRate)) else { return }
-        buffer.frameLength = buffer.frameCapacity   // zero-filled: silence
-        player.scheduleBuffer(buffer, at: nil, options: .loops)
-        e.mainMixerNode.outputVolume = 0
-        do { try e.start(); player.play(); engine = e } catch { engine = nil }
-    }
-
-    private func observe() {
-        guard observers.isEmpty else { return }
-        let center = NotificationCenter.default
-        for name in [AVAudioSession.interruptionNotification, Notification.Name.AVAudioEngineConfigurationChange] {
-            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { @Sendable _ in
-                MainActor.assumeIsolated { SilentKeepAlive.restartIfNeeded() }
-            })
-        }
-    }
-
-    /// The running keep-alive, for the notification hooks.
-    private static weak var current: SilentKeepAlive?
-    private static func restartIfNeeded() {
-        guard let k = current, let e = k.engine, !e.isRunning else { return }
-        k.engine = nil
-        k.start()
-    }
-
-    init() { Self.current = self }
-
-    func stop() {
-        guard let e = engine else { return }
-        e.stop()
-        engine = nil
-        // Back to the normal (non-mixing) session for our own player.
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
     }
 }

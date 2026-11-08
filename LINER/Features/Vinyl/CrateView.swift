@@ -7,6 +7,8 @@ import SwiftUI
 struct CrateView: View {
     /// Opens Settings from the crate's header.
     var onSettings: () -> Void = {}
+    /// Starts a new mood playlist from the crate's header.
+    var onMood: () -> Void = {}
     @Environment(LibraryService.self) private var library
     @Query(filter: #Predicate<AlbumNote> { $0.pinned }, sort: \AlbumNote.pinnedAt) private var pins: [AlbumNote]
     @Query(sort: \Mixtape.createdAt, order: .reverse) private var mixtapes: [Mixtape]
@@ -62,6 +64,15 @@ struct CrateView: View {
 
     // MARK: Pieces
 
+    private func capsuleButton(_ symbol: String, _ label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 17, weight: .medium)).foregroundStyle(.white)
+                .frame(width: 42, height: 42).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+
     private var background: some View {
         ZStack {
             Color.black
@@ -83,17 +94,23 @@ struct CrateView: View {
                 Text("Vinyl Mode").linerLabel(size: 10)
             }
             Spacer()
-            // Tap to turn Vinyl Mode off; double-tap for the Listening Room.
-            Toggle("Vinyl Mode", isOn: $vinylMode).labelsHidden()
-                .allowsHitTesting(false)
-                .contentShape(Rectangle())
-                .onTapGesture(count: 2) { taps += 1; room = true }
-                .onTapGesture { withAnimation(.liner) { vinylMode = false } }
-                .accessibilityLabel("Vinyl Mode")
-                .accessibilityHint("Turn off to go back to the normal Home. Double-tap with two taps for the Listening Room.")
-                .accessibilityAction(named: "Listening Room") { room = true }
-            GlassCircleButton(systemImage: "gearshape", label: "Settings", size: 44, action: onSettings)
-                .padding(.leading, 8)
+            // Mood, Vinyl Mode (lit while on: tap to go back to the normal Home, double-tap for the Listening Room)
+            // and Settings in one capsule.
+            HStack(spacing: 2) {
+                capsuleButton("sparkles", "New mood playlist", action: onMood)
+                Image(systemName: "record.circle.fill").font(.system(size: 17, weight: .medium)).foregroundStyle(.white)
+                    .frame(width: 42, height: 42).contentShape(Rectangle())
+                    .onTapGesture(count: 2) { taps += 1; room = true }
+                    .onTapGesture { withAnimation(.liner) { vinylMode = false } }
+                    .accessibilityElement()
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityLabel("Turn off Vinyl Mode")
+                    .accessibilityAction { withAnimation(.liner) { vinylMode = false } }
+                    .accessibilityAction(named: "Listening Room") { room = true }
+                capsuleButton("gearshape", "Settings", action: onSettings)
+            }
+            .padding(.horizontal, 4)
+            .glassEffect(.regular.interactive(), in: .capsule)
         }
     }
 
@@ -191,7 +208,7 @@ struct CrateView: View {
     /// the needle sound as it lands.
     private func putOn(_ r: VinylRecord) {
         taps += 1
-        PlaybackCoordinator.shared?.play(r.tracks)
+        PlaybackCoordinator.shared?.play(r.tracks, openPlayer: false)
         Task { await Task.yield(); playing = r }
     }
 

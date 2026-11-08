@@ -5,7 +5,8 @@ struct HomeView: View {
     @Environment(LibraryService.self) private var library
     @Namespace private var zoom
     @State private var showSettings = false
-    @State private var showMoods = false
+    @State private var buildingMood = false
+    @State private var madeMood: MoodPlaylist?
     @AppStorage("vinylMode") private var vinylMode = false
     /// What's on screen, following `vinylMode` with an animation (the switch can come from anywhere: the
     /// crate's toggle, Settings, the player menu or a double tap on Home).
@@ -15,7 +16,7 @@ struct HomeView: View {
         NavigationStack {
             ZStack {
                 if showCrate {
-                    CrateView(onSettings: { showSettings = true }).transition(.crateIn)
+                    CrateView(onSettings: { showSettings = true }, onMood: { buildingMood = true }).transition(.crateIn)
                 } else {
                     home.transition(.homeOut)
                 }
@@ -25,6 +26,8 @@ struct HomeView: View {
             }
             .sensoryFeedback(.impact(weight: .medium), trigger: showCrate)
             .sheet(isPresented: $showSettings) { SettingsView() }
+            .sheet(isPresented: $buildingMood) { MoodBuilderSheet { madeMood = $0 } }
+            .navigationDestination(item: $madeMood) { MoodPlaylistDetail(playlist: $0) }
             .libraryDestinations(zoom)
         }
     }
@@ -38,7 +41,7 @@ struct HomeView: View {
                 }
                 .padding(.top, 8)
 
-                PinnedCarousel()
+                PinnedGrid()
                 HomeShelves()
 
                 Text("Recently Added").font(.sectionTitle)
@@ -59,15 +62,11 @@ struct HomeView: View {
         }
         .background(Palette.background)
         .refreshable { await library.refresh() }
-        .sheet(isPresented: $showMoods) { MoodPlaylistsSheet() }
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Mood Playlists", systemImage: "sparkles") { showMoods = true }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
+            // Mood, Vinyl Mode and Settings share one glass capsule.
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button("New mood playlist", systemImage: "sparkles") { buildingMood = true }
                 Button("Vinyl Mode", systemImage: "record.circle") { withAnimation(.liner) { vinylMode = true } }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
                 Button("Settings", systemImage: "gearshape") { showSettings = true }
             }
         }

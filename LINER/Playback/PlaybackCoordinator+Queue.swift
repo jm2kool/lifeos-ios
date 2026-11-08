@@ -28,4 +28,14 @@ extension PlaybackCoordinator {
             q.replaceSubrange((i + 1)..., with: upcoming)
         }
     }
+
+    /// Settings → Listening → Open the player when a song starts.
+    static var opensPlayer: Bool { UserDefaults.standard.object(forKey: "openPlayerOnPlay") as? Bool ?? true }
+
+    static func explain(_ error: Error, _ item: QueueItem) -> String {
+        if item.song?.isCloudOnly == true || item.song?.isCatalog == true {
+            return "Couldn't stream “\(item.title)” from Apple Music, either in LINER. or through the Music app. Check your connection and that your Apple Music subscription is active; if it keeps happening, try Settings → Recalibrate Apple Music."
+        }
+        return "Couldn't play “\(item.title)”: \(error.localizedDescription)"
+    }
 }

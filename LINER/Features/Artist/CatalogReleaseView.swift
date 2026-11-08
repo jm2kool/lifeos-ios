@@ -35,6 +35,10 @@ struct CatalogReleaseView: View {
                     .disabled(list.isEmpty)
                     .padding(.vertical, 6)
                 if loading && tracks.isEmpty { ProgressView().padding(30) }
+                if !loading && tracks.isEmpty {
+                    Text("Apple Music isn't listing the songs on this release yet. Try again later, or search for it.")
+                        .font(.footnote).foregroundStyle(Palette.secondary).multilineTextAlignment(.center).padding(24)
+                }
                 VStack(spacing: 0) {
                     ForEach(Array(list.enumerated()), id: \.offset) { i, song in
                         row(song, number: tracks[i].trackNumber > 0 ? tracks[i].trackNumber : i + 1) { player.play(songs: list, startAt: i) }
@@ -43,7 +47,8 @@ struct CatalogReleaseView: View {
                 }
                 .padding(.horizontal, 16)
                 if let date = release.releaseDate {
-                    Text("Released \(date.formatted(date: .long, time: .omitted)) · \(list.reduce(0) { $0 + $1.duration }.minutesLabel)")
+                    let length = list.reduce(0) { $0 + $1.duration }
+                    Text("Released \(date.formatted(date: .long, time: .omitted))" + (length > 0 ? " · \(length.minutesLabel)" : ""))
                         .font(.footnote).foregroundStyle(Palette.label).frame(maxWidth: .infinity, alignment: .leading).padding(16)
                 }
             }
@@ -51,6 +56,15 @@ struct CatalogReleaseView: View {
         }
         .background(Palette.background)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Add to Library", systemImage: "plus") {
+                    AppleCatalog.addToLibrary(String(release.id)) { ok in
+                        player.notice = ok ? "Added “\(release.title)” to your library." : "Couldn't add “\(release.title)” to your library."
+                    }
+                }
+            }
+        }
         .task(id: release.id) {
             tracks = await AppleCatalog.tracks(of: release)
             loading = false
@@ -74,6 +88,7 @@ struct CatalogReleaseView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contextMenu { CatalogSongMenu(song: song) }
     }
 }
 

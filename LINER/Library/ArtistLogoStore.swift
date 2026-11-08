@@ -23,10 +23,32 @@ final class ArtistLogoStore: @unchecked Sendable {
 
     func cached(_ name: String) -> UIImage? { memory.object(forKey: MediaKey.normalise(name) as NSString) }
 
-    /// Whether we already know there's no logo (so the UI can skip a loading state).
+    /// Whether we already know there's no logo (so the UI can skip a loading state). For a collaboration that
+    /// means no logo of its own and no combined one either.
     func knownMissing(_ name: String) -> Bool {
-        guard let d = lookups.object(forKey: "miss.\(MediaKey.normalise(name))") as? Date else { return false }
-        return Date.now.timeIntervalSince(d) < 7 * 86_400
+        let key = MediaKey.normalise(name)
+        func missed(_ k: String) -> Bool {
+            guard let d = lookups.object(forKey: k) as? Date else { return false }
+            return Date.now.timeIntervalSince(d) < 7 * 86_400
+        }
+        guard missed("miss.\(key)") else { return false }
+        return Self.collaborators(name).count < 2 || missed("comboMiss.\(key)")
+    }
+
+    /// The artists in a collaboration credit ("Drake & PARTYNEXTDOOR", "A x B", "A, B and C", "A feat. B"), or
+    /// just the name when it's one artist.
+    static func collaborators(_ name: String) -> [String] {
+        let pattern = #"\s+(?:&|\+|x|×|and|with|feat\.?|ft\.?|featuring|vs\.?)\s+|\s*,\s*"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return [name] }
+        let ns = name as NSString
+        var parts: [String] = [], last = 0
+        for m in regex.matches(in: name, range: NSRange(location: 0, length: ns.length)) {
+            parts.append(ns.substring(with: NSRange(location: last, length: m.range.location - last)))
+            last = m.range.location + m.range.length
+        }
+        parts.append(ns.substring(from: last))
+        let clean = parts.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        return clean.count >= 2 && clean.count <= 3 ? clean : [name]
     }
 
     @concurrent
@@ -35,14 +57,74 @@ final class ArtistLogoStore: @unchecked Sendable {
         guard !key.isEmpty else { return nil }
         if let hit = memory.object(forKey: key as NSString) { return hit }
         let file = folder.appending(path: "\(key).png")
+        let parts = Self.collaborators(name)
         if let data = try? Data(contentsOf: file), let img = UIImage(data: data) {
             memory.setObject(img, forKey: key as NSString)
             let age = (try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate).map { Date.now.timeIntervalSince($0) } ?? 0
-            if age > 60 * 86_400 { Task { await self.fetch(name, key: key, file: file) } }   // refresh quietly
+            if age > 60 * 86_400 && parts.count < 2 { Task { await self.fetch(name, key: key, file: file) } }   // refresh quietly
             return img
         }
         if knownMissing(name) { return nil }
-        return await fetch(name, key: key, file: file)
+        // A duo with a logo of its own uses it; otherwise each artist's logo, put together.
+        if let own = await fetch(name, key: key, file: file) { return own }
+        guard parts.count >= 2 else { return nil }
+        var logos: [UIImage] = []
+        for part in parts {
+            guard let l = await logo(for: part) else { break }
+            logos.append(l)
+        }
+        guard logos.count == parts.count, let combined = Self.combine(logos) else {
+            lookups.set(Date.now, forKey: "comboMiss.\(key)")
+            return nil
+        }
+        if let out = combined.pngData() { try? out.write(to: file, options: .atomic) }
+        memory.setObject(combined, forKey: key as NSString)
+        return combined
+    }
+
+    /// Several artists' logos as one: each scaled to the same height, side by side with a thin "&" between; if
+    /// that's too long and thin, stacked instead, each the same width.
+    static func combine(_ logos: [UIImage]) -> UIImage? {
+        guard !logos.isEmpty else { return nil }
+        let height: CGFloat = 160
+        let sized = logos.map { CGSize(width: $0.size.width / max($0.size.height, 1) * height, height: height) }
+        let amp = NSAttributedString(string: "&", attributes: [
+            .font: UIFont.systemFont(ofSize: height * 0.45, weight: .ultraLight), .foregroundColor: UIColor.white,
+        ])
+        let ampSize = amp.size()
+        let gap = height * 0.18
+        let rowWidth = sized.reduce(0) { $0 + $1.width } + CGFloat(logos.count - 1) * (ampSize.width + gap * 2)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        if rowWidth / height <= 7 {
+            return UIGraphicsImageRenderer(size: CGSize(width: rowWidth, height: height), format: format).image { _ in
+                var x: CGFloat = 0
+                for (i, logo) in logos.enumerated() {
+                    if i > 0 {
+                        x += gap
+                        amp.draw(at: CGPoint(x: x, y: (height - ampSize.height) / 2))
+                        x += ampSize.width + gap
+                    }
+                    logo.draw(in: CGRect(origin: CGPoint(x: x, y: 0), size: sized[i]))
+                    x += sized[i].width
+                }
+            }
+        }
+        // Stacked: same width each, the "&" on its own small line between.
+        let width: CGFloat = 600
+        let stacked = logos.map { CGSize(width: width, height: $0.size.height / max($0.size.width, 1) * width) }
+        let total = stacked.reduce(0) { $0 + $1.height } + CGFloat(logos.count - 1) * (ampSize.height + gap)
+        return UIGraphicsImageRenderer(size: CGSize(width: width, height: total), format: format).image { _ in
+            var y: CGFloat = 0
+            for (i, logo) in logos.enumerated() {
+                if i > 0 {
+                    amp.draw(at: CGPoint(x: (width - ampSize.width) / 2, y: y + gap / 2))
+                    y += ampSize.height + gap
+                }
+                logo.draw(in: CGRect(origin: CGPoint(x: 0, y: y), size: stacked[i]))
+                y += stacked[i].height
+            }
+        }
     }
 
     /// Downloads and processes the logo; nil if there isn't one (remembered for a week) or the request failed.

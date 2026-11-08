@@ -9,26 +9,17 @@ struct LINERWidgets: WidgetBundle {
     }
 }
 
-/// Live lyrics on the Lock Screen only: the line being sung, big and serif, with the lines either side dimmed.
-/// iOS gives every Live Activity a Dynamic Island slot and has no way to opt out, so the island versions are
-/// empty and clear, and the activity asks for the lowest priority so the system's own Now Playing takes the island.
+/// Live lyrics on the Lock Screen: the line being sung, big and serif, with the lines either side dimmed. iOS
+/// gives every Live Activity a Dynamic Island too, so that has its own design (`LyricsIsland`); the activity still
+/// asks for the lowest priority, so the system's own Now Playing gets the island first when both are live.
 struct LyricsLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: LyricsActivityAttributes.self) { context in
             LyricsLockScreen(state: context.state, stale: context.isStale)
                 .activityBackgroundTint(Color.black.opacity(0.82))
                 .activitySystemActionForegroundColor(.white)
-        } dynamicIsland: { _ in
-            DynamicIsland {
-                DynamicIslandExpandedRegion(.center) { EmptyView() }
-            } compactLeading: {
-                EmptyView()
-            } compactTrailing: {
-                EmptyView()
-            } minimal: {
-                EmptyView()
-            }
-            .keylineTint(.clear)
+        } dynamicIsland: { context in
+            LyricsIsland.island(context.state)
         }
     }
 }
@@ -58,6 +49,7 @@ struct LyricsLockScreen: View {
                 .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
                 .clipped()
                 .opacity(stale ? 0.4 : 1)
+            ProgressLine(state: state).opacity(0.6)
             if stale {
                 Text("Open \u{201C}LINER.\u{201D} to resume live lyrics").font(.system(size: 10, weight: .semibold)).foregroundStyle(.white.opacity(0.5))
             }

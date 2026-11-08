@@ -112,7 +112,17 @@ struct GatefoldTracks: View {
     var tall = true
     let recordOut: Bool
     let nowPlayingID: String?
+    /// Full Album / Saved Album, for albums.
+    var tracklist: Choice? = nil
     let onPlay: (Int) -> Void
+
+    struct Choice {
+        let savedOnly: Bool
+        let fullAvailable: Bool
+        let fullCount: Int?
+        let savedCount: Int
+        let set: (Bool) -> Void
+    }
 
     var body: some View {
         let u = width / 100
@@ -166,8 +176,30 @@ struct GatefoldTracks: View {
                 Text(record.title).font(.serif(7.4 * u)).lineLimit(1).minimumScaleFactor(0.6)
                 Text(record.artist).font(.system(size: 2.6 * u, weight: .semibold)).tracking(0.65 * u).textCase(.uppercase)
                     .foregroundStyle(Palette.label).lineLimit(1)
+                if let t = tracklist { switcher(t, u) }
             }
         }
+    }
+
+    private func switcher(_ t: Choice, _ u: CGFloat) -> some View {
+        Menu {
+            Button { t.set(false) } label: {
+                let title = t.fullCount.map { "Full Album · \($0) songs" } ?? "Full Album"
+                if !t.savedOnly { Label(title, systemImage: "checkmark") } else { Text(title) }
+            }
+            .disabled(!t.fullAvailable)
+            Button { t.set(true) } label: {
+                let title = "Saved Album · \(t.savedCount) song\(t.savedCount == 1 ? "" : "s")"
+                if t.savedOnly { Label(title, systemImage: "checkmark") } else { Text(title) }
+            }
+        } label: {
+            HStack(spacing: 0.8 * u) {
+                Text(t.savedOnly ? "Saved Album" : "Full Album").font(.system(size: 2.6 * u, weight: .semibold)).tracking(0.65 * u)
+                    .textCase(.uppercase).foregroundStyle(tint)
+                Image(systemName: "chevron.down").font(.system(size: 2.2 * u, weight: .bold)).foregroundStyle(tint)
+            }
+        }
+        .accessibilityLabel("Tracklist: \(t.savedOnly ? "Saved Album" : "Full Album")")
     }
 
     private func sideList(_ side: Side, _ u: CGFloat) -> some View {
