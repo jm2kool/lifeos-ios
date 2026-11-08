@@ -14,5 +14,9 @@ struct LyricsActivityAttributes: ActivityAttributes {
         var current: String
         var next: String
         var isPlaying: Bool
+        /// When the song started and will end, while it plays (nil when paused or unknown). The Dynamic Island
+        /// draws its progress from these, so it moves on its own between updates.
+        var songStart: Date? = nil
+        var songEnd: Date? = nil
     }
 }

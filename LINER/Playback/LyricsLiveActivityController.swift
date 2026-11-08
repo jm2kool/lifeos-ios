@@ -32,6 +32,9 @@ final class LyricsLiveActivityController {
     /// LINER.'s own playhead: the last position the player reported, and when.
     private var anchor: (time: Double, at: Date, item: String, seek: Int)?
     private var lastReported: Double = -1
+    /// The song's start and end as last sent, kept unless the playhead drifts, so the timing alone never
+    /// causes an update.
+    private var timing: (start: Date, end: Date, item: String)?
 
     static var enabled: Bool { UserDefaults.standard.object(forKey: "liveLyrics") as? Bool ?? true }
 
@@ -81,8 +84,20 @@ final class LyricsLiveActivityController {
         if let a = activity, a.activityState == .dismissed || a.activityState == .ended { activity = nil }
         keepAwake(player)
         guard activity != nil else { return }
-        let i = lyrics?.activeIndex(at: playhead(player) + 0.3) ?? -1
-        let state = makeState(index: i, playing: player.isPlaying)
+        let time = playhead(player)
+        let i = lyrics?.activeIndex(at: time + 0.3) ?? -1
+        var state = makeState(index: i, playing: player.isPlaying)
+        if player.isPlaying, player.duration > 0 {
+            let start = Date.now.addingTimeInterval(-time)
+            if let t = timing, t.item == itemID, abs(t.start.timeIntervalSince(start)) < 1.5 {
+                state.songStart = t.start; state.songEnd = t.end
+            } else {
+                timing = (start, start.addingTimeInterval(player.duration), itemID ?? "")
+                state.songStart = start; state.songEnd = timing?.end
+            }
+        } else {
+            timing = nil
+        }
         // A heartbeat every 30 s even when nothing changed, which also keeps the card from being marked stale.
         guard state != lastState || Date.now.timeIntervalSince(lastSent) > 30 else { return }
         lastState = state
@@ -153,6 +168,7 @@ final class LyricsLiveActivityController {
         itemID = nil
         queued = nil
         anchor = nil
+        timing = nil
         if let a = activity { activity = nil; Self.end(a) }
         // End any left over from a previous launch.
         for a in Activity<LyricsActivityAttributes>.activities { Self.end(a) }
