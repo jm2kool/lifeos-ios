@@ -20,7 +20,8 @@ struct GatefoldView: View {
     @State private var tint = Color.white
     @State private var recordOut = false
     @State private var turntable: VinylRecord?
-    @State private var busy = false
+    /// Set as soon as the back button is tapped; the opening stops where it is and the sleeve closes from there.
+    @State private var closing = false
     /// Full Album (as Apple Music lists it, the songs you don't have streamed) or Saved Album, shared with the
     /// album page.
     @AppStorage(AlbumTracklist.storageKey) private var savedOnlyAlbums = ""
@@ -55,12 +56,13 @@ struct GatefoldView: View {
                         .opacity(now.rightOpacity)
                         .position(x: now.right.midX, y: now.right.midY)
                 }
-                chrome(land: land).opacity(stage == .inside ? 1 : 0)
+                if stage == .inside && !closing { chrome(land: land).transition(.opacity) }
             }
             .frame(width: size.width, height: size.height)
         }
         .ignoresSafeArea()
         .statusBarHidden(stage == .inside)
+        .accessibilityAction(.escape) { Task { await close() } }
         .task { await load() }
         .task { await open() }
         .fullScreenCover(item: $turntable, onDismiss: { withAnimation(.liner) { recordOut = false } }) { TurntableView(record: $0, dropIn: true) }
@@ -153,7 +155,6 @@ struct GatefoldView: View {
                 .animation(.liner, value: page)
             }
         }
-        .allowsHitTesting(stage == .inside)
     }
 
     // MARK: Actions
@@ -205,25 +206,27 @@ struct GatefoldView: View {
             settled = true
             return
         }
-        busy = true
         withAnimation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.55)) { stage = .lifted }
         try? await Task.sleep(for: .milliseconds(520))
+        guard !closing else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         withAnimation(.easeInOut(duration: 0.45)) { stage = .opening }
         try? await Task.sleep(for: .milliseconds(430))
+        guard !closing else { return }
         withAnimation(.easeOut(duration: 0.32)) { stage = .flat }
         try? await Task.sleep(for: .milliseconds(300))
+        guard !closing else { return }
         withAnimation(.timingCurve(0.65, 0, 0.25, 1, duration: 0.7)) { stage = .inside }
         try? await Task.sleep(for: .milliseconds(720))
+        guard !closing else { return }
         settled = true
-        busy = false
     }
 
-    /// The same moves backwards, into the crate.
+    /// The same moves backwards, into the crate. Works at any point, even while the sleeve is still opening.
     private func close() async {
-        guard !busy else { return }
-        busy = true
-        if page != 0 { withAnimation(.liner) { page = 0 }; try? await Task.sleep(for: .milliseconds(380)) }
+        guard !closing else { return }
+        closing = true
+        if settled && page != 0 { withAnimation(.liner) { page = 0 }; try? await Task.sleep(for: .milliseconds(380)) }
         settled = false
         if reduceMotion { onClose(); return }
         withAnimation(.timingCurve(0.65, 0, 0.25, 1, duration: 0.6)) { stage = .flat }

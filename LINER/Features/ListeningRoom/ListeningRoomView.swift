@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The Listening Room (double-tap the Vinyl Mode switch): a black turntable and a shelf of your most played
+/// The Listening Room (the sofa button in the crate): a black turntable and a shelf of your most played
 /// records, spines out. Tap a spine and the record comes off the shelf, cover first; tap the cover and it opens
 /// like the gatefold, the record slipping out of the bottom of the tracklist; drag the record onto the
 /// turntable and it drops on and plays, and the sleeve goes back on the shelf, sticking out a little.
@@ -191,12 +191,12 @@ struct ListeningRoomView: View {
             .rotation3DEffect(.degrees(phase == .shelf ? -70 : 0), axis: (x: 0, y: 1, z: 0), perspective: 0.6)
             .contentShape(Rectangle())
             .onTapGesture { openSleeve() }
-            // Comes off the shelf as soon as it's there (no timers to miss).
-            .onAppear { withAnimation(.timingCurve(0.65, 0, 0.25, 1, duration: 0.7)) { phase = .out } }
             .accessibilityLabel(album.title).accessibilityHint(phase == .out ? "Opens the sleeve" : "")
             .position(x: rect.midX, y: rect.midY)
             .zIndex(1)
             .task(id: album.id) {
+                // Comes off the shelf as soon as it's there, and again when one record is swapped for another.
+                if phase == .shelf { withAnimation(.timingCurve(0.65, 0, 0.25, 1, duration: 0.7)) { phase = .out } }
                 cover = CoverOverrides.shared.image(album.id)
                 if cover == nil { cover = await ArtworkCache.shared.image(album: album.id, pixels: 640) }
                 guard let img = cover else { return }
@@ -239,7 +239,7 @@ struct ListeningRoomView: View {
     /// Opens it like the gatefold, then the record slips out of the bottom of the tracklist.
     private func openSleeve() {
         guard held != nil, phase == .out, !stowing else { return }
-        withAnimation(.timingCurve(0.65, 0, 0.25, 1, duration: 0.8)) { phase = .open } completion: {
+        step(0.8, .timingCurve(0.65, 0, 0.25, 1, duration: 0.8)) { phase = .open } then: {
             guard phase == .open, !stowing else { return }
             withAnimation(.timingCurve(0.3, 0, 0.3, 1, duration: 0.55)) { recordOut = true }
         }
@@ -248,7 +248,7 @@ struct ListeningRoomView: View {
     /// Carries the record over the turntable; the deck takes over from there and drops it onto the plain record.
     private func putOn(_ album: Album) {
         guard !flying else { return }
-        withAnimation(.easeInOut(duration: 0.4)) { flying = true; drag = .zero } completion: {
+        step(0.4, .easeInOut(duration: 0.4)) { flying = true; drag = .zero } then: {
             player.play(library.snapshot.songs(album.songIDs).map(QueueItem.library), openPlayer: false)
             dropKey = UUID()
             recordGone = true
@@ -261,9 +261,9 @@ struct ListeningRoomView: View {
         guard held != nil, !stowing else { return }
         stowing = true
         if phase == .open {
-            withAnimation(.easeInOut(duration: 0.3)) { if !playing { recordOut = false }; drag = .zero } completion: {
+            step(0.3, .easeInOut(duration: 0.3)) { if !playing { recordOut = false }; drag = .zero } then: {
                 recordGone = true
-                withAnimation(.timingCurve(0.65, 0, 0.25, 1, duration: 0.5)) { phase = .out } completion: { toShelf() }
+                step(0.5, .timingCurve(0.65, 0, 0.25, 1, duration: 0.5)) { phase = .out } then: { toShelf() }
             }
         } else {
             toShelf()
@@ -271,11 +271,26 @@ struct ListeningRoomView: View {
     }
 
     private func toShelf() {
-        withAnimation(.timingCurve(0.65, 0, 0.25, 1, duration: 0.55)) { phase = .shelf } completion: {
+        step(0.55, .timingCurve(0.65, 0, 0.25, 1, duration: 0.55)) { phase = .shelf } then: {
             held = nil; cover = nil; flying = false; recordGone = false; recordOut = false; drag = .zero; stowing = false
             if let next = pending { pending = nil; pull(next) }
         }
     }
+
+    /// One move, then `next` once it's done; a timer backs up SwiftUI's own "finished", which never comes when
+    /// nothing on screen changed (putting a record on), and used to leave the room stuck.
+    private func step(_ seconds: Double, _ animation: Animation, _ changes: () -> Void, then next: @escaping () -> Void) {
+        let once = Once(next)
+        withAnimation(animation, changes) { once.run() }
+        Task { try? await Task.sleep(for: .seconds(seconds + 0.1)); once.run() }
+    }
+}
+
+/// Runs its closure the first time it's asked, and never again.
+@MainActor private final class Once {
+    private var action: (() -> Void)?
+    init(_ action: @escaping () -> Void) { self.action = action }
+    func run() { let a = action; action = nil; a?() }
 }
 
 #Preview {
