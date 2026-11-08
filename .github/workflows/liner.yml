@@ -2,7 +2,7 @@ name: Build LINER IPA
 
 on:
   push:
-    branches: [main, liner, 'claude/**']
+    branches: [main, liner, LINER, 'claude/**']
     paths: ['LINER/**', '.github/workflows/liner.yml']
   workflow_dispatch:
 
