@@ -28,8 +28,7 @@ final class SilentKeepAlive {
             center.addObserver(forName: AVAudioSession.interruptionNotification, object: session, queue: .main) { [weak self] note in
                 let info = note.userInfo ?? [:]
                 let ended = (info[AVAudioSessionInterruptionTypeKey] as? UInt) == AVAudioSession.InterruptionType.ended.rawValue
-                let wasSuspended = (info[AVAudioSessionInterruptionReasonKey] as? UInt) == AVAudioSession.InterruptionReason.appWasSuspended.rawValue
-                MainActor.assumeIsolated { self?.interrupted(ended: ended, wasSuspended: wasSuspended) }
+                MainActor.assumeIsolated { self?.interrupted(ended: ended) }
             },
             center.addObserver(forName: AVAudioSession.routeChangeNotification, object: session, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.restartIfNeeded(reason: "route change") }
@@ -108,13 +107,10 @@ final class SilentKeepAlive {
         }
     }
 
-    private func interrupted(ended: Bool, wasSuspended: Bool) {
+    private func interrupted(ended: Bool) {
         if ended {
             report("Audio interruption ended")
             restartIfNeeded(reason: "interruption ended")
-        } else if wasSuspended {
-            // Delivered late, after LINER. was suspended: the interruption is already over.
-            restartIfNeeded(reason: "late interruption")
         } else {
             isRunning = false
             report("Audio interrupted (call, Siri, an alarm or another app)")
