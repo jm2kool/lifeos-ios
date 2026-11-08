@@ -7,6 +7,10 @@ import SwiftUI
 struct PlayerVinyl: View {
     let item: QueueItem
     var side = "A"
+    /// The record starts held above the deck and drops onto a plain record waiting there ("Put it on").
+    var dropIn = false
+    /// How long it hovers before it drops.
+    var dropDelay = 0.25
     @Environment(PlaybackCoordinator.self) private var player
     @Environment(LibraryService.self) private var library
     @State private var spin = SpinState()
@@ -16,6 +20,10 @@ struct PlayerVinyl: View {
     @State private var ticks = 0
     @State private var drops = 0
     @State private var lyrics: Lyrics?
+    @State private var dropped = false
+    @State private var settle = false
+
+    private var landed: Bool { !dropIn || dropped }
 
     private enum Drag: Equatable {
         case arm(Double)
@@ -52,6 +60,7 @@ struct PlayerVinyl: View {
         .sensoryFeedback(.impact(weight: .medium), trigger: drops)
         .onChange(of: player.isPlaying) { _, playing in if playing { arm.parked = false } }
         .onChange(of: item.id) { arm.sample(0) }
+        .task { await drop() }
         .task(id: item.id) {
             if case .local(let t) = item, let url = t.coverURL { cover = try? Data(contentsOf: url) } else { cover = nil }
             lyrics = nil
@@ -70,7 +79,7 @@ struct PlayerVinyl: View {
         let duration = max(player.duration, 1)
         let time = arm.time(at: date, player: player)
         let scratch: Double = if case .scratch(_, let delta) = drag { delta } else { 0 }
-        let angle = spin.angle(at: date, playing: player.isPlaying && !isScratching) + scratch
+        let angle = spin.angle(at: date, playing: player.isPlaying && !isScratching && landed) + scratch
         let armAngle: Double = {
             if case .arm(let a) = drag { arm.set(a); return a }
             return arm.angle(at: date, target: arm.parked ? d.rest : d.angle(progress: time / duration))
@@ -79,10 +88,19 @@ struct PlayerVinyl: View {
         return ZStack {
             plinth(d)
             Canvas { ctx, _ in TonearmDrawing.platter(&ctx, deck: d, spin: angle) }
+            if dropIn {
+                RecordDisc(record: record, side: side, plain: true)
+                    .frame(width: d.radius * 2, height: d.radius * 2)
+                    .position(d.center)
+            }
             RecordDisc(record: record, side: side)
                 .frame(width: d.radius * 2, height: d.radius * 2)
                 .rotationEffect(.radians(angle))
                 .overlay(RecordSheen())
+                .scaleEffect(landed ? (settle ? 0.975 : 1) : 1.2)
+                .shadow(color: .black.opacity(0.75), radius: landed ? 4 : 26, y: landed ? 2 : 22)
+                .animation(.easeIn(duration: 0.22), value: dropped)
+                .animation(.spring(response: 0.18, dampingFraction: 0.45), value: settle)
                 .position(d.center)
             if let lyrics {
                 let i = lyrics.activeIndex(at: time + 0.25) ?? -1
@@ -96,6 +114,19 @@ struct PlayerVinyl: View {
                 .allowsHitTesting(false)
             readout(d, duration: duration, armAngle: armAngle, time: time)
         }
+    }
+
+    /// Held above the plain record for a moment, then dropped: a little squash, a bounce, the needle sound.
+    private func drop() async {
+        guard dropIn, !dropped else { return }
+        try? await Task.sleep(for: .seconds(dropDelay))
+        dropped = true
+        try? await Task.sleep(for: .milliseconds(220))
+        settle = true
+        drops += 1
+        VinylSounds.shared.needleDrop()
+        try? await Task.sleep(for: .milliseconds(120))
+        settle = false
     }
 
     private func plinth(_ d: DeckGeometry) -> some View {

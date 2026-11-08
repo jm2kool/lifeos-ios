@@ -6,6 +6,8 @@ import SwiftUI
 struct RecordDisc: View {
     let record: VinylRecord
     let side: String
+    /// A plain black record with a blank label: what waits on the turntable before yours drops onto it.
+    var plain = false
 
     var body: some View {
         GeometryReader { geo in
@@ -29,7 +31,12 @@ struct RecordDisc: View {
                     ctx.stroke(Path(ellipseIn: CGRect(x: c.x - r + 1, y: c.y - r + 1, width: r * 2 - 2, height: r * 2 - 2)),
                                with: .color(.white.opacity(0.12)), lineWidth: 1)
                 }
-                label(d * 0.36)
+                if plain {
+                    Circle().fill(Color(white: 0.11)).frame(width: d * 0.36)
+                        .overlay(Circle().stroke(.black.opacity(0.6), lineWidth: 2))
+                } else {
+                    label(d * 0.36)
+                }
                 Circle().fill(Color.black).frame(width: d * 0.025)
                     .overlay(Circle().stroke(.white.opacity(0.25), lineWidth: 0.5))
             }

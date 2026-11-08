@@ -6,6 +6,8 @@ import SwiftUI
 /// play, drag it to scratch; swipe up on it (or the flip button) for Side B.
 struct TurntableView: View {
     let record: VinylRecord
+    /// The record drops onto a plain record waiting on the deck ("Put it on" from the crate or a sleeve).
+    var dropIn = false
     @Environment(PlaybackCoordinator.self) private var player
     @Environment(\.dismiss) private var dismiss
     @State private var landed = false
@@ -35,11 +37,12 @@ struct TurntableView: View {
         .task { startPlaying(sound: false) }
         .onDisappear { VinylSounds.shared.stopCrackle() }
         .statusBarHidden()
+        .keepsScreenAwake()
     }
 
     @ViewBuilder private var deck: some View {
         if let item = mine {
-            PlayerVinyl(item: item, side: side).frame(maxWidth: 440)
+            PlayerVinyl(item: item, side: side, dropIn: dropIn, dropDelay: 0.45).frame(maxWidth: 440)
         } else {
             RecordDisc(record: record, side: side).padding(40).frame(maxWidth: 440)
         }
@@ -81,7 +84,8 @@ struct TurntableView: View {
             player.play(record.tracks, startAt: side == "A" ? 0 : record.tracks.count / 2)
         }
         // From the crate the music and the pop have already started; don't play the pop twice.
-        if sound || !already { VinylSounds.shared.needleDrop() }
+        // With the drop-in, the needle sound comes when the record lands instead.
+        if (sound || !already) && !dropIn { VinylSounds.shared.needleDrop() }
         withAnimation(.spring(response: 0.5, dampingFraction: 0.86)) { landed = true }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }

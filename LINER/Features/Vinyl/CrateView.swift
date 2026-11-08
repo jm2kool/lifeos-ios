@@ -2,7 +2,8 @@ import SwiftData
 import SwiftUI
 
 /// Home in Vinyl Mode: flip through sleeves in 3D (a tick under your finger for each record), the backdrop takes
-/// the colours of the record in front. Tap a sleeve to open it; "Put it on" carries it to the turntable.
+/// the colours of the record in front. Tap an album to open its gatefold sleeve; "Put it on" carries it to the
+/// turntable. Double-tap the Vinyl Mode switch for the Listening Room.
 struct CrateView: View {
     /// Opens Settings from the crate's header.
     var onSettings: () -> Void = {}
@@ -16,6 +17,11 @@ struct CrateView: View {
     @State private var playing: VinylRecord?
     @State private var backdrop: UIImage?
     @State private var taps = 0
+    @State private var gatefold: OpenSleeve?
+    @State private var frames = SleeveFrames()
+    @State private var room = false
+
+    private struct OpenSleeve: Equatable { let record: VinylRecord; let source: CGRect? }
 
     var body: some View {
         let list = records
@@ -40,9 +46,16 @@ struct CrateView: View {
         }
         .task(id: current?.id) { await loadBackdrop(current) }
         .task { VinylSounds.shared.prepare() }
-        .fullScreenCover(item: $playing) { r in
-            TurntableView(record: r)
+        .overlay {
+            if let g = gatefold {
+                GatefoldView(record: g.record, source: g.source) { gatefold = nil }
+            }
         }
+        .toolbar(gatefold == nil ? .automatic : .hidden, for: .tabBar)
+        .fullScreenCover(item: $playing) { r in
+            TurntableView(record: r, dropIn: true)
+        }
+        .fullScreenCover(isPresented: $room) { ListeningRoomView() }
         .sensoryFeedback(.impact(weight: .medium), trigger: taps)
         .toolbar(.hidden, for: .navigationBar)
     }
@@ -70,9 +83,15 @@ struct CrateView: View {
                 Text("Vinyl Mode").linerLabel(size: 10)
             }
             Spacer()
-            Toggle("Vinyl Mode", isOn: $vinylMode.animation(.liner)).labelsHidden()
+            // Tap to turn Vinyl Mode off; double-tap for the Listening Room.
+            Toggle("Vinyl Mode", isOn: $vinylMode).labelsHidden()
+                .allowsHitTesting(false)
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) { taps += 1; room = true }
+                .onTapGesture { withAnimation(.liner) { vinylMode = false } }
                 .accessibilityLabel("Vinyl Mode")
-                .accessibilityHint("Turn off to go back to the normal Home")
+                .accessibilityHint("Turn off to go back to the normal Home. Double-tap with two taps for the Listening Room.")
+                .accessibilityAction(named: "Listening Room") { room = true }
             GlassCircleButton(systemImage: "gearshape", label: "Settings", size: 44, action: onSettings)
                 .padding(.leading, 8)
         }
@@ -101,6 +120,8 @@ struct CrateView: View {
                     open(r) {
                         VStack(spacing: 6) {
                             SleeveView(record: r, peek: isFront ? 0.32 : 0.12).frame(width: side, height: side)
+                                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frames.rects[r.id] = $0 }
+                                .opacity(gatefold?.record.id == r.id ? 0 : 1)
                             // A soft reflection on the floor.
                             RecordCover(record: r, cornerRadius: 4).frame(width: side, height: side * 0.35, alignment: .top).clipped()
                                 .scaleEffect(x: 1, y: -1).opacity(0.18).blur(radius: 2)
@@ -131,7 +152,7 @@ struct CrateView: View {
     /// A sleeve opens its album, mixtape or mood playlist page; nothing plays until you put it on.
     @ViewBuilder private func open<L: View>(_ r: VinylRecord, @ViewBuilder label: () -> L) -> some View {
         switch r.source {
-        case .album(let a): NavigationLink(value: a, label: label).buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { taps += 1 })
+        case .album: Button(action: { openSleeve(r) }, label: label).buttonStyle(.plain)
         case .mixtape(let m): NavigationLink(value: m, label: label).buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { taps += 1 })
         case .mood(let p): NavigationLink(value: p, label: label).buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { taps += 1 })
         case nil: Button(action: { putOn(r) }, label: label).buttonStyle(.plain)
@@ -156,12 +177,19 @@ struct CrateView: View {
         }
     }
 
+    /// Lifts the sleeve out of the crate and opens it like a gatefold.
+    private func openSleeve(_ r: VinylRecord) {
+        guard gatefold == nil else { return }
+        taps += 1
+        gatefold = OpenSleeve(record: r, source: frames.rects[r.id])
+    }
+
     /// Starts the music first, then slides the turntable up on the next frame, so the queue loading never
-    /// stutters the animation (and the song still starts at once).
+    /// stutters the animation (and the song still starts at once). The record drops onto the deck there, with
+    /// the needle sound as it lands.
     private func putOn(_ r: VinylRecord) {
         taps += 1
         PlaybackCoordinator.shared?.play(r.tracks)
-        VinylSounds.shared.needleDrop()
         Task { await Task.yield(); playing = r }
     }
 
@@ -194,6 +222,13 @@ struct CrateView: View {
             }
         }
     }
+}
+
+/// Where each sleeve sits on screen, so an opened sleeve lifts from its own place. Not observed: it changes
+/// on every frame of a flip and nothing needs to redraw for it.
+@MainActor
+final class SleeveFrames {
+    var rects: [String: CGRect] = [:]
 }
 
 extension VinylRecord {
