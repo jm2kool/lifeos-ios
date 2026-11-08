@@ -28,7 +28,7 @@ final class SilentKeepAlive {
             center.addObserver(forName: AVAudioSession.interruptionNotification, object: session, queue: .main) { [weak self] note in
                 let info = note.userInfo ?? [:]
                 let ended = (info[AVAudioSessionInterruptionTypeKey] as? UInt) == AVAudioSession.InterruptionType.ended.rawValue
-                let wasSuspended = info[AVAudioSessionInterruptionWasSuspendedKey] as? Bool ?? false
+                let wasSuspended = (info[AVAudioSessionInterruptionReasonKey] as? UInt) == AVAudioSession.InterruptionReason.appWasSuspended.rawValue
                 MainActor.assumeIsolated { self?.interrupted(ended: ended, wasSuspended: wasSuspended) }
             },
             center.addObserver(forName: AVAudioSession.routeChangeNotification, object: session, queue: .main) { [weak self] _ in
