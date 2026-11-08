@@ -5,6 +5,12 @@ import Foundation
 /// Live lyrics on the Lock Screen: while something plays, one Live Activity shows the song and the line being
 /// sung, and carries on from song to song (iOS won't let an app start a new one from the background, so it's
 /// never ended between songs). Setting: Settings → Listening → Live lyrics on the Lock Screen.
+///
+/// How it keeps moving: a silent keep-alive keeps LINER. running in the background from the moment the card
+/// appears until it ends (checked every tick, not only on start); the line is worked out from LINER.'s own clock,
+/// re-synced whenever the system player reports a new position, so a player that stops answering in the
+/// background can't freeze it; and the card is only updated when the line, song or play state changes (plus a
+/// slow heartbeat), which keeps well inside iOS's update budget.
 @MainActor
 final class LyricsLiveActivityController {
     static let shared = LyricsLiveActivityController()
@@ -23,6 +29,9 @@ final class LyricsLiveActivityController {
     private var sendStarted = Date.distantPast
     private var lastSent = Date.distantPast
     private var sender = 0
+    /// LINER.'s own playhead: the last position the player reported, and when.
+    private var anchor: (time: Double, at: Date, item: String, seek: Int)?
+    private var lastReported: Double = -1
 
     static var enabled: Bool { UserDefaults.standard.object(forKey: "liveLyrics") as? Bool ?? true }
 
@@ -72,20 +81,39 @@ final class LyricsLiveActivityController {
         if let a = activity, a.activityState == .dismissed || a.activityState == .ended { activity = nil }
         keepAwake(player)
         guard activity != nil else { return }
-        let i = lyrics?.activeIndex(at: player.currentTime + 0.3) ?? -1
+        let i = lyrics?.activeIndex(at: playhead(player) + 0.3) ?? -1
         let state = makeState(index: i, playing: player.isPlaying)
-        // A heartbeat every 10 s even when nothing changed, which also keeps the card from being marked stale.
-        guard state != lastState || Date.now.timeIntervalSince(lastSent) > 10 else { return }
+        // A heartbeat every 30 s even when nothing changed, which also keeps the card from being marked stale.
+        guard state != lastState || Date.now.timeIntervalSince(lastSent) > 30 else { return }
         lastState = state
         send(state)
     }
 
-    /// Apple Music songs play outside LINER., so iOS would freeze us in the background: silence keeps us awake,
-    /// also for a while after a pause so a resume from the Lock Screen is noticed.
+    /// Where the song is. Trusts the player whenever its position moves (or after a seek, a pause or a new song);
+    /// while it plays but the reported position stands still, carries on by the clock instead.
+    private func playhead(_ player: PlaybackCoordinator) -> Double {
+        let reported = player.currentTime
+        let now = Date.now
+        let item = itemID ?? ""
+        defer { lastReported = reported }
+        guard let a = anchor, a.item == item, a.seek == player.seekGeneration, player.isPlaying else {
+            anchor = (reported, now, item, player.seekGeneration)
+            return reported
+        }
+        if reported != lastReported {
+            anchor = (reported, now, item, player.seekGeneration)
+            return reported
+        }
+        let predicted = a.time + now.timeIntervalSince(a.at)
+        return player.duration > 0 ? min(predicted, player.duration) : predicted
+    }
+
+    /// Apple Music songs play outside LINER., so iOS would freeze us in the background: silence keeps us awake
+    /// while the card is up, also for a while after a pause so a resume from the Lock Screen is noticed.
     private func keepAwake(_ player: PlaybackCoordinator) {
         if player.isPlaying { pausedSince = nil } else if pausedSince == nil { pausedSince = .now }
         let recentlyPaused = pausedSince.map { Date.now.timeIntervalSince($0) < 15 * 60 } ?? true
-        if player.engine == .music && recentlyPaused { keepAlive.start() } else { keepAlive.stop() }
+        if player.engine == .music && recentlyPaused && activity != nil { keepAlive.start() } else { keepAlive.stop() }
     }
 
     private func makeState(index i: Int, playing: Bool) -> LyricsActivityAttributes.ContentState {
@@ -124,6 +152,7 @@ final class LyricsLiveActivityController {
         lastState = nil
         itemID = nil
         queued = nil
+        anchor = nil
         if let a = activity { activity = nil; Self.end(a) }
         // End any left over from a previous launch.
         for a in Activity<LyricsActivityAttributes>.activities { Self.end(a) }
@@ -132,9 +161,9 @@ final class LyricsLiveActivityController {
 
 extension LyricsLiveActivityController {
     /// Lowest relevance, so when the system's Now Playing is also live it gets the Dynamic Island, not us. Stale
-    /// after 45 s without news (the heartbeat is every 10 s), so a card that can't update says so.
+    /// after 2 minutes without news (the heartbeat is every 30 s), so a card that really can't update says so.
     nonisolated static func content(_ state: LyricsActivityAttributes.ContentState) -> ActivityContent<LyricsActivityAttributes.ContentState> {
-        ActivityContent(state: state, staleDate: .now.addingTimeInterval(45), relevanceScore: 0)
+        ActivityContent(state: state, staleDate: .now.addingTimeInterval(120), relevanceScore: 0)
     }
 
     /// Ends an activity off the main actor.
@@ -150,62 +179,5 @@ struct ActivityBox: @unchecked Sendable {
 
     nonisolated func update(_ content: ActivityContent<LyricsActivityAttributes.ContentState>) async {
         await activity.update(content)
-    }
-}
-
-/// Plays silence, mixed with other audio, so LINER. keeps running in the background while Apple Music songs
-/// play in the system player (it never interrupts the music or takes over Now Playing).
-@MainActor
-final class SilentKeepAlive {
-    private var engine: AVAudioEngine?
-
-    private var observers: [NSObjectProtocol] = []
-
-    func start() {
-        // An interruption (a call, Siri) or a route change (AirPods) stops the engine: start a fresh one.
-        if let e = engine, !e.isRunning { e.stop(); engine = nil }
-        guard engine == nil, PlaybackCoordinator.shared?.engine == .music else { return }
-        observe()
-        let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
-        try? session.setActive(true)
-        let e = AVAudioEngine()
-        let player = AVAudioPlayerNode()
-        e.attach(player)
-        let format = e.mainMixerNode.outputFormat(forBus: 0)
-        e.connect(player, to: e.mainMixerNode, format: format)
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(format.sampleRate)) else { return }
-        buffer.frameLength = buffer.frameCapacity   // zero-filled: silence
-        player.scheduleBuffer(buffer, at: nil, options: .loops)
-        e.mainMixerNode.outputVolume = 0
-        do { try e.start(); player.play(); engine = e } catch { engine = nil }
-    }
-
-    private func observe() {
-        guard observers.isEmpty else { return }
-        let center = NotificationCenter.default
-        for name in [AVAudioSession.interruptionNotification, Notification.Name.AVAudioEngineConfigurationChange] {
-            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { @Sendable _ in
-                MainActor.assumeIsolated { SilentKeepAlive.restartIfNeeded() }
-            })
-        }
-    }
-
-    /// The running keep-alive, for the notification hooks.
-    private static weak var current: SilentKeepAlive?
-    private static func restartIfNeeded() {
-        guard let k = current, let e = k.engine, !e.isRunning else { return }
-        k.engine = nil
-        k.start()
-    }
-
-    init() { Self.current = self }
-
-    func stop() {
-        guard let e = engine else { return }
-        e.stop()
-        engine = nil
-        // Back to the normal (non-mixing) session for our own player.
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
     }
 }

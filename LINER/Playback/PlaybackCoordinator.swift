@@ -34,7 +34,7 @@ final class PlaybackCoordinator {
     @ObservationIgnored private var listened: Double = 0
     @ObservationIgnored private var lastTick: Date?
     @ObservationIgnored private var settleUntil = Date.distantPast
-    private var settling: Bool { Date.now < settleUntil }
+    private var settling: Bool { Date.now < settleUntil || music.preparing }
 
     static weak var shared: PlaybackCoordinator?
 
@@ -152,7 +152,7 @@ final class PlaybackCoordinator {
 
     private static func explain(_ error: Error, _ item: QueueItem) -> String {
         if item.song?.isCloudOnly == true || item.song?.isCatalog == true {
-            return "Couldn't stream “\(item.title)” from Apple Music. Check your connection; if it keeps happening, try Settings → Recalibrate Apple Music."
+            return "Couldn't stream “\(item.title)” from Apple Music, either in LINER. or through the Music app. Check your connection and that your Apple Music subscription is active; if it keeps happening, try Settings → Recalibrate Apple Music."
         }
         return "Couldn't play “\(item.title)”: \(error.localizedDescription)"
     }

@@ -62,10 +62,27 @@ enum AppleCatalog {
         return page
     }
 
-    /// A release's tracks, in order.
+    /// A release's tracks, in order. Apple's lookup sometimes returns a release with no songs (new singles,
+    /// streaming-only releases), so it falls back to searching for the release's songs by name.
     static func tracks(of release: Release) async -> [Track] {
-        results(await fetch("lookup", ["id": String(release.id), "entity": "song", "limit": "200"])).compactMap(track)
-            .sorted { ($0.discNumber, $0.trackNumber) < ($1.discNumber, $1.trackNumber) }
+        func ordered(_ t: [Track]) -> [Track] {
+            var seen = Set<Int>()
+            return t.filter { seen.insert($0.id).inserted }.sorted { ($0.discNumber, $0.trackNumber) < ($1.discNumber, $1.trackNumber) }
+        }
+        let looked = results(await fetch("lookup", ["id": String(release.id), "entity": "song", "limit": "200"])).compactMap(track)
+        if !looked.isEmpty { return ordered(looked) }
+        let found = results(await fetch("search", ["term": "\(release.title) \(release.artist)", "entity": "song", "limit": "100"]))
+            .compactMap(track)
+        let onRelease = found.filter { $0.collectionID == release.id }
+        if !onRelease.isEmpty { return ordered(onRelease) }
+        // A single listed under another release: the song with the single's name, by the same artist.
+        guard release.isSingleOrEP else { return [] }
+        let title = MediaKey.normalise(release.title)
+        let lead = MediaKey.normalise(release.artist.components(separatedBy: CharacterSet(charactersIn: "&,")).first ?? release.artist)
+        let named = found.filter {
+            MediaKey.normalise($0.name).hasPrefix(title) && MediaKey.normalise($0.artist).contains(lead)
+        }
+        return Array(ordered(named).prefix(1))
     }
 
     // MARK: Requests
@@ -104,7 +121,7 @@ enum AppleCatalog {
     }
 
     private static func track(_ r: [String: Any]) -> Track? {
-        guard r["wrapperType"] as? String == "track", r["kind"] as? String == "song", let id = r["trackId"] as? Int else { return nil }
+        guard r["wrapperType"] as? String == "track", (r["kind"] as? String ?? "song") == "song", let id = r["trackId"] as? Int else { return nil }
         return Track(id: id, name: r["trackName"] as? String ?? "", artist: r["artistName"] as? String ?? "",
                      album: r["collectionName"] as? String ?? "", collectionID: r["collectionId"] as? Int ?? 0,
                      artwork: artwork(r), duration: Double(r["trackTimeMillis"] as? Int ?? 0) / 1000,
