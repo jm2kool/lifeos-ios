@@ -34,7 +34,16 @@ final class PlaybackCoordinator {
     @ObservationIgnored private var listened: Double = 0
     @ObservationIgnored private var lastTick: Date?
     @ObservationIgnored private var settleUntil = Date.distantPast
-    private var settling: Bool { Date.now < settleUntil || music.preparing }
+    private var settling: Bool { Date.now < settleUntil || music.preparing || awaitingStart }
+    /// A new run was handed to the system player and it hasn't yet said it's playing our song. Until it does
+    /// (or a few seconds pass), its notifications describe the old queue, and acting on them skipped songs —
+    /// shuffling an album used to run through several before one played.
+    @ObservationIgnored private var awaitingStartUntil = Date.distantPast
+    private var awaitingStart: Bool {
+        guard engine == .music, Date.now < awaitingStartUntil else { return false }
+        if music.isPlaying, let id = current?.libraryID, music.nowPlayingID == id { awaitingStartUntil = .distantPast; return false }
+        return true
+    }
 
     static weak var shared: PlaybackCoordinator?
 
@@ -66,18 +75,30 @@ final class PlaybackCoordinator {
 
     // MARK: Starting
 
-    /// Replaces the queue and starts playing.
-    func play(_ items: [QueueItem], startAt: Int = 0, shuffled: Bool = false) {
+    /// Replaces the queue and starts playing; opens the full player too (Settings → Listening), unless the
+    /// caller is a player of its own, like the turntable.
+    func play(_ items: [QueueItem], startAt: Int = 0, shuffled: Bool = false, openPlayer: Bool = true) {
         guard !items.isEmpty else { return }
         unshuffled = items
         shuffle = shuffled
+        if openPlayer && Self.opensPlayer { showFullPlayer = true }
         if shuffled {
             queue = items.shuffled()
+            // Start on a song that plays straight away (a downloaded or imported one) when there is one.
+            if let k = queue.firstIndex(where: startsInstantly) { queue.swapAt(0, k) }
             start(at: 0)
         } else {
             queue = items
             start(at: min(max(0, startAt), items.count - 1))
         }
+    }
+
+    /// Plays without waiting on Apple Music's servers.
+    private func startsInstantly(_ item: QueueItem) -> Bool {
+        guard case .library(let s) = item else { return true }
+        if s.playsInLINER { return true }
+        let mediaItem = library.snapshot.items[s.id]
+        return mediaItem != nil && !MusicEngine.streams(s, item: mediaItem)
     }
 
     func play(songs: [Song], startAt: Int = 0, shuffled: Bool = false) {
@@ -123,6 +144,7 @@ final class PlaybackCoordinator {
             }
             guard !run.isEmpty else { fail("“\(item.title)” isn't in your library any more."); return }
             engine = .music
+            awaitingStartUntil = .now.addingTimeInterval(stream ? 15 : 4)
             music.load(run, items: items, stream: stream, startTime: time) { [weak self] error in
                 guard let self, self.current?.id == item.id else { return }
                 self.fail(Self.explain(error, item))
@@ -146,18 +168,13 @@ final class PlaybackCoordinator {
     }
 
     private func fail(_ message: String) {
+        awaitingStartUntil = .distantPast
         isPlaying = false
         errorMessage = message
     }
 
-    private static func explain(_ error: Error, _ item: QueueItem) -> String {
-        if item.song?.isCloudOnly == true || item.song?.isCatalog == true {
-            return "Couldn't stream “\(item.title)” from Apple Music, either in LINER. or through the Music app. Check your connection and that your Apple Music subscription is active; if it keeps happening, try Settings → Recalibrate Apple Music."
-        }
-        return "Couldn't play “\(item.title)”: \(error.localizedDescription)"
-    }
-
     private func stopAll() {
+        awaitingStartUntil = .distantPast
         finishCurrent()
         music.stop()
         local.stop()
@@ -245,6 +262,8 @@ final class PlaybackCoordinator {
         guard engine == .music, !settling else { return }
         guard let id else { itemEnded(); return }
         if id == current?.libraryID { return }
+        // A song from an earlier queue: nothing to do with ours.
+        guard music.runIDs.contains(id) else { return }
         if repeatMode == .one { start(at: index); return }
         if index + 1 < queue.count, queue[index + 1].libraryID == id {
             finishCurrent()

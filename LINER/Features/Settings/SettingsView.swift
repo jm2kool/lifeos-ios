@@ -18,6 +18,7 @@ struct SettingsView: View {
     @AppStorage("lyricsSource") private var lyricsSource = "lrclib"
     @AppStorage("needleSounds") private var needleSounds = true
     @AppStorage("liveLyrics") private var liveLyrics = true
+    @AppStorage("openPlayerOnPlay") private var openPlayerOnPlay = true
     @AppStorage("recapNotifications") private var recapNotifications = false
     @AppStorage("brandName") private var brandName = ""
     @State private var exportURL: URL?
@@ -38,6 +39,7 @@ struct SettingsView: View {
                 Section {
                     Toggle("Vinyl Mode", isOn: $vinylMode)
                     Toggle("Needle sounds", isOn: $needleSounds).disabled(!vinylMode)
+                    Toggle("Open the player when a song starts", isOn: $openPlayerOnPlay)
                     Toggle("Live lyrics on the Lock Screen", isOn: $liveLyrics)
                         .onChange(of: liveLyrics) { _, on in if !on { LyricsLiveActivityController.shared.stop() } }
                     Picker("Lyrics", selection: $lyricsSource) {

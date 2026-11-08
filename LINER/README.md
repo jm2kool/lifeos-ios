@@ -10,7 +10,7 @@ Install it with Sideloadly using your Apple ID.
 | Artist pages | A Page like Apple Music's (latest release, Top Songs, Albums, Singles & EPs from the Apple Music catalogue via the iTunes Search API, streamed by Apple Music ID — through the Music app's player if LINER.'s own one refuses; singles Apple lists without songs are found by name) and LINER. stats (your history with them) |
 | Artist titles | iOS 27-style stylised names: the artist's logo (TheAudioDB) in white, or genre-matched lettering; pick a style per artist in Settings → Artist titles; pages tinted from the artwork |
 | Playback | Library songs via `applicationQueuePlayer` (iCloud and catalogue songs stream by Apple Music ID, with one automatic retry), imported files via AVPlayer, mixed in one queue; shuffle, repeat, Up Next |
-| Player | Always full-screen artwork aimed at the subject, motion covers or Living Covers behind it, glass controls tinted by the art; swipe the mini player left or right for the next or previous song |
+| Player | Always full-screen artwork aimed at the subject, motion covers or Living Covers behind it, glass controls tinted by the art; swipe the mini player left or right for the next or previous song; opens by itself when you start a song (Settings → Listening) |
 | Lock screen | Animated 3:4 / 1:1 artwork (motion cover or Living Cover); guaranteed for mixtapes, best effort for Apple Music songs |
 | Stats | My LINER.: totals, ranked artists/albums/songs; artist and album pages with your history and ranks |
 | Passports | Song Passport (hearts, moods, notes, connection, Song DNA, favourite moments, saved lyrics); Album Passport (hearts, personal ranking, history, cover) |

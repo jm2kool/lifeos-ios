@@ -21,21 +21,7 @@ enum LyricsIsland {
                 }
             }
             DynamicIslandExpandedRegion(.bottom) {
-                VStack(alignment: .leading, spacing: 6) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(state.current.isEmpty ? "♪" : state.current)
-                            .font(.system(size: 19, weight: .semibold, design: .serif)).lineLimit(2).minimumScaleFactor(0.7)
-                        if !state.next.isEmpty {
-                            Text(state.next).font(.system(size: 13, design: .serif)).foregroundStyle(.white.opacity(0.45)).lineLimit(1)
-                        }
-                    }
-                    .id("\(state.title)|\(state.index)")
-                    .transition(.push(from: .bottom))
-                    ProgressLine(state: state)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 6)
-                .animation(.smooth(duration: 0.5), value: state.index)
+                ExpandedLyrics(state: state)
             }
         } compactLeading: {
             MiniRecord(playing: state.isPlaying).frame(width: 22, height: 22)
@@ -49,6 +35,29 @@ enum LyricsIsland {
             .frame(width: 22, height: 22)
         }
         .keylineTint(.white.opacity(0.4))
+    }
+}
+
+/// The expanded island's lyrics: the line being sung and the next one, sliding up as they change, over the
+/// song's progress.
+private struct ExpandedLyrics: View {
+    let state: LyricsActivityAttributes.ContentState
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(state.current.isEmpty ? "♪" : state.current)
+                    .font(.system(size: 19, weight: .semibold, design: .serif)).lineLimit(2).minimumScaleFactor(0.7)
+                if !state.next.isEmpty {
+                    Text(state.next).font(.system(size: 13, design: .serif)).foregroundStyle(.white.opacity(0.45)).lineLimit(1)
+                }
+            }
+            .id("\(state.title)|\(state.index)")
+            .transition(.push(from: .bottom))
+            ProgressLine(state: state)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 6)
+        .animation(.smooth(duration: 0.5), value: state.index)
     }
 }
 

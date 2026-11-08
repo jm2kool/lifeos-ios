@@ -160,7 +160,7 @@ struct CrateView: View {
     /// stutters the animation (and the song still starts at once).
     private func putOn(_ r: VinylRecord) {
         taps += 1
-        PlaybackCoordinator.shared?.play(r.tracks)
+        PlaybackCoordinator.shared?.play(r.tracks, openPlayer: false)
         VinylSounds.shared.needleDrop()
         Task { await Task.yield(); playing = r }
     }
