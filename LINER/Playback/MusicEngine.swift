@@ -44,6 +44,9 @@ final class MusicEngine {
         guard let item = player.nowPlayingItem else { return nil }
         if let s = run.first(where: { $0.id == item.persistentID }) { return s.id }
         if !item.playbackStoreID.isEmpty, let s = run.first(where: { $0.storeID == item.playbackStoreID }) { return s.id }
+        // Streams are only ever matched by Apple Music ID: going by position could take a song left over from
+        // the Music app's own queue for one of ours.
+        guard !streaming else { return item.persistentID }
         let i = player.indexOfNowPlayingItem
         return run.indices.contains(i) ? run[i].id : item.persistentID
     }
@@ -74,6 +77,8 @@ final class MusicEngine {
         let thisAttempt = attempt
         let next = route == .systemStream ? systemPlayer : appPlayer
         if next !== player { player.stop() }
+        // The system player keeps the Music app's queue; clear it so a queue that doesn't take can't resume it.
+        if route == .systemStream { next.stop() }
         player = next
         player.repeatMode = .none
         player.shuffleMode = .off
@@ -98,7 +103,7 @@ final class MusicEngine {
                     engine.preparing = false
                     if startTime > 0 { engine.player.currentPlaybackTime = startTime }
                     engine.player.play()
-                    if route == .systemStream && engine.tried.contains(.appStream) { Self.streamsViaSystem = true }
+                    await engine.verify(attempt: thisAttempt, route: route, items: items, startTime: startTime, onError: onError)
                 }
             }
         }
@@ -113,6 +118,32 @@ final class MusicEngine {
                 await self.recover(StreamTimeout(), attempt: thisAttempt, items: items, startTime: startTime, onError: onError)
             }
         }
+    }
+
+    /// After a stream starts: make sure it's one of ours. If the player went back to something else (the Music app's
+    /// last song, when Apple Music wouldn't queue this one), stop it and try the next way.
+    private func verify(attempt: Int, route: Route, items: MediaItemIndex, startTime: Double,
+                        onError: @escaping @MainActor @Sendable (Error) -> Void) async {
+        for _ in 0..<6 {
+            try? await Task.sleep(for: .milliseconds(500))
+            guard attempt == self.attempt else { return }
+            guard let item = player.nowPlayingItem else { continue }
+            // Apple sometimes plays another version of the same song (clean, another album): the title counts too.
+            let title = MediaKey.normalise(item.title ?? "")
+            if run.contains(where: { $0.storeID == item.playbackStoreID || $0.id == item.persistentID
+                || (!title.isEmpty && MediaKey.normalise($0.title) == title) }) {
+                if route == .systemStream && tried.contains(.appStream) { Self.streamsViaSystem = true }
+                return
+            }
+            player.pause()
+            preparing = true
+            await recover(WrongSong(), attempt: attempt, items: items, startTime: startTime, onError: onError)
+            return
+        }
+    }
+
+    private struct WrongSong: LocalizedError {
+        var errorDescription: String? { "Apple Music played a different song." }
     }
 
     private struct StreamTimeout: LocalizedError {

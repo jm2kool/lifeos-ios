@@ -70,40 +70,28 @@ struct MoodCover: View {
 struct MoodPlaylistsShelf: View {
     @Query(sort: \MoodPlaylist.createdAt, order: .reverse) private var playlists: [MoodPlaylist]
     @Environment(LibraryService.self) private var library
-    @State private var building = false
-    @State private var made: MoodPlaylist?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Mood Playlists").font(.sectionTitle)
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(alignment: .top, spacing: 14) {
-                    Button { building = true } label: {
-                        VStack(alignment: .leading, spacing: 6) {
-                            RoundedRectangle(cornerRadius: 12).fill(Palette.cardFill).aspectRatio(1, contentMode: .fit)
-                                .overlay { Image(systemName: "sparkles").font(.largeTitle) }
-                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Palette.stroke))
-                            Text("New mood playlist").font(.system(size: 14, weight: .medium))
-                            Text(MoodAI.state == .available ? "Describe a vibe" : "Build a Mood Mix").font(.system(size: 13)).foregroundStyle(Palette.secondary)
-                        }
-                        .frame(width: 150)
-                    }
-                    .buttonStyle(.plain)
-                    ForEach(playlists) { p in
-                        NavigationLink(value: p) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                MoodCover(playlist: p, songs: MoodPlaylistService.songs(p, library: library))
-                                Text(p.name).font(.system(size: 14, weight: .medium)).lineLimit(1)
-                                Text("\(p.trackIDs.count) songs").font(.system(size: 13)).foregroundStyle(Palette.secondary)
+        // New ones are made with the ✨ button next to Vinyl Mode and Settings.
+        if !playlists.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Mood Playlists").font(.sectionTitle)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(alignment: .top, spacing: 14) {
+                        ForEach(playlists) { p in
+                            NavigationLink(value: p) {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    MoodCover(playlist: p, songs: MoodPlaylistService.songs(p, library: library))
+                                    Text(p.name).font(.system(size: 14, weight: .medium)).lineLimit(1)
+                                    Text("\(p.trackIDs.count) songs").font(.system(size: 13)).foregroundStyle(Palette.secondary)
+                                }
+                                .frame(width: 150)
                             }
-                            .frame(width: 150)
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
         }
-        .sheet(isPresented: $building) { MoodBuilderSheet { made = $0 } }
-        .navigationDestination(item: $made) { MoodPlaylistDetail(playlist: $0) }
     }
 }
