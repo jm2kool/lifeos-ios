@@ -18,7 +18,7 @@ Install it with Sideloadly using your Apple ID.
 | Album titles | The album's own title lettering, lifted from its cover with on-device text recognition when it's clean enough (Settings → Covers → Album title logos); plain text otherwise |
 | Editions & pins | Full Album (every song from Apple Music, the ones you don't have streamed) or Saved Album (only your library's songs) per album; your own versions of albums (library + mixtape tracks, custom covers); pins on Home in a grid that fits how many there are; playing an edition shows its cover in the player, the mini player and on the Lock Screen |
 | Mixtapes | Import mp3/m4a/wav/aiff/mp4/mov from Files or "Open in LINER."; covers, motion covers, LRC lyrics |
-| Lyrics | LRCLIB synced lyrics, sing-along view that opens on the line being sung, the current and next line on the player, tap to seek, save lines and moments; live lyrics on the Lock Screen (Live Activity that follows you from song to song, lines slide up as they change, its own clock and a self-checking keep-alive so it doesn't freeze in the background, a Live lyrics log in Settings to see why if it does, and a Dynamic Island with a little record, a progress ring that moves by itself, and the lyric with time left when expanded) |
+| Lyrics | LRCLIB synced lyrics, sing-along view that opens on the line being sung, the current and next line on the player, tap to seek, save lines and moments; live lyrics on the Lock Screen (Live Activity that follows you from song to song, lines slide up as they change, its own clock and a keep-alive adapted from Lyricar (silence at full mixer volume, a 10 s watchdog, a background-task hold while it restarts) so it doesn't freeze in the background, moving on with the music when one song runs into the next, dimming if a line is ever overdue, a Live lyrics log in Settings to see why if it does, and a Dynamic Island with a little record, a progress ring that moves by itself, and the lyric with time left when expanded) |
 | Recaps | In My LINER.: week / month / year from the day you install, story mode, Monday notification |
 | Share | 9:16 still and animated cards to Instagram Stories, Photos or anywhere |
 | Mood playlists | On-device Apple Intelligence recipe + local scoring; Mood Mix without AI; save to Apple Music |
@@ -27,3 +27,5 @@ Install it with Sideloadly using your Apple ID.
 
 Limits of free signing: no MusicKit (MediaPlayer only), re-sign every 7 days. The live lyrics widget extension uses one extra App ID.
 See `PHASE0.md` for the device checks and `CLAUDE.md` for working on the code.
+
+Parts of the live lyrics keep-alive are adapted from [Lyricar](https://github.com/noluyorAbi/lyricar) (Apache 2.0); see `NOTICE`.

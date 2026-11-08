@@ -44,9 +44,16 @@ final class MusicEngine {
         guard let item = player.nowPlayingItem else { return nil }
         if let s = run.first(where: { $0.id == item.persistentID }) { return s.id }
         if !item.playbackStoreID.isEmpty, let s = run.first(where: { $0.storeID == item.playbackStoreID }) { return s.id }
-        // Streams are only ever matched by Apple Music ID: going by position could take a song left over from
+        // Streams are matched by Apple Music ID or, when Apple plays another version of a song (clean, another
+        // album), by title, the next one along first; never by position, which could take a song left over from
         // the Music app's own queue for one of ours.
-        guard !streaming else { return item.persistentID }
+        if streaming {
+            let title = MediaKey.normalise(item.title ?? "")
+            guard !title.isEmpty else { return item.persistentID }
+            let i = max(0, player.indexOfNowPlayingItem)
+            let order = run.indices.sorted { abs($0 - i) < abs($1 - i) }
+            return order.first { MediaKey.normalise(run[$0].title) == title }.map { run[$0].id } ?? item.persistentID
+        }
         let i = player.indexOfNowPlayingItem
         return run.indices.contains(i) ? run[i].id : item.persistentID
     }
