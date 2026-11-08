@@ -67,7 +67,11 @@ struct AlbumDetailView: View {
                     LinearGradient(colors: [.clear, .black], startPoint: UnitPoint(x: 0.5, y: 0.55), endPoint: .bottom)
                 }
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(activeEdition?.title ?? album.title).font(.itemTitle).lineLimit(3)
+                    if let edition = activeEdition {
+                        Text(edition.title).font(.itemTitle).lineLimit(3)
+                    } else {
+                        AlbumTitle(albumID: album.id, title: album.title)
+                    }
                     if let artist = library.snapshot.artist(named: album.artist) {
                         NavigationLink(value: artist) { Text(album.artist).linerLabel(size: 12) }.buttonStyle(.plain)
                     } else {

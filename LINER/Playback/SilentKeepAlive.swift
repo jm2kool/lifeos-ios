@@ -18,23 +18,31 @@ final class SilentKeepAlive {
         wanted = true
         observe()
         if let p = player, p.isPlaying { return }
+        let restarting = player != nil
         let session = AVAudioSession.sharedInstance()
-        if session.category != .playback || !session.categoryOptions.contains(.mixWithOthers) {
-            try? session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+        do {
+            if session.category != .playback || !session.categoryOptions.contains(.mixWithOthers) {
+                try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            }
+            try session.setActive(true)
+        } catch {
+            LiveLyricsLog.add("Keep-alive: audio session refused (\(error.localizedDescription))")
         }
-        try? session.setActive(true)
         if player == nil { player = Self.makePlayer() }
-        guard let p = player else { return }
-        if !p.play() {
+        guard let p = player else { LiveLyricsLog.add("Keep-alive: couldn't make the silent player"); return }
+        var ok = p.play()
+        if !ok {
             // A player that won't resume is replaced with a fresh one.
             player = Self.makePlayer()
-            player?.play()
+            ok = player?.play() ?? false
         }
+        LiveLyricsLog.add(ok ? (restarting ? "Keep-alive restarted" : "Keep-alive on") : "⚠︎ Keep-alive failed to start — iOS can pause LINER. now")
     }
 
     func stop() {
         wanted = false
         guard let p = player else { return }
+        LiveLyricsLog.add("Keep-alive off")
         p.stop()
         player = nil
         // Back to the normal (non-mixing) session for our own player.
@@ -75,7 +83,17 @@ final class SilentKeepAlive {
         for name in names {
             observers.append(center.addObserver(forName: name, object: nil, queue: .main) { @Sendable note in
                 let reset = note.name == AVAudioSession.mediaServicesWereResetNotification
-                MainActor.assumeIsolated { SilentKeepAlive.restartIfNeeded(rebuild: reset) }
+                let what: String? = switch note.name {
+                case AVAudioSession.interruptionNotification:
+                    (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt) == AVAudioSession.InterruptionType.began.rawValue
+                        ? "Audio interrupted (call, Siri or another app)" : "Audio interruption ended"
+                case AVAudioSession.mediaServicesWereResetNotification: "iOS restarted its media services"
+                default: nil
+                }
+                MainActor.assumeIsolated {
+                    if let what { LiveLyricsLog.add(what) }
+                    SilentKeepAlive.restartIfNeeded(rebuild: reset)
+                }
             })
         }
     }

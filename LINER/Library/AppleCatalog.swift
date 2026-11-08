@@ -113,7 +113,7 @@ enum AppleCatalog {
         return match?["artistId"] as? Int
     }
 
-    private static func fetch(_ path: String, _ query: [String: String]) async -> Data? {
+    static func fetch(_ path: String, _ query: [String: String]) async -> Data? {
         var parts = URLComponents(string: "https://itunes.apple.com/\(path)")!
         parts.queryItems = (query.merging(["country": country]) { a, _ in a }).map { URLQueryItem(name: $0.key, value: $0.value) }
         guard let url = parts.url else { return nil }
@@ -124,7 +124,7 @@ enum AppleCatalog {
         return data
     }
 
-    private static func results(_ data: Data?) -> [[String: Any]] {
+    static func results(_ data: Data?) -> [[String: Any]] {
         guard let data, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [] }
         return json["results"] as? [[String: Any]] ?? []
     }
@@ -139,7 +139,7 @@ enum AppleCatalog {
         (r["artworkUrl100"] as? String).flatMap { URL(string: $0.replacingOccurrences(of: "100x100bb", with: "1000x1000bb")) }
     }
 
-    private static func track(_ r: [String: Any]) -> Track? {
+    static func track(_ r: [String: Any]) -> Track? {
         guard r["wrapperType"] as? String == "track", (r["kind"] as? String ?? "song") == "song", let id = r["trackId"] as? Int else { return nil }
         return Track(id: id, name: r["trackName"] as? String ?? "", artist: r["artistName"] as? String ?? "",
                      album: r["collectionName"] as? String ?? "", collectionID: r["collectionId"] as? Int ?? 0,
@@ -149,7 +149,7 @@ enum AppleCatalog {
                      releaseDate: date(r["releaseDate"]))
     }
 
-    private static func release(_ r: [String: Any]) -> Release? {
+    static func release(_ r: [String: Any]) -> Release? {
         guard r["wrapperType"] as? String == "collection", let id = r["collectionId"] as? Int else { return nil }
         return Release(id: id, name: r["collectionName"] as? String ?? "", artist: r["artistName"] as? String ?? "",
                        artwork: artwork(r), releaseDate: date(r["releaseDate"]),

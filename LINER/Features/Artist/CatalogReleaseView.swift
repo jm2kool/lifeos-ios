@@ -56,6 +56,15 @@ struct CatalogReleaseView: View {
         }
         .background(Palette.background)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Add to Library", systemImage: "plus") {
+                    AppleCatalog.addToLibrary(String(release.id)) { ok in
+                        player.notice = ok ? "Added “\(release.title)” to your library." : "Couldn't add “\(release.title)” to your library."
+                    }
+                }
+            }
+        }
         .task(id: release.id) {
             tracks = await AppleCatalog.tracks(of: release)
             loading = false
@@ -79,6 +88,7 @@ struct CatalogReleaseView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contextMenu { CatalogSongMenu(song: song) }
     }
 }
 

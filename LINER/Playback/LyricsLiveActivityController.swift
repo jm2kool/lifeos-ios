@@ -28,6 +28,8 @@ final class LyricsLiveActivityController {
     private var sending = false
     private var sendStarted = Date.distantPast
     private var lastSent = Date.distantPast
+    /// When iOS last accepted an update.
+    private var lastDelivered = Date.now
     private var sender = 0
     /// LINER.'s own playhead: the last position the player reported, and when.
     private var anchor: (time: Double, at: Date, item: String, seek: Int)?
@@ -44,6 +46,7 @@ final class LyricsLiveActivityController {
         itemID = item.id
         song = (item.title, item.artist)
         lyrics = nil
+        LiveLyricsLog.add("Song: \(item.title) — \(item.artist)")
         ensureActivity()
         tick()
         Task {
@@ -61,7 +64,12 @@ final class LyricsLiveActivityController {
         activity = nil
         for a in Activity<LyricsActivityAttributes>.activities { Self.end(a) }
         let state = makeState(index: -1, playing: true)
-        activity = try? Activity.request(attributes: LyricsActivityAttributes(), content: Self.content(state), pushType: nil)
+        do {
+            activity = try Activity.request(attributes: LyricsActivityAttributes(), content: Self.content(state), pushType: nil)
+            LiveLyricsLog.add("Card started")
+        } catch {
+            LiveLyricsLog.add("Couldn't start the card: \(error.localizedDescription)")
+        }
         lastState = state
         startLoop()
     }
@@ -81,8 +89,12 @@ final class LyricsLiveActivityController {
         guard let current = player.current else { stop(); return }
         if current.id != itemID { itemStarted(current); return }   // a change we weren't told about
         // Swiped away on the Lock Screen: leave it gone until the next song starts in the app.
-        if let a = activity, a.activityState == .dismissed || a.activityState == .ended { activity = nil }
+        if let a = activity, a.activityState == .dismissed || a.activityState == .ended {
+            LiveLyricsLog.add("Card \(a.activityState == .dismissed ? "dismissed" : "ended") by iOS or by you")
+            activity = nil
+        }
         keepAwake(player)
+        LiveLyricsLog.heartbeat(keepAlive: keepAlive.isRunning, playing: player.isPlaying, lastUpdate: lastDelivered)
         guard activity != nil else { return }
         let time = playhead(player)
         let i = lyrics?.activeIndex(at: time + 0.3) ?? -1
@@ -143,7 +155,10 @@ final class LyricsLiveActivityController {
         queued = state
         lastSent = .now
         // An update that hasn't come back in 3 s is stuck: stop waiting for it, so the card keeps moving.
-        if sending && Date.now.timeIntervalSince(sendStarted) > 3 { sending = false }
+        if sending && Date.now.timeIntervalSince(sendStarted) > 3 {
+            sending = false
+            LiveLyricsLog.add("An update got stuck for 3 s; sending the next one anyway")
+        }
         guard !sending, let activity else { return }
         sending = true
         sender += 1
@@ -154,6 +169,7 @@ final class LyricsLiveActivityController {
                 queued = nil
                 sendStarted = .now
                 await box.update(Self.content(next))
+                lastDelivered = .now
             }
             if me == sender { sending = false }
         }

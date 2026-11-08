@@ -19,6 +19,7 @@ struct SettingsView: View {
     @AppStorage("needleSounds") private var needleSounds = true
     @AppStorage("liveLyrics") private var liveLyrics = true
     @AppStorage("openPlayerOnPlay") private var openPlayerOnPlay = true
+    @AppStorage("albumLogos") private var albumLogos = true
     @AppStorage("recapNotifications") private var recapNotifications = false
     @AppStorage("brandName") private var brandName = ""
     @State private var exportURL: URL?
@@ -42,6 +43,7 @@ struct SettingsView: View {
                     Toggle("Open the player when a song starts", isOn: $openPlayerOnPlay)
                     Toggle("Live lyrics on the Lock Screen", isOn: $liveLyrics)
                         .onChange(of: liveLyrics) { _, on in if !on { LyricsLiveActivityController.shared.stop() } }
+                    NavigationLink("Live lyrics log") { LiveLyricsLogView() }
                     Picker("Lyrics", selection: $lyricsSource) {
                         Text("LRCLIB").tag("lrclib")
                         Text("Off").tag("off")
@@ -54,6 +56,7 @@ struct SettingsView: View {
                 }
                 Section {
                     Toggle("Living Covers", isOn: $livingCovers)
+                    Toggle("Album title logos", isOn: $albumLogos)
                     Picker("Style", selection: $coverStyle) {
                         ForEach(LivingCoverRenderer.Style.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
                     }

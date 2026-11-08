@@ -19,6 +19,7 @@ enum AppWiring {
                 Task { await MoodPlaylistService.refreshDue(library: library) }
             }
         }
+        LiveLyricsLog.startObserving()
         player.onStarted = { item in LyricsLiveActivityController.shared.itemStarted(item) }
         player.onFinished = { [library] record in
             // Apple Music songs played from an artist page aren't in the library: nothing to count yet.
