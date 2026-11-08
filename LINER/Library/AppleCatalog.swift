@@ -85,6 +85,25 @@ enum AppleCatalog {
         return Array(ordered(named).prefix(1))
     }
 
+    /// The whole album as Apple Music lists it, found from the Apple Music ID of any song of yours on it (nil
+    /// when none of your songs has one, or Apple doesn't answer). Asks with a few of your songs in case one has
+    /// moved to another edition.
+    static func fullAlbum(songStoreIDs ids: [String]) async -> [Track]? {
+        let key = ids.sorted().joined(separator: ",")
+        if let hit = await albumCache.album(key) { return hit }
+        for id in ids.prefix(3) {
+            guard let song = results(await fetch("lookup", ["id": id])).compactMap(track).first, song.collectionID != 0 else { continue }
+            let all = results(await fetch("lookup", ["id": String(song.collectionID), "entity": "song", "limit": "200"]))
+                .compactMap(track).sorted { ($0.discNumber, $0.trackNumber) < ($1.discNumber, $1.trackNumber) }
+            guard !all.isEmpty else { continue }
+            await albumCache.store(all, for: key)
+            return all
+        }
+        return nil
+    }
+
+    private static let albumCache = AlbumCache()
+
     // MARK: Requests
 
     private static func artistID(_ name: String) async -> Int? {
@@ -163,4 +182,11 @@ private actor PageCache {
     private var pages: [String: AppleCatalog.ArtistPage] = [:]
     func page(_ name: String) -> AppleCatalog.ArtistPage? { pages[name] }
     func store(_ page: AppleCatalog.ArtistPage, for name: String) { pages[name] = page }
+}
+
+/// Full albums fetched this session.
+private actor AlbumCache {
+    private var albums: [String: [AppleCatalog.Track]] = [:]
+    func album(_ key: String) -> [AppleCatalog.Track]? { albums[key] }
+    func store(_ album: [AppleCatalog.Track], for key: String) { albums[key] = album }
 }

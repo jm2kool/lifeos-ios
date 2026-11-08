@@ -10,11 +10,11 @@ Install it with Sideloadly using your Apple ID.
 | Artist pages | A Page like Apple Music's (latest release, Top Songs, Albums, Singles & EPs from the Apple Music catalogue via the iTunes Search API, streamed by Apple Music ID — through the Music app's player if LINER.'s own one refuses; singles Apple lists without songs are found by name) and LINER. stats (your history with them) |
 | Artist titles | iOS 27-style stylised names: the artist's logo (TheAudioDB) in white, or genre-matched lettering; pick a style per artist in Settings → Artist titles; pages tinted from the artwork |
 | Playback | Library songs via `applicationQueuePlayer` (iCloud and catalogue songs stream by Apple Music ID, with one automatic retry), imported files via AVPlayer, mixed in one queue; shuffle, repeat, Up Next |
-| Player | Always full-screen artwork aimed at the subject, motion covers or Living Covers behind it, glass controls tinted by the art |
+| Player | Always full-screen artwork aimed at the subject, motion covers or Living Covers behind it, glass controls tinted by the art; swipe the mini player left or right for the next or previous song |
 | Lock screen | Animated 3:4 / 1:1 artwork (motion cover or Living Cover); guaranteed for mixtapes, best effort for Apple Music songs |
 | Stats | My LINER.: totals, ranked artists/albums/songs; artist and album pages with your history and ranks |
 | Passports | Song Passport (hearts, moods, notes, connection, Song DNA, favourite moments, saved lyrics); Album Passport (hearts, personal ranking, history, cover) |
-| Editions & pins | Your own versions of albums (library + mixtape tracks, custom covers); pinned carousel on Home |
+| Editions & pins | Full Album (every song from Apple Music, the ones you don't have streamed) or Saved Album (only your library's songs) per album; your own versions of albums (library + mixtape tracks, custom covers); pinned carousel on Home |
 | Mixtapes | Import mp3/m4a/wav/aiff/mp4/mov from Files or "Open in LINER."; covers, motion covers, LRC lyrics |
 | Lyrics | LRCLIB synced lyrics, sing-along view that opens on the line being sung, the current and next line on the player, tap to seek, save lines and moments; live lyrics on the Lock Screen (Live Activity that follows you from song to song, lines slide up as they change, its own clock and a self-checking keep-alive so it doesn't freeze in the background, kept out of the Dynamic Island as far as iOS allows) |
 | Recaps | In My LINER.: week / month / year from the day you install, story mode, Monday notification |
