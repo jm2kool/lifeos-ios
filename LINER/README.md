@@ -6,7 +6,7 @@ Install it with Sideloadly using your Apple ID.
 
 | Area | What's there |
 |---|---|
-| Library | Artists · Albums · Songs · Playlists with search and sort; one-song "albums" are treated as songs (Mixtapes have their own tab); albums as a moving crate with haptic ticks; black-and-white artist photos from Deezer |
+| Library | Artists · Albums · Songs · Playlists with search and sort; one-song "albums" are treated as songs; editions of an album ("WILD", "WILD (Deluxe)") are grouped into one album led by the biggest edition (Mixtapes have their own tab); albums as a moving crate with haptic ticks; black-and-white artist photos from Deezer |
 | Artist pages | A Page like Apple Music's (latest release, Top Songs, Albums, Singles & EPs from the Apple Music catalogue via the iTunes Search API, streamed by Apple Music ID) and LINER. stats (your history with them) |
 | Artist titles | iOS 27-style stylised names: the artist's logo (TheAudioDB) in white, or genre-matched lettering; pick a style per artist in Settings → Artist titles; pages tinted from the artwork |
 | Playback | Library songs via `applicationQueuePlayer` (iCloud and catalogue songs stream by Apple Music ID, with one automatic retry), imported files via AVPlayer, mixed in one queue; shuffle, repeat, Up Next |

@@ -32,6 +32,7 @@ struct AlbumDetailView: View {
         let list = tracks
         var parts = [activeEdition == nil ? "ALBUM" : "EDITION", "\(list.count) SONG\(list.count == 1 ? "" : "S")",
                      list.reduce(0) { $0 + $1.duration }.minutesLabel]
+        if activeEdition == nil, album.editionIDs.count > 1 { parts.append("\(album.editionIDs.count) EDITIONS") }
         if !album.genre.isEmpty { parts.append(album.genre.uppercased()) }
         return parts.joined(separator: " · ")
     }

@@ -90,4 +90,26 @@ final class Store {
         }
         if changed { save() }
     }
+
+    // MARK: Grouped album editions
+
+    /// When editions are folded into one album, its passport, pins and your own editions move to the lead
+    /// edition's ID (unless the lead already has its own passport).
+    func adoptAlbumEditions(_ aliases: [UInt64: UInt64]) {
+        guard !aliases.isEmpty else { return }
+        var changed = false
+        for note in allAlbumNotes() {
+            guard note.albumID.hasPrefix("album-"), let id = UInt64(note.albumID.dropFirst(6)), let lead = aliases[id],
+                  albumNote("album-\(lead)") == nil else { continue }
+            note.albumID = "album-\(lead)"
+            changed = true
+        }
+        let editions = (try? context.fetch(FetchDescriptor<Edition>())) ?? []
+        for e in editions {
+            guard let base = e.baseAlbumID, base.hasPrefix("album-"), let id = UInt64(base.dropFirst(6)), let lead = aliases[id] else { continue }
+            e.baseAlbumID = "album-\(lead)"
+            changed = true
+        }
+        if changed { save() }
+    }
 }

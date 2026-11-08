@@ -20,6 +20,7 @@ struct SettingsView: View {
     @AppStorage("liveLyrics") private var liveLyrics = true
     @AppStorage("recapNotifications") private var recapNotifications = false
     @AppStorage("brandName") private var brandName = ""
+    @AppStorage("groupAlbumEditions") private var groupEditions = true
     @State private var exportURL: URL?
     @State private var importing = false
     @State private var message: String?
@@ -71,7 +72,9 @@ struct SettingsView: View {
                         LabeledContent("Recording since", value: b.formatted(date: .abbreviated, time: .omitted))
                     }
                 }
-                Section("Library") {
+                Section {
+                    Toggle("Group album editions", isOn: $groupEditions)
+                        .onChange(of: groupEditions) { Task { await library.refresh() } }
                     LabeledContent("Songs", value: library.snapshot.songs.count.grouped)
                     LabeledContent("Albums", value: library.snapshot.albums.count.grouped)
                     if library.hasLoaded {
@@ -79,6 +82,8 @@ struct SettingsView: View {
                     }
                     Button(library.isLoading ? "Rebuilding…" : "Rebuild stats") { Task { ArtworkCache.shared.clear(); await library.refresh() } }
                         .disabled(library.isLoading)
+                } header: { Text("Library") } footer: {
+                    Text("With Group album editions on, “WILD” and “WILD (Deluxe)” show as one album led by the biggest edition, with any extra songs added.")
                 }
                 Section {
                     Button(recalibrating ? "Recalibrating…" : "Recalibrate Apple Music", systemImage: "arrow.triangle.2.circlepath") {

@@ -8,7 +8,7 @@ enum LibraryScanner {
         let clock = ContinuousClock()
         let start = clock.now
         let items = MPMediaQuery.songs().items ?? []
-        let songs = items.map { item -> Song in
+        var songs = items.map { item -> Song in
             var s = song(from: item, extra: extraPlays[item.persistentID] ?? 0)
             s.assetURL = item.assetURL
             s.isProtected = item.hasProtectedAsset
@@ -18,7 +18,7 @@ enum LibraryScanner {
         // Albums, from songs grouped by album ID.
         var albumSongs: [UInt64: [Song]] = [:]
         for s in songs { albumSongs[s.albumID, default: []].append(s) }
-        let albums: [Album] = albumSongs.compactMap { id, tracks in
+        var albums: [Album] = albumSongs.compactMap { id, tracks in
             guard let first = tracks.first else { return nil }
             let ordered = tracks.sorted { ($0.discNumber, $0.trackNumber, $0.title) < ($1.discNumber, $1.trackNumber, $1.title) }
             let rated = tracks.filter { $0.rating > 0 }
@@ -29,6 +29,18 @@ enum LibraryScanner {
                          duration: tracks.reduce(0) { $0 + $1.duration },
                          dateAdded: tracks.map(\.dateAdded).max() ?? .distantPast,
                          rating: rated.isEmpty ? 0 : Double(rated.reduce(0) { $0 + $1.rating }) / Double(rated.count))
+        }
+
+        // Editions of one album ("WILD", "WILD (Deluxe)") become one album led by the biggest edition.
+        var aliases: [UInt64: UInt64] = [:]
+        var artworkSongs: [UInt64: UInt64] = [:]
+        for s in songs where s.hasArtwork && artworkSongs[s.albumID] == nil { artworkSongs[s.albumID] = s.id }
+        if AlbumEditions.isOn {
+            let grouped = AlbumEditions.merge(albums, songs: songs)
+            albums = grouped.albums
+            songs = grouped.songs
+            aliases = grouped.aliases
+            for (edition, lead) in aliases where artworkSongs[lead] == nil { artworkSongs[lead] = artworkSongs[edition] }
         }
 
         // Artists, from albums grouped by album artist.
@@ -61,9 +73,8 @@ enum LibraryScanner {
         }
 
         var snapshot = LibrarySnapshot(songs: songs, albums: albums, artists: artists, playlists: playlists)
-        var artworkSongs: [UInt64: UInt64] = [:]
-        for s in songs where s.hasArtwork && artworkSongs[s.albumID] == nil { artworkSongs[s.albumID] = s.id }
         snapshot.artworkSongs = artworkSongs
+        snapshot.albumAliases = aliases
         snapshot.items = MediaItemIndex(Dictionary(items.map { ($0.persistentID, $0) }, uniquingKeysWith: { a, _ in a }))
         snapshot.scannedAt = .now
         snapshot.scanDuration = clock.now - start

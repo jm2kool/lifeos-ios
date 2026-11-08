@@ -7,7 +7,8 @@ struct Song: Identifiable, Hashable, Sendable {
     let artist: String
     let albumTitle: String
     let albumArtist: String
-    let albumID: UInt64
+    /// The album it's shown under: the lead edition when editions are grouped (see AlbumEditions).
+    var albumID: UInt64
     let genre: String
     let composer: String
     let duration: Double
@@ -47,6 +48,8 @@ struct Album: Identifiable, Hashable, Sendable {
     let duration: Double
     let dateAdded: Date       // newest song's date added
     let rating: Double        // mean of rated songs, 0 if none
+    /// Every edition folded into this album (the lead first); empty when there's only one.
+    var editionIDs: [UInt64] = []
 
     var songCount: Int { songIDs.count }
     /// One song on its own: LINER. treats it as a song, never as an album (unlike Apple Music).
@@ -93,6 +96,8 @@ struct LibrarySnapshot: Sendable {
     let albums: [Album]
     let artists: [Artist]
     let playlists: [Playlist]
+    /// Folded-in edition IDs → the lead edition's ID, so old pins and links still find the album.
+    var albumAliases: [UInt64: UInt64] = [:]
     var scannedAt: Date = .distantPast
     var scanDuration: Duration = .zero
 
@@ -111,11 +116,11 @@ struct LibrarySnapshot: Sendable {
     }
 
     func songs(_ ids: [UInt64]) -> [Song] { ids.compactMap { songsByID[$0] } }
-    func album(_ id: UInt64) -> Album? { albumsByID[id] }
+    func album(_ id: UInt64) -> Album? { albumsByID[albumAliases[id] ?? id] }
     func artist(named name: String) -> Artist? { artistsByID[MediaKey.normalise(name)] }
-    func albums(of artist: Artist) -> [Album] { artist.albumIDs.compactMap { albumsByID[$0] }.filter { !$0.isSingle } }
+    func albums(of artist: Artist) -> [Album] { artist.albumIDs.compactMap { album($0) }.filter { !$0.isSingle } }
     /// The song's album, unless the song is on its own (a single is just a song).
-    func albumOf(_ song: Song) -> Album? { albumsByID[song.albumID].flatMap { $0.isSingle ? nil : $0 } }
+    func albumOf(_ song: Song) -> Album? { album(song.albumID).flatMap { $0.isSingle ? nil : $0 } }
     func songs(of artist: Artist) -> [Song] {
         songs.filter { MediaKey.normalise($0.albumArtist) == artist.id || MediaKey.normalise($0.artist) == artist.id }
     }

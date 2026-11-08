@@ -11,6 +11,7 @@ enum AppWiring {
     static func connect(library: LibraryService, player: PlaybackCoordinator) {
         library.onRefresh = { [library] snapshot in
             Store.shared.rematch(with: snapshot)
+            Store.shared.adoptAlbumEditions(snapshot.albumAliases)
             library.reloadPersonalRatings()
             SnapshotService.shared.record(snapshot)
             NewAlbumPrompts.shared.check(snapshot)
