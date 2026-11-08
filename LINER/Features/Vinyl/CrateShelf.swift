@@ -45,8 +45,9 @@ private struct CrateSleeve: View {
             ZStack(alignment: .leading) {
                 RecordDisc(record: .album(album, .init()), side: "A")
                     .padding(6)
-                    .scrollTransition(.interactive, axis: .vertical) { content, phase in
-                        content.offset(x: 12 + 62 * (1 - min(1, abs(phase.value) * 1.6)))
+                    // Slides out of the sleeve as it reaches the middle of the screen and back in as it leaves.
+                    .visualEffect { content, proxy in
+                        content.offset(x: 8 + 78 * CrateSleeve.peek(proxy))
                     }
                 ArtworkView(albumID: album.id, cornerRadius: 6)
                     .aspectRatio(1, contentMode: .fit)
@@ -63,6 +64,15 @@ private struct CrateSleeve: View {
             }
         }
         .contentShape(Rectangle())
+    }
+
+    /// How far the record is out (0 tucked in, 1 fully out): out at the middle of the screen, in towards the edges.
+    nonisolated static func peek(_ proxy: GeometryProxy) -> CGFloat {
+        guard let view = proxy.bounds(of: .scrollView(axis: .vertical)), view.height > 0 else { return 0 }
+        let mid = proxy.frame(in: .scrollView(axis: .vertical)).midY
+        let away = abs(mid - view.midY) / (view.height / 2)
+        let t = max(0, min(1, 1 - (away - 0.12) * 1.9))
+        return t * t * (3 - 2 * t)
     }
 }
 
