@@ -8,7 +8,7 @@ final class ArtistLogoStore: @unchecked Sendable {
 
     private let memory = NSCache<NSString, UIImage>()
     private let folder: URL
-    private let lookups = UserDefaults(suiteName: "liner.artistLogos.v2") ?? .standard
+    private let lookups = UserDefaults(suiteName: "liner.artistLogos.v3") ?? .standard
     private static let limiter = RateLimiter(gap: .milliseconds(500))
 
     private struct Response: Decodable {
@@ -17,7 +17,7 @@ final class ArtistLogoStore: @unchecked Sendable {
     }
 
     private init() {
-        folder = URL.cachesDirectory.appending(path: "LINER/ArtistLogos2", directoryHint: .isDirectory)
+        folder = URL.cachesDirectory.appending(path: "LINER/ArtistLogos3", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     }
 
@@ -93,9 +93,12 @@ final class ArtistLogoStore: @unchecked Sendable {
             lum[p] = a > 0.01 ? (0.299 * Double(px[o]) + 0.587 * Double(px[o + 1]) + 0.114 * Double(px[o + 2])) / 255 / a : 0
         }
         func coverage(_ m: [Double]) -> Double { Double(m.reduce(0) { $0 + ($1 > 0.5 ? 1 : 0) }) / Double(n) }
+        /// Solid parts only: soft drop shadows and glows round the letters (partly transparent) fall away
+        /// instead of turning into a white haze.
+        let solid = alpha.map { min(1, max(0, ($0 - 0.4) / 0.35)) }
         /// How much each pixel stands out from a reference brightness (the plate or background).
         func contrast(_ ref: Double, weighted: Bool) -> [Double] {
-            (0..<n).map { p in (weighted ? alpha[p] * alpha[p] : 1) * min(1, max(0, (abs(lum[p] - ref) - 0.12) / 0.35)) }
+            (0..<n).map { p in (weighted ? solid[p] : 1) * min(1, max(0, (abs(lum[p] - ref) - 0.12) / 0.35)) }
         }
 
         var candidates: [[Double]] = []
@@ -107,11 +110,21 @@ final class ArtistLogoStore: @unchecked Sendable {
                 let dark = opaque.filter { lum[$0] < 0.3 }, light = opaque.filter { lum[$0] > 0.7 }
                 let total = Double(opaque.count), middle = total - Double(dark.count + light.count)
                 if Double(dark.count) / total >= 0.15, Double(light.count) / total >= 0.15, middle / total < 0.15 {
-                    let plate = light.count >= dark.count ? light : dark
+                    // The plate is the tone round the logo's outside edge, where it meets the transparent
+                    // background (a white sticker outline round black letters, say), not whichever tone is larger.
+                    var edgeSum = 0.0, edgeCount = 0.0
+                    for p in opaque {
+                        let x = p % w, y = p / w
+                        let clear = (x > 0 && alpha[p - 1] < 0.3) || (x < w - 1 && alpha[p + 1] < 0.3)
+                            || (y > 0 && alpha[p - w] < 0.3) || (y < h - 1 && alpha[p + w] < 0.3)
+                        if clear { edgeSum += lum[p]; edgeCount += 1 }
+                    }
+                    let lightEdge = edgeCount > 0 ? edgeSum / edgeCount > 0.5 : light.count >= dark.count
+                    let plate = lightEdge ? light : dark
                     candidates.append(contrast(plate.reduce(0) { $0 + lum[$1] } / Double(plate.count), weighted: true))
                 }
             }
-            candidates.append(alpha)
+            candidates.append(solid)
         } else {
             // Solid background: cut the lettering out by its contrast with the corners.
             let corners = [lum[0], lum[w - 1], lum[(h - 1) * w], lum[n - 1]]
