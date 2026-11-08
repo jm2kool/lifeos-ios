@@ -9,12 +9,13 @@ final class PlayerArtwork {
 
     func load(_ item: QueueItem?) async {
         guard let item else { image = nil; key = nil; return }
-        guard item.coverKey != key else { return }
-        key = item.coverKey
+        let itemKey = CoverArt.key(for: item)
+        guard itemKey != key else { return }
+        key = itemKey
         let img = await CoverArt.image(for: item, pixels: 1600)
         var look = ArtworkLook.neutral
-        if let img { look = await ArtworkAnalysis.look(for: img, key: item.coverKey) }
-        guard key == item.coverKey else { return }
+        if let img { look = await ArtworkAnalysis.look(for: img, key: itemKey) }
+        guard key == itemKey else { return }
         withAnimation(.easeInOut(duration: 0.6)) {
             self.image = img
             self.look = look
@@ -30,16 +31,16 @@ struct QueueItemArtwork: View {
 
     var body: some View {
         Group {
-            if let song = item.song {
+            if let song = item.song, CoverArt.edition(for: item)?.coverImage == nil {
                 ArtworkView(albumID: song.albumID, cornerRadius: cornerRadius)
             } else {
                 ZStack {
                     Palette.placeholder
                     if let image { FillImage(image: image) }
-                    else { Image(systemName: "recordingtape").foregroundStyle(Palette.faint) }
+                    else { Image(systemName: item.isLibrary ? "music.note" : "recordingtape").foregroundStyle(Palette.faint) }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-                .task(id: item.id) { image = await CoverArt.image(for: item, pixels: 300) }
+                .task(id: CoverArt.key(for: item)) { image = await CoverArt.image(for: item, pixels: 300) }
             }
         }
     }

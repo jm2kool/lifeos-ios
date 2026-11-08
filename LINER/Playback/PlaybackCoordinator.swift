@@ -18,6 +18,8 @@ final class PlaybackCoordinator {
     /// A friendly confirmation (imports and saves), shown in the same banner.
     var notice: String?
     var showFullPlayer = false
+    /// The edition the queue was started from, whose cover its songs wear (see `EditionCover`).
+    private(set) var editionCover: EditionCover?
     /// Bumped on every seek, so views reading time refresh at once.
     private(set) var seekGeneration = 0
 
@@ -82,8 +84,10 @@ final class PlaybackCoordinator {
 
     /// Replaces the queue and starts playing; opens the full player too (Settings → Listening), unless the
     /// caller is a player of its own, like the turntable.
-    func play(_ items: [QueueItem], startAt: Int = 0, shuffled: Bool = false, openPlayer: Bool = true) {
+    func play(_ items: [QueueItem], startAt: Int = 0, shuffled: Bool = false, openPlayer: Bool = true,
+              edition: EditionCover? = nil) {
         guard !items.isEmpty else { return }
+        editionCover = edition
         unshuffled = items
         shuffle = shuffled
         if openPlayer && Self.opensPlayer { showFullPlayer = true }

@@ -100,6 +100,7 @@ struct AlbumDetailView: View {
             }
             .padding(.bottom, 32)
         }
+        .environment(\.editionCover, activeEdition.map { EditionCover(editionID: $0.id, itemIDs: Set(list.map(\.id))) })
         .background(Palette.background)
         .ignoresSafeArea(edges: .top)
         .task(id: album.id) {

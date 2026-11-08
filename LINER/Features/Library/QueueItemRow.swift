@@ -6,12 +6,13 @@ struct PlayableQueueRow: View {
     let list: [QueueItem]
     var number: Int?
     @Environment(PlaybackCoordinator.self) private var player
+    @Environment(\.editionCover) private var edition
 
     var body: some View {
         if case .library(let song) = item {
             PlayableSongRowItems(song: song, list: list, number: number)
         } else {
-            Button { player.play(list, startAt: list.firstIndex(of: item) ?? 0) } label: {
+            Button { player.play(list, startAt: list.firstIndex(of: item) ?? 0, edition: edition) } label: {
                 HStack(spacing: 12) {
                     if let number {
                         Text("\(number)").font(.serif(17)).monospacedDigit().foregroundStyle(Palette.label).frame(width: 26)
@@ -38,9 +39,10 @@ private struct PlayableSongRowItems: View {
     let list: [QueueItem]
     var number: Int?
     @Environment(PlaybackCoordinator.self) private var player
+    @Environment(\.editionCover) private var edition
 
     var body: some View {
-        Button { player.play(list, startAt: list.firstIndex(of: .library(song)) ?? 0) } label: {
+        Button { player.play(list, startAt: list.firstIndex(of: .library(song)) ?? 0, edition: edition) } label: {
             SongRow(song: song, number: number, showArtwork: number == nil)
         }
         .buttonStyle(.plain)
@@ -53,9 +55,10 @@ struct PlayShuffleItemsRow<Trailing: View>: View {
     let items: [QueueItem]
     @ViewBuilder var trailing: Trailing
     @Environment(PlaybackCoordinator.self) private var player
+    @Environment(\.editionCover) private var edition
 
     var body: some View {
-        PlayShuffleIcons(play: { player.play(items) }, shuffle: { player.play(items, shuffled: true) }) { trailing }
+        PlayShuffleIcons(play: { player.play(items, edition: edition) }, shuffle: { player.play(items, shuffled: true, edition: edition) }) { trailing }
             .disabled(items.isEmpty)
     }
 }

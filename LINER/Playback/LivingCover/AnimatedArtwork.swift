@@ -19,13 +19,13 @@ final class AnimatedArtwork {
         if item.isLibrary && !Self.forLibrarySongs { return [:] }
         let supported = MPNowPlayingInfoCenter.supportedAnimatedArtworkKeys
         guard supported.contains(MPNowPlayingInfoProperty3x4AnimatedArtwork) || supported.contains(MPNowPlayingInfoProperty1x1AnimatedArtwork) else { return [:] }
-        if let ready = prepared[item.coverKey] { return ready }
+        if let ready = prepared[CoverArt.key(for: item)] { return ready }
         prepare(item)
         return [:]
     }
 
     private func prepare(_ item: QueueItem) {
-        let key = item.coverKey
+        let key = CoverArt.key(for: item)
         guard !preparing.contains(key) else { return }
         preparing.insert(key)
         let motion = MotionLookup.file(for: item)
@@ -72,6 +72,7 @@ final class AnimatedArtwork {
 enum MotionLookup {
     /// The user's motion cover for the item's album, edition or mixtape.
     static func file(for item: QueueItem) -> String? {
+        if let f = CoverArt.edition(for: item)?.motionCoverFile { return f }
         switch item {
         case .library(let s):
             let id = "album-\(s.albumID)"
