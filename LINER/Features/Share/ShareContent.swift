@@ -47,8 +47,12 @@ struct ShareContent: Sendable {
                             lines: lines, albumID: a.albumIDs.first, portraitName: a.name, artworkKey: a.albumIDs.first.map { "album-\($0)" + CoverVersions.suffix($0) })
     }
 
-    static func lyric(_ item: QueueItem, line: String) -> ShareContent {
-        ShareContent(kind: .lyric, kicker: "Lyric", title: item.title, subtitle: item.artist, quote: line, coverItem: item, artworkKey: item.coverKey)
+    static func lyric(_ item: QueueItem, line: String) -> ShareContent { lyric(item, lines: [line]) }
+
+    /// A few lines of a song (one run, chosen in the lyrics view), each on its own line on the card.
+    static func lyric(_ item: QueueItem, lines: [String]) -> ShareContent {
+        ShareContent(kind: .lyric, kicker: lines.count > 1 ? "Lyrics" : "Lyric", title: item.title, subtitle: item.artist,
+                     quote: lines.joined(separator: "\n"), coverItem: item, artworkKey: item.coverKey)
     }
 
     static func recap(_ r: Recap, card: RecapStoryView.Card) -> ShareContent {
@@ -79,7 +83,9 @@ struct ShareOverlay: View {
             VStack(alignment: .leading, spacing: 26) {
                 Text(content.kicker.uppercased()).font(.system(size: 30, weight: .semibold)).tracking(8).foregroundStyle(.white.opacity(0.7))
                 if let quote = content.quote, content.kind == .lyric {
-                    Text("“\(quote)”").font(.system(size: 76, weight: .regular, design: .serif)).lineLimit(6).minimumScaleFactor(0.5)
+                    // Longer picks get smaller type so a few lines still fit above the title.
+                    Text("“\(quote)”").font(.system(size: quote.count > 150 ? 56 : quote.count > 70 ? 66 : 76, weight: .regular, design: .serif))
+                        .lineSpacing(6).lineLimit(10).minimumScaleFactor(0.5)
                 }
                 Text(content.title).font(.system(size: content.kind == .lyric ? 54 : 104, weight: .regular, design: .serif))
                     .lineLimit(3).minimumScaleFactor(0.45)
