@@ -1,4 +1,5 @@
 """Draws the still layers for the Matinee promo: the phone's screen mask and bezel, captions and the end card."""
+import os
 import sys
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
@@ -6,8 +7,26 @@ W, H = 1080, 1920
 SW, SH = 718, 1560          # phone screen on the canvas (1206 x 2622 recording, scaled)
 SX, SY = (W - SW) // 2, 316
 R = 92                      # screen corner radius
-BOLD = "/usr/share/fonts/opentype/inter/InterDisplay-Bold.otf"
-MED = "/usr/share/fonts/opentype/inter/InterDisplay-Medium.otf"
+FONTS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
+SERIF = os.path.join(FONTS, "InstrumentSerif-Regular.ttf")         # headlines: a film-poster serif
+SERIF_IT = os.path.join(FONTS, "InstrumentSerif-Italic.ttf")
+SANS = os.path.join(FONTS, "Manrope[wght].ttf")                     # small lines
+
+
+def sans(size, weight="SemiBold"):
+    f = ImageFont.truetype(SANS, size)
+    f.set_variation_by_name(weight)
+    return f
+
+
+def tracked(d, xy, text, font, fill, track=0.14):
+    """Centred small caps with letter-spacing (a fraction of the font size)."""
+    gap = font.size * track
+    width = sum(d.textlength(c, font=font) for c in text) + gap * (len(text) - 1)
+    x, y = xy[0] - width / 2, xy[1]
+    for c in text:
+        d.text((x, y), c, font=font, anchor="lt", fill=fill)
+        x += d.textlength(c, font=font) + gap
 
 
 def mask(out):
@@ -35,23 +54,23 @@ def bezel(out):
 
 
 def caption(out, line1, line2="", accent=(255, 255, 255)):
-    """Two lines over the top of the frame: a big bold line and a smaller one under it."""
+    """A big serif headline over the top of the frame, with a small line under it in the clip's colour."""
     img = Image.new("RGBA", (W, 300), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    size = 84
-    f1 = ImageFont.truetype(BOLD, size)
-    while d.textlength(line1, font=f1) > W - 110:
-        size -= 4; f1 = ImageFont.truetype(BOLD, size)
-    f2 = ImageFont.truetype(MED, 46)
-    y1 = 70 if line2 else 110
+    size = 112
+    f1 = ImageFont.truetype(SERIF, size)
+    while d.textlength(line1, font=f1) > W - 100:
+        size -= 4; f1 = ImageFont.truetype(SERIF, size)
+    f2 = sans(36)
+    y1 = 58 if line2 else 100
+    y2 = y1 + size + 14
+    def draw(dr, fill1, fill2):
+        dr.text((W / 2, y1), line1, font=f1, anchor="mt", fill=fill1)
+        if line2: tracked(dr, (W / 2, y2), line2.upper(), f2, fill2)
     glow = Image.new("RGBA", img.size, (0, 0, 0, 0))
-    gd = ImageDraw.Draw(glow)
-    gd.text((W / 2, y1), line1, font=f1, anchor="mt", fill=(0, 0, 0, 200))
-    if line2: gd.text((W / 2, y1 + size + 22), line2, font=f2, anchor="mt", fill=(0, 0, 0, 200))
-    img = Image.alpha_composite(img, glow.filter(ImageFilter.GaussianBlur(14)))
-    d = ImageDraw.Draw(img)
-    d.text((W / 2, y1), line1, font=f1, anchor="mt", fill=(255, 255, 255, 255))
-    if line2: d.text((W / 2, y1 + size + 22), line2, font=f2, anchor="mt", fill=accent + (255,))
+    draw(ImageDraw.Draw(glow), (0, 0, 0, 210), (0, 0, 0, 210))
+    img = Image.alpha_composite(img, glow.filter(ImageFilter.GaussianBlur(16)))
+    draw(ImageDraw.Draw(img), (255, 255, 255, 255), accent + (255,))
     img.save(out)
 
 
@@ -65,9 +84,9 @@ def endcard(out, icon):
     ImageDraw.Draw(m).rounded_rectangle([0, 0, 359, 359], 82, fill=255)
     img.paste(ic, ((W - 360) // 2, 640), m)
     d = ImageDraw.Draw(img)
-    d.text((W / 2, 1080), "Matinee", font=ImageFont.truetype(BOLD, 120), anchor="mt", fill=(255, 255, 255))
-    d.text((W / 2, 1235), "Films. Shows. Scored out of 100.", font=ImageFont.truetype(MED, 48), anchor="mt", fill=(255, 255, 255, 200))
-    d.text((W / 2, 1320), "A film and TV diary for iPhone", font=ImageFont.truetype(MED, 40), anchor="mt", fill=(200, 200, 205))
+    d.text((W / 2, 1050), "Matinee", font=ImageFont.truetype(SERIF, 190), anchor="mt", fill=(255, 255, 255))
+    d.text((W / 2, 1260), "Films and shows, scored out of 100.", font=ImageFont.truetype(SERIF_IT, 62), anchor="mt", fill=(255, 214, 196))
+    tracked(d, (W / 2, 1370), "A FILM & TV DIARY FOR IPHONE", sans(30), (190, 190, 196), 0.2)
     img.save(out)
 
 
