@@ -204,6 +204,7 @@ struct RootView: View {
     /// Hooks used by the CI simulator run to capture screenshots.
     private func previewMode() async {
         let env = ProcessInfo.processInfo.environment
+        Demo.slowWindows()
         if let t = env["MATINEE_TAB"], let tab = AppTab(rawValue: t) { router.tab = tab }
         if let id = env["MATINEE_FILM"] {
             try? await Task.sleep(for: .seconds(1))
@@ -222,6 +223,17 @@ struct RootView: View {
         if env["MATINEE_SHAKE"] != nil {
             try? await Task.sleep(for: .seconds(1.5))
             pickFromWatchlist()
+        }
+        switch Demo.scene {
+        case .story:
+            if let e = library.doc.entries.first(where: { $0.film.id == "tmdb-693134" }) {
+                try? await Task.sleep(for: .seconds(Demo.t(1.2)))
+                router.sheet = .story(e)
+            }
+        case .stats:
+            try? await Task.sleep(for: .seconds(Demo.t(0.8)))
+            router.filmsPath.append(StatsRoute())
+        default: break
         }
         if env["MATINEE_TOUR"] != nil {
             for tab in [AppTab.films, .diary, .library, .profile, .search] {

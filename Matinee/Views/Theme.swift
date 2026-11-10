@@ -247,7 +247,8 @@ struct ScoreDial: View {
             .frame(width: size, height: size)
             .contentShape(Circle())
             .gesture(drag)
-            .animation(dragValue == nil ? .snappy(duration: 0.3) : nil, value: shown)
+            .animation(dragValue == nil ? Demo.slow(.snappy(duration: 0.3)) : nil, value: shown)
+            .task(id: Demo.Director.shared.dialTarget) { await demoSweep() }
 
             if onChange != nil {
                 HStack(spacing: 18) {
@@ -273,6 +274,21 @@ struct ScoreDial: View {
             @unknown default: break
             }
         }
+    }
+
+    /// Promo recordings only: sweeps round to the director's score the way a thumb would.
+    private func demoSweep() async {
+        guard let target = Demo.Director.shared.dialTarget, onChange != nil else { return }
+        let steps = max(1, Int(Demo.t(1.7) * 60))
+        for i in 1...steps {
+            let p = Double(i) / Double(steps)
+            let eased = 1 - pow(1 - p, 3)
+            dragValue = max(1, (1 + (target - 1) * eased).rounded())
+            try? await Task.sleep(for: .milliseconds(16))
+        }
+        try? await Task.sleep(for: .seconds(Demo.t(0.15)))
+        onChange?(target)
+        dragValue = nil
     }
 
     private var centre: some View {

@@ -20,6 +20,9 @@ struct FilmView: View {
     @State private var choosingPoster = false
     @Environment(Auth.self) private var auth
     @AppStorage(FilmRatingStyle.key) private var ratingStyle: FilmRatingStyle = .score
+    /// Where the dial and the episodes sit on the page, for the promo recordings' scripted scrolls.
+    @State private var dialY: CGFloat?
+    @State private var episodesY: CGFloat?
 
     /// The page takes its colour from the poster: deep enough for white text, never washed out.
     private var bg: Color { palette?.background ?? .black }
@@ -46,6 +49,7 @@ struct FilmView: View {
                     actionPanel.padding(.horizontal, 16)
                     if let d = detail, ref.isShow {
                         SeasonsSection(show: ref, detail: d, surface: surface, accent: palette?.highlight ?? Theme.accent)
+                            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named("filmPage")).minY } action: { episodesY = $0 }
                     }
                     if let d = detail { info(d); WatchProvidersSection(film: ref, surface: surface) } else if failed {
                         EmptyState(symbol: ref.isShow ? "tv" : "film", title: "Couldn't load details",
@@ -60,6 +64,7 @@ struct FilmView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(bg)
             }
+            .coordinateSpace(.named("filmPage"))
         }
         .scrollPosition($scroll)
         .scrollEdgeEffectHidden(true, for: .top)
@@ -113,10 +118,10 @@ struct FilmView: View {
         .task(id: film.id) {
             do {
                 let d = try await Catalog.detail(film.id)
-                withAnimation(.smooth) { detail = d }
+                withAnimation(Demo.slow(.smooth)) { detail = d }
                 library.hydrate(film, with: d)
                 let a = await Catalog.art(d.ref.id)
-                withAnimation(.easeOut(duration: 0.4)) { art = a; artLoaded = true }
+                withAnimation(Demo.slow(.easeOut(duration: 0.4))) { art = a; artLoaded = true }
             } catch { failed = true; artLoaded = true }
         }
         .task(id: heroURL) {
@@ -127,8 +132,35 @@ struct FilmView: View {
             guard let url = heroURL else { return }
             if let hit = Palette.cached(url) { palette = hit; return }
             if let p = await Palette.of(url) {
-                withAnimation(.easeInOut(duration: 0.7)) { palette = p }
+                withAnimation(Demo.slow(.easeInOut(duration: 0.7))) { palette = p }
             }
+        }
+        .task(id: artLoaded) { await runDemo() }
+    }
+
+    /// Promo recordings only: hold on the poster, scroll so the logo pins and the page takes the poster's colour,
+    /// then rate on the dial (films) or move down to the episodes (shows).
+    private func runDemo() async {
+        guard artLoaded, let scene = Demo.scene, [Demo.Scene.film, .colour, .show].contains(scene) else { return }
+        await Demo.until { palette != nil }
+        await Demo.wait(1.4)
+        withAnimation(Demo.slow(.smooth(duration: 1.3))) { scroll.scrollTo(y: 600) }
+        await Demo.wait(1.7)
+        switch scene {
+        case .film:
+            if let y = dialY {
+                withAnimation(Demo.slow(.smooth(duration: 0.9))) { scroll.scrollTo(y: max(600, y - Demo.screenHeight * 0.52)) }
+                await Demo.wait(1.1)
+            }
+            Demo.Director.shared.dialTarget = 94
+        case .show:
+            await Demo.until { episodesY != nil && detail != nil }
+            if let y = episodesY {
+                withAnimation(Demo.slow(.smooth(duration: 1.3))) { scroll.scrollTo(y: y - 100) }
+                await Demo.wait(1.5)
+            }
+            Demo.Director.shared.showTicks = true
+        default: break
         }
     }
 
@@ -290,6 +322,7 @@ struct FilmView: View {
                 }
             } else {
                 FilmRatingInput(score: library.rating(ref.id)) { library.rate(ref, $0) }
+                    .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named("filmPage")).midY } action: { dialY = $0 }
             }
             GlassEffectContainer(spacing: 10) {
                 HStack(spacing: 10) {

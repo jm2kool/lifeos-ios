@@ -138,7 +138,7 @@ final class Library {
         var d = doc
         change(&d)
         d.updatedAt = .now
-        withAnimation(.smooth) { setDoc(d) }
+        withAnimation(Demo.slow(.smooth)) { setDoc(d) }
         persist()
         if let toastText { toast = Toast(text: toastText, symbol: symbol, undo: undoable) }
     }
@@ -642,7 +642,41 @@ final class Library {
         d.lists = [FilmList(name: "Desert planets & big sound", note: "Films to feel in your chest.", ranked: true, films: [refs[0], refs[8], refs[4], refs[3]])]
         d.profile = Profile(name: "Alex Rivera", handle: "alex", bio: "Film nights every Friday.")
         d.yearGoal = 52
+        if Demo.scene != nil { Self.seedPromoHistory(&d, day: day) }
         setDoc(d)
         persist(sync: false)
+    }
+
+    /// Promo recordings: a fuller year of film nights so the diary, stats and charts have something to show,
+    /// and Dune: Part Two left unrated so the dial can be shown rating it.
+    private static func seedPromoHistory(_ d: inout LibraryDoc, day: (Int) -> Date) {
+        let more: [(String, String, Int, Double)] = [
+            ("tmdb-155", "The Dark Knight", 2008, 96), ("tmdb-603", "The Matrix", 1999, 92), ("tmdb-13", "Forrest Gump", 1994, 84),
+            ("tmdb-278", "The Shawshank Redemption", 1994, 95), ("tmdb-120", "The Lord of the Rings: The Fellowship of the Ring", 2001, 93),
+            ("tmdb-769", "GoodFellas", 1990, 90), ("tmdb-807", "Se7en", 1995, 87), ("tmdb-274", "The Silence of the Lambs", 1991, 89),
+            ("tmdb-1124", "The Prestige", 2006, 91), ("tmdb-77", "Memento", 2000, 86), ("tmdb-324857", "Spider-Man: Into the Spider-Verse", 2018, 94),
+            ("tmdb-346698", "Barbie", 2023, 76), ("tmdb-545611", "Everything Everywhere All at Once", 2022, 98),
+            ("tmdb-361743", "Top Gun: Maverick", 2022, 85), ("tmdb-414906", "The Batman", 2022, 83), ("tmdb-335984", "Blade Runner 2049", 2017, 95),
+            ("tmdb-76341", "Mad Max: Fury Road", 2015, 93), ("tmdb-244786", "Whiplash", 2014, 96), ("tmdb-313369", "La La Land", 2016, 88),
+            ("tmdb-194", "Amélie", 2001, 90), ("tmdb-128", "Princess Mononoke", 1997, 94), ("tmdb-4935", "Howl's Moving Castle", 2004, 89),
+            ("tmdb-372058", "Your Name.", 2016, 92), ("tmdb-105", "Back to the Future", 1985, 88), ("tmdb-11", "Star Wars", 1977, 86),
+            ("tmdb-329", "Jurassic Park", 1993, 87), ("tmdb-578", "Jaws", 1975, 85), ("tmdb-694", "The Shining", 1980, 90),
+            ("tmdb-62", "2001: A Space Odyssey", 1968, 93), ("tmdb-240", "The Godfather Part II", 1974, 95), ("tmdb-389", "12 Angry Men", 1957, 91),
+            ("tmdb-106646", "The Wolf of Wall Street", 2013, 80), ("tmdb-68718", "Django Unchained", 2012, 84),
+            ("tmdb-16869", "Inglourious Basterds", 2009, 89), ("tmdb-419430", "Get Out", 2017, 87), ("tmdb-493922", "Hereditary", 2018, 82),
+            ("tmdb-530385", "Midsommar", 2019, 74), ("tmdb-466420", "Killers of the Flower Moon", 2023, 81), ("tmdb-792307", "Poor Things", 2023, 86),
+            ("tmdb-915935", "Anatomy of a Fall", 2023, 90), ("tmdb-299534", "Avengers: Endgame", 2019, 79), ("tmdb-122", "The Lord of the Rings: The Return of the King", 2003, 97)]
+        for (i, m) in more.enumerated() {
+            let f = FilmRef(id: m.0, title: m.1, year: m.2)
+            // Two or three film nights a week, going back from six weeks ago, with a few busy weekends.
+            let back = 42 + i * 6 + (i % 4 == 0 ? 0 : i % 3)
+            d.entries.append(LogEntry(film: f, watchedOn: day(back), rating: m.3, liked: m.3 >= 92, rewatch: i % 7 == 0,
+                                      tags: i % 5 == 0 ? ["imax"] : i % 5 == 2 ? ["friday night"] : []))
+            d.ratings[f.id] = m.3
+            if m.3 >= 92 { d.liked.append(f) }
+        }
+        if Demo.playing(.film) { d.ratings["tmdb-693134"] = nil }
+        UserDefaults.standard.set(StoryStyle.glow.rawValue, forKey: "storyStyle")
+        UserDefaults.standard.set(true, forKey: "storyShowsRating")
     }
 }

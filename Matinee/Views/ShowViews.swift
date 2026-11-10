@@ -57,6 +57,20 @@ struct SeasonsSection: View {
                 seasonMayHaveFinished(current, from: old, to: new)
             }
             .onChange(of: router.sheet == nil) { _, closed in if closed { presentPendingWrap() } }
+            .task(id: Demo.Director.shared.showTicks) { await demoTicks() }
+        }
+    }
+
+    /// Promo recordings only: tick off and score the next few episodes.
+    private func demoTicks() async {
+        guard Demo.Director.shared.showTicks else { return }
+        await Demo.until { episodes[current] != nil }
+        let next = (episodes[current] ?? []).filter { $0.aired && !library.isSeen(show.id, $0) }.prefix(3)
+        for (ep, score) in zip(next, [93.0, 88, 97]) {
+            await Demo.wait(0.6)
+            library.setSeen(show, [ep], true)
+            await Demo.wait(0.55)
+            library.rateEpisode(show, ep, score)
         }
     }
 

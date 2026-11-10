@@ -1,0 +1,125 @@
+name: Matinee promo recordings
+
+# Records the scripted demo scenes (Matinee/App/Demo.swift) on an iPhone simulator, in slow motion
+# (MATINEE_PACE), and publishes the raw clips as the matinee-promo release for the promo video.
+on:
+  push:
+    branches: [LINER]
+    paths: ['Matinee/**', 'Shared/**', 'project.yml', '.github/workflows/matinee-promo.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: matinee-promo-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  record:
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      SIMCTL_CHILD_MATINEE_PREVIEW: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use the newest Xcode
+        run: |
+          XC=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          [ -z "$XC" ] && XC=/Applications/Xcode.app
+          sudo xcode-select -s "$XC"
+          xcodebuild -version
+
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen >/dev/null 2>&1 || brew install xcodegen
+          xcodegen generate
+
+      - name: Bake in the TMDB key
+        env:
+          TMDB_TOKEN: ${{ secrets.TMDB_TOKEN }}
+        run: |
+          if [ -n "$TMDB_TOKEN" ]; then plutil -replace MatineeTMDBToken -string "$TMDB_TOKEN" Config/Info.plist; echo "TMDB: set"; else echo "::warning::TMDB_TOKEN not set: no posters"; fi
+
+      - name: Build for the simulator
+        run: |
+          xcodebuild -project Matinee.xcodeproj -target Matinee -configuration Debug -sdk iphonesimulator \
+            CODE_SIGNING_ALLOWED=NO SYMROOT="$PWD/simbuild" build > sim.log 2>&1 || {
+              grep -E "error:" sim.log | sort -u | head -60 | while IFS= read -r l; do echo "::error::${l#$PWD/}"; done; exit 1; }
+          test -d simbuild/Debug-iphonesimulator/Matinee.app
+
+      - name: Boot an iPhone
+        run: |
+          UDID=$(xcrun simctl list devices available | grep -E "iPhone 17 Pro \(" | head -1 | grep -oE '[0-9A-F-]{36}')
+          [ -z "$UDID" ] && UDID=$(xcrun simctl list devices available | grep -E "iPhone 1[67] Pro \(" | head -1 | grep -oE '[0-9A-F-]{36}')
+          [ -z "$UDID" ] && UDID=$(xcrun simctl list devices available | grep "iPhone" | head -1 | grep -oE '[0-9A-F-]{36}')
+          echo "UDID=$UDID" >> $GITHUB_ENV
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl ui "$UDID" appearance dark || true
+          xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3 || true
+          xcrun simctl install "$UDID" simbuild/Debug-iphonesimulator/Matinee.app
+
+      - name: Record the scenes
+        run: |
+          APP=com.jm2kool.matinee
+          PACE=3
+          mkdir -p out
+          go() {  # scene, pace, extra KEY=VALUE pairs
+            local scene=$1 pace=$2; shift 2
+            env SIMCTL_CHILD_MATINEE_SCENE=$scene SIMCTL_CHILD_MATINEE_PACE=$pace $(for kv in "$@"; do printf 'SIMCTL_CHILD_%s ' "$kv"; done) \
+              xcrun simctl launch --terminate-running-process "$UDID" $APP
+          }
+          # Unrecorded warm-up: fetch posters, logos, episodes and film facts into the caches.
+          go film 1 MATINEE_FILM=tmdb-693134; sleep 14
+          go colour 1 MATINEE_FILM=tmdb-569094; sleep 10
+          go show 1 MATINEE_FILM=tmdbtv-1396; sleep 14
+          go story 1; sleep 10
+          go stats 1; sleep 30
+          go profile 1 MATINEE_TAB=profile; sleep 8
+          scene() {  # name, seconds to record, then go() arguments
+            local name=$1 secs=$2; shift 2
+            xcrun simctl terminate "$UDID" $APP 2>/dev/null || true
+            sleep 1
+            xcrun simctl io "$UDID" recordVideo --codec h264 --force "out/$name.mp4" & REC=$!
+            sleep 1.5
+            go "$@"
+            sleep "$secs"
+            xcrun simctl io "$UDID" screenshot "out/$name.png" || true
+            kill -INT $REC; wait $REC || true
+          }
+          scene film 32 film $PACE MATINEE_FILM=tmdb-693134
+          scene colour 22 colour $PACE MATINEE_FILM=tmdb-569094
+          scene show 40 show $PACE MATINEE_FILM=tmdbtv-1396
+          scene story 28 story $PACE
+          scene stats 26 stats $PACE
+          scene profile 9 profile 1 MATINEE_TAB=profile
+          scene home 8 home 1 MATINEE_TAB=films
+          # The opening titles run at their own speed.
+          xcrun simctl terminate "$UDID" $APP 2>/dev/null || true
+          xcrun simctl io "$UDID" recordVideo --codec h264 --force out/splash.mp4 & REC=$!
+          sleep 1.5
+          SIMCTL_CHILD_MATINEE_SPLASH=1 xcrun simctl launch "$UDID" $APP
+          sleep 7
+          kill -INT $REC; wait $REC || true
+          echo "pace=$PACE" > out/pace.txt
+          ls -lh out
+
+      - name: Upload the clips
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: matinee-promo
+          path: out
+          if-no-files-found: ignore
+
+      - name: Publish the clips
+        working-directory: out
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=matinee-promo
+          gh release delete $TAG --yes --cleanup-tag 2>/dev/null || true
+          gh release create $TAG * --target $GITHUB_SHA --prerelease --title "Matinee promo clips (simulator)" \
+            --notes "Slow-motion screen recordings from an iPhone simulator in demo mode (sample library and stats), for the promo video. pace.txt says how much to speed them up."

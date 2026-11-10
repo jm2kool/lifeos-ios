@@ -6,6 +6,7 @@ struct StatsView: View {
     @Environment(Library.self) private var library
     @Environment(Router.self) private var router
     @State private var year: Int?
+    @State private var scroll = ScrollPosition(edge: .top)
     private var facts: FactStore { FactStore.shared }
 
     private var years: [Int] { Set(library.doc.entries.map(\.watchedOn.year)).sorted(by: >) }
@@ -36,6 +37,7 @@ struct StatsView: View {
             .padding(.vertical, 12)
             .padding(.bottom, 30)
         }
+        .scrollPosition($scroll)
         .ambientBackground(Array(library.allFavorites.prefix(3)))
         .navigationTitle(year.map { "Stats · \(String($0))" } ?? "Stats")
         .navigationBarTitleDisplayMode(.inline)
@@ -52,6 +54,13 @@ struct StatsView: View {
             }
         }
         .task { await facts.fill(library.watchedFilms) }
+        .task {
+            // Promo recordings only: once the facts are in, glide down through the charts.
+            guard Demo.playing(.stats) else { return }
+            await Demo.until(40) { facts.filling == nil }
+            await Demo.wait(1.0)
+            withAnimation(Demo.slow(.smooth(duration: 3.2))) { scroll.scrollTo(y: 1100) }
+        }
     }
 
     /// You against TMDB's members: on average, and the films where you differ most.

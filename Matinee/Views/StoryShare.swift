@@ -415,12 +415,23 @@ struct StoryShareSheet: View {
         }
         .task {
             let a = await StoryRenderer.art(for: entry.film)
-            withAnimation(.smooth) { art = a }
+            withAnimation(Demo.slow(.smooth)) { art = a }
         }
+        .task { await demoLooks() }
         .task(id: "\(style.rawValue)|\(showReview)|\(showRating)|\(art != nil)") {
             guard let art else { return }
             let img = composite(art)
-            withAnimation(.smooth(duration: 0.3)) { preview = img }
+            withAnimation(Demo.slow(.smooth(duration: 0.3))) { preview = img }
+        }
+    }
+
+    /// Promo recordings only: show each look in turn, then come back to Glow.
+    private func demoLooks() async {
+        guard Demo.playing(.story) else { return }
+        await Demo.until { preview != nil }
+        for look in [StoryStyle.colour, .poster, .glow] {
+            await Demo.wait(1.3)
+            withAnimation(Demo.slow(.smooth)) { style = look }
         }
     }
 
