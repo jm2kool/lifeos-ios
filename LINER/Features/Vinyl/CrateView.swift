@@ -57,7 +57,7 @@ struct CrateView: View {
         .fullScreenCover(item: $playing) { r in
             TurntableView(record: r, dropIn: true)
         }
-        .fullScreenCover(isPresented: $room) { ListeningRoomView() }
+        .fullScreenCover(isPresented: $room) { ListeningRoomView { room = false } }
         .sensoryFeedback(.impact(weight: .medium), trigger: taps)
         .toolbar(.hidden, for: .navigationBar)
     }

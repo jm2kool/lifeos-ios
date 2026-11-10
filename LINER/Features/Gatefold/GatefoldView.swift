@@ -21,6 +21,8 @@ struct GatefoldView: View {
     @State private var recordOut = false
     @State private var turntable: VinylRecord?
     @State private var busy = false
+    /// Back was tapped; stops the opening moves and keeps a second tap from starting a second close.
+    @State private var closing = false
     /// Full Album (as Apple Music lists it, the songs you don't have streamed) or Saved Album, shared with the
     /// album page.
     @AppStorage(AlbumTracklist.storageKey) private var savedOnlyAlbums = ""
@@ -208,20 +210,25 @@ struct GatefoldView: View {
         busy = true
         withAnimation(.timingCurve(0.2, 0.8, 0.2, 1, duration: 0.55)) { stage = .lifted }
         try? await Task.sleep(for: .milliseconds(520))
+        guard !closing else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         withAnimation(.easeInOut(duration: 0.45)) { stage = .opening }
         try? await Task.sleep(for: .milliseconds(430))
+        guard !closing else { return }
         withAnimation(.easeOut(duration: 0.32)) { stage = .flat }
         try? await Task.sleep(for: .milliseconds(300))
+        guard !closing else { return }
         withAnimation(.timingCurve(0.65, 0, 0.25, 1, duration: 0.7)) { stage = .inside }
         try? await Task.sleep(for: .milliseconds(720))
+        guard !closing else { return }
         settled = true
         busy = false
     }
 
     /// The same moves backwards, into the crate.
     private func close() async {
-        guard !busy else { return }
+        guard !closing else { return }
+        closing = true
         busy = true
         if page != 0 { withAnimation(.liner) { page = 0 }; try? await Task.sleep(for: .milliseconds(380)) }
         settled = false

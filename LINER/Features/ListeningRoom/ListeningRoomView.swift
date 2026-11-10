@@ -7,6 +7,8 @@ import SwiftUI
 struct ListeningRoomView: View {
     @Environment(LibraryService.self) private var library
     @Environment(PlaybackCoordinator.self) private var player
+    /// Closes the room. The presenter sets this (a plain flag it owns) rather than relying on `dismiss`.
+    var onClose: () -> Void = {}
     @Environment(\.dismiss) private var dismiss
     @State private var held: Album?
     @State private var heldIndex = 0
@@ -71,7 +73,7 @@ struct ListeningRoomView: View {
                 Text("Listening Room").font(.serif(28))
             }
             Spacer()
-            GlassCircleButton(systemImage: "xmark", label: "Leave the Listening Room", size: 42) { dismiss() }
+            GlassCircleButton(systemImage: "xmark", label: "Leave the Listening Room", size: 42) { onClose(); dismiss() }
         }
         .frame(width: L.headerWidth, height: 60)
         .position(x: L.headerX + L.headerWidth / 2, y: (L.land ? L.shelf.minY - 78 : 6) + 30)

@@ -24,12 +24,12 @@ final class SnapshotService {
         guard !loaded else { return }
         loaded = true
         if let data = try? Data(contentsOf: countsFile), let map = try? JSONDecoder().decode([String: Int].self, from: data) {
-            lastCounts = Dictionary(uniqueKeysWithValues: map.compactMap { k, v in UInt64(k).map { ($0, v) } })
+            lastCounts = Dictionary(map.compactMap { k, v in UInt64(k).map { ($0, v) } }, uniquingKeysWith: { max($0, $1) })
         }
     }
 
     private func persist() {
-        let map = Dictionary(uniqueKeysWithValues: lastCounts.map { (String($0.key), $0.value) })
+        let map = Dictionary(lastCounts.map { (String($0.key), $0.value) }, uniquingKeysWith: { max($0, $1) })
         if let data = try? JSONEncoder().encode(map) { try? data.write(to: countsFile, options: .atomic) }
     }
 
@@ -53,7 +53,7 @@ final class SnapshotService {
                 }
             }
         }
-        lastCounts = Dictionary(uniqueKeysWithValues: snapshot.songs.map { ($0.id, $0.playCount) })
+        lastCounts = Dictionary(snapshot.songs.map { ($0.id, $0.playCount) }, uniquingKeysWith: { max($0, $1) })
         persist()
         Store.shared.save()
     }
@@ -67,7 +67,7 @@ final class SnapshotService {
     // MARK: Background refresh (best effort, about daily)
 
     static func registerBackgroundTask() {
-        BGTaskScheduler.shared.register(forTaskWithIdentifier: taskID, using: nil) { task in
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: taskID, using: nil) { @Sendable task in
             nonisolated(unsafe) let task = task
             Task { @MainActor in
                 await LibraryService.current?.refresh()

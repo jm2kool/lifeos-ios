@@ -24,7 +24,7 @@ enum DebugSeeder {
                 totals[s.id, default: 0] += n
             }
         }
-        var counts = Dictionary(uniqueKeysWithValues: pool.map { ($0.id, max(0, $0.playCount - (totals[$0.id] ?? 0))) })
+        var counts = Dictionary(pool.map { ($0.id, max(0, $0.playCount - (totals[$0.id] ?? 0))) }, uniquingKeysWith: { max($0, $1) })
         for s in pool {
             let row = PlaySnapshot(date: start, persistentID: s.id, playCount: counts[s.id] ?? 0)
             row.seeded = true
