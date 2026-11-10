@@ -29,6 +29,7 @@ struct MyStatsView: View {
                 }
                 .padding(.bottom, 32)
             }
+            .demoScroll("stats", to: 1100, after: 2)
             .background(Palette.background)
             .refreshable { await library.refresh() }
             .libraryDestinations(zoom)

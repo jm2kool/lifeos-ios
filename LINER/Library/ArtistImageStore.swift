@@ -52,6 +52,13 @@ final class ArtistImageStore: @unchecked Sendable {
         return noir
     }
 
+    /// Demo mode: a made-up artist photo, stored in black and white like a downloaded one.
+    func seed(_ image: UIImage, for name: String) {
+        let file = folder.appending(path: "\(MediaKey.normalise(name)).jpg")
+        guard !FileManager.default.fileExists(atPath: file.path), let noir = Self.noir(image) else { return }
+        if let jpeg = noir.jpegData(compressionQuality: 0.85) { try? jpeg.write(to: file, options: .atomic) }
+    }
+
     /// CIPhotoEffectNoir plus a touch of contrast (SPEC §3).
     static func noir(_ image: UIImage) -> UIImage? {
         guard let input = CIImage(image: image) else { return nil }

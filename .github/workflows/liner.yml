@@ -80,3 +80,69 @@ jobs:
           gh release delete $TAG --yes --cleanup-tag 2>/dev/null || true
           gh release create $TAG LINER.ipa --title "LINER. (latest build)" --target $GITHUB_SHA --prerelease \
             --notes "Unsigned build of ${GITHUB_SHA::7} from ${GITHUB_REF_NAME}. Install with Sideloadly using your Apple ID."
+
+      # Simulator recordings in demo mode (made-up library and stats), for previews and the promo video.
+      - continue-on-error: true
+        name: Build for the simulator
+        run: |
+          xcodebuild -project LINER.xcodeproj -target LINER -configuration Debug -sdk iphonesimulator \
+            CODE_SIGNING_ALLOWED=NO SYMROOT="$PWD/simbuild" build > sim.log 2>&1 || {
+              grep -E "error:" sim.log | sort -u | head -60 | while IFS= read -r l; do echo "::error::${l#$PWD/}"; done; exit 1; }
+          test -d simbuild/Debug-iphonesimulator/LINER.app
+
+      - continue-on-error: true
+        name: Boot an iPhone
+        run: |
+          UDID=$(xcrun simctl list devices available | grep -E "iPhone 1[67] Pro \(" | head -1 | grep -oE '[0-9A-F-]{36}')
+          [ -z "$UDID" ] && UDID=$(xcrun simctl list devices available | grep "iPhone" | head -1 | grep -oE '[0-9A-F-]{36}')
+          echo "UDID=$UDID" >> $GITHUB_ENV
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl ui "$UDID" appearance dark || true
+          xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3 || true
+          xcrun simctl install "$UDID" simbuild/Debug-iphonesimulator/LINER.app
+
+      - continue-on-error: true
+        name: Record the demo scenes
+        run: |
+          APP=com.jm2kool.liner
+          mkdir -p out
+          go() { SIMCTL_CHILD_LINER_DEMO=1 SIMCTL_CHILD_LINER_SCENE=$1 xcrun simctl launch --terminate-running-process "$UDID" $APP; }
+          # First launch draws the covers and seeds the play history; let it settle unrecorded.
+          go stats; sleep 15; go recap; sleep 10
+          scene() {   # scene name, seconds to record, seconds in for the screenshot
+            xcrun simctl terminate "$UDID" $APP 2>/dev/null || true
+            sleep 1
+            xcrun simctl io "$UDID" recordVideo --codec h264 --force "out/$1.mp4" & REC=$!
+            sleep 1.5
+            go "$1"
+            sleep "$3"; xcrun simctl io "$UDID" screenshot "out/$1.png"
+            sleep "$(( $2 - $3 ))"
+            kill -INT $REC; wait $REC || true
+          }
+          scene splash 12 9
+          scene crate 9 7
+          scene player 13 3
+          scene lyrics 9 6
+          scene share 9 6
+          scene stats 10 2
+          scene recap 18 5
+          scene library 9 2
+          # The live lyrics in the Dynamic Island: play, then leave the app.
+          xcrun simctl io "$UDID" recordVideo --codec h264 --force out/island.mp4 & REC=$!
+          sleep 1.5; go island; sleep 6
+          xcrun simctl launch "$UDID" com.apple.Preferences || true
+          sleep 5; xcrun simctl io "$UDID" screenshot out/island.png; sleep 2
+          kill -INT $REC; wait $REC || true
+          ls -lh out
+
+      - continue-on-error: true
+        name: Publish the preview
+        working-directory: LINER/out
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=liner-preview
+          gh release delete $TAG --yes --cleanup-tag 2>/dev/null || true
+          gh release create $TAG * --target $GITHUB_SHA --prerelease --title "LINER. preview (simulator)" \
+            --notes "Screen recordings and screenshots from an iPhone simulator in demo mode (made-up library and stats)."

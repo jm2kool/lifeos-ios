@@ -52,6 +52,7 @@ struct RecapStoryView: View {
             }
             started = .now
         }
+        .task { await Demo.advanceStory { withAnimation(.liner) { if index < list.count - 1 { index += 1 } } } }
         .task {
             if let id = recap.song?.albumID, let img = await ArtworkCache.shared.image(album: id, pixels: 1600) {
                 cover = img

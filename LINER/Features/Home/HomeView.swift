@@ -60,6 +60,7 @@ struct HomeView: View {
             }
             .padding(.horizontal, 16).padding(.bottom, 24)
         }
+        .demoScroll("splash", to: 820, after: 3.4)
         .background(Palette.background)
         .refreshable { await library.refresh() }
         .toolbar {

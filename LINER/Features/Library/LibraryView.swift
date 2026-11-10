@@ -27,6 +27,7 @@ struct LibraryView: View {
                 .id(section)   // a fresh list for each section, so switching is instant
             }
             .scrollDismissesKeyboard(.immediately)
+            .demoScroll("library", to: 900, after: 2)
             // Outside the scroll view, so it's always there and always takes the tap.
             .safeAreaInset(edge: .top, spacing: 0) { sectionPicker }
             .background(Palette.background)

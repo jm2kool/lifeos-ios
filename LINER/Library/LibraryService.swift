@@ -13,6 +13,8 @@ final class LibraryService {
     private(set) var hasLoaded = false
     private var observing = false
     private var pendingRefresh = false
+    /// Previews and demo mode: the snapshot is fixed, nothing is read from MediaPlayer.
+    private var fixed = false
 
     init() { status = MPMediaLibrary.authorizationStatus() }
 
@@ -22,6 +24,7 @@ final class LibraryService {
         snapshot = preview
         stats = LibraryStats(preview)
         hasLoaded = true
+        fixed = true
     }
 
     /// Your own hearts (Song/Album Passports) by persistent ID; they win over the Music app's stars.
@@ -56,7 +59,7 @@ final class LibraryService {
     }
 
     /// Re-reads the permission, which can change in Settings while LINER. is in the background.
-    func recheckAccess() { status = MPMediaLibrary.authorizationStatus() }
+    func recheckAccess() { if !fixed { status = MPMediaLibrary.authorizationStatus() } }
 
     /// The connect flow (first launch after an install, or Settings → Recalibrate): asks for access (instant when
     /// it's already granted), then scans the library from scratch. Returns whether LINER. can read the library.
@@ -74,7 +77,7 @@ final class LibraryService {
 
     /// Re-reads the library. Called on launch, pull to refresh, and when the library changes.
     func refresh() async {
-        guard isAuthorized else { return }
+        guard isAuthorized, !fixed else { return }
         guard !isLoading else { pendingRefresh = true; return }
         isLoading = true
         startObserving()

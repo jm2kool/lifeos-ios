@@ -38,6 +38,10 @@ struct RecapsView: View {
     private func reload() async {
         history = await RecapLoader.history(library: library)
         if period == nil || period?.kind != kind { period = periods.first }
+        if Demo.scene == "recap", history != nil, !showStory {
+            try? await Task.sleep(for: .seconds(1.6))
+            showStory = true
+        }
     }
 
     private var periodPicker: some View {
