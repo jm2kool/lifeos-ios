@@ -144,20 +144,20 @@ struct FilmView: View {
         guard artLoaded, let scene = Demo.scene, [Demo.Scene.film, .colour, .show].contains(scene) else { return }
         await Demo.until { palette != nil }
         await Demo.wait(1.4)
-        withAnimation(Demo.slow(.smooth(duration: 1.3))) { scroll.scrollTo(y: 600) }
-        await Demo.wait(1.7)
+        await Demo.glide(from: 0, to: 600, over: 1.8) { scroll.scrollTo(y: $0) }
+        await Demo.wait(1.2)
         switch scene {
         case .film:
-            if let y = dialY {
-                withAnimation(Demo.slow(.smooth(duration: 0.9))) { scroll.scrollTo(y: max(600, y - Demo.screenHeight * 0.52)) }
-                await Demo.wait(1.1)
+            if let y = dialY, y - Demo.screenHeight * 0.52 > 620 {
+                await Demo.glide(from: 600, to: y - Demo.screenHeight * 0.52, over: 0.8) { scroll.scrollTo(y: $0) }
             }
+            await Demo.wait(0.8)
             Demo.Director.shared.dialTarget = 94
         case .show:
             await Demo.until { episodesY != nil && detail != nil }
             if let y = episodesY {
-                withAnimation(Demo.slow(.smooth(duration: 1.3))) { scroll.scrollTo(y: y - 100) }
-                await Demo.wait(1.5)
+                await Demo.glide(from: 600, to: y - 100, over: 1.4) { scroll.scrollTo(y: $0) }
+                await Demo.wait(0.6)
             }
             Demo.Director.shared.showTicks = true
         default: break

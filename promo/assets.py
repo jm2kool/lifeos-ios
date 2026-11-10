@@ -23,9 +23,9 @@ def tracked(d, xy, text, font, fill, track=0.14):
     """Centred small caps with letter-spacing (a fraction of the font size)."""
     gap = font.size * track
     width = sum(d.textlength(c, font=font) for c in text) + gap * (len(text) - 1)
-    x, y = xy[0] - width / 2, xy[1]
+    x, y = xy[0] - width / 2, xy[1] + font.getmetrics()[0]
     for c in text:
-        d.text((x, y), c, font=font, anchor="lt", fill=fill)
+        d.text((x, y), c, font=font, anchor="ls", fill=fill)   # on the baseline, so punctuation sits right
         x += d.textlength(c, font=font) + gap
 
 

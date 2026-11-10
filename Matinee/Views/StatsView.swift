@@ -59,7 +59,7 @@ struct StatsView: View {
             guard Demo.playing(.stats) else { return }
             await Demo.until(40) { facts.filling == nil }
             await Demo.wait(1.0)
-            withAnimation(Demo.slow(.smooth(duration: 3.2))) { scroll.scrollTo(y: 1100) }
+            await Demo.glide(from: 0, to: 1100, over: 3.2) { scroll.scrollTo(y: $0) }
         }
     }
 

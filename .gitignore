@@ -6,3 +6,4 @@ DerivedData/
 .DS_Store
 Payload/
 *.ipa
+__pycache__/

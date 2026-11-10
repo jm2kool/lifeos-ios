@@ -33,6 +33,18 @@ enum Demo {
         UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows).first?.bounds.height ?? 874
     }
 
+    /// Scrolls step by step (an animated scrollTo ignores its duration and jumps), easing in and out over
+    /// `seconds` of scene time, so a slow-motion recording catches every frame.
+    static func glide(from a: CGFloat, to b: CGFloat, over seconds: Double, _ set: (CGFloat) -> Void) async {
+        let steps = max(1, Int(t(seconds) * 60))
+        for i in 1...steps {
+            let p = Double(i) / Double(steps)
+            let e = p < 0.5 ? 4 * p * p * p : 1 - pow(-2 * p + 2, 3) / 2
+            set(a + (b - a) * CGFloat(e))
+            try? await Task.sleep(for: .milliseconds(16))
+        }
+    }
+
     /// Waits (in real time) until `ready` is true, or gives up after `limit` seconds.
     static func until(_ limit: Double = 20, _ ready: () -> Bool) async {
         let end = Date.now.addingTimeInterval(limit)
