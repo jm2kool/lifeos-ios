@@ -48,6 +48,10 @@ struct CrateView: View {
         }
         .task(id: current?.id) { await loadBackdrop(current) }
         .task { VinylSounds.shared.prepare() }
+        .task {
+            await Demo.crateShown(records: records.map(\.id), focus: { id in withAnimation(.liner) { focused = id } },
+                                  open: { id in if let r = records.first(where: { $0.id == id }) { openSleeve(r) } }, room: { room = true })
+        }
         .overlay {
             if let g = gatefold {
                 GatefoldView(record: g.record, source: g.source) { gatefold = nil }

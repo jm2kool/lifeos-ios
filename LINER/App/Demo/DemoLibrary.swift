@@ -1,78 +1,76 @@
 import Foundation
 
-/// The made-up library for demo mode: invented artists and albums with believable play counts, so the simulator
-/// recordings (and the promo video cut from them) show a lived-in LINER. without anyone's real music.
+/// The library for demo mode: real albums (Charli xcx, Drake, Doja Cat, Yeat) with made-up play counts, so the
+/// simulator recordings (and the promo video cut from them) show a lived-in LINER.
 @MainActor
 enum DemoLibrary {
-    /// One invented album: who, what, the cover's colours and pattern, and its songs.
+    /// One album: who, what, its songs (title, seconds) and how much it gets played (0…1). Real albums carry
+    /// their Apple Music cover URL; the invented one draws its own cover.
     struct Entry {
         let artist: String
         let title: String
         let genre: String
         let year: Int
-        let colours: [UInt32]
-        let style: DemoCover.Style
-        let songs: [String]
-        /// How much this album gets played, 0…1.
         let love: Double
+        var artwork: String? = nil
+        var colours: [UInt32] = []
+        var style: DemoCover.Style = .sun
+        let songs: [(String, Double)]
     }
 
     static let entries: [Entry] = [
-        Entry(artist: "Marlowe Vane", title: "Paper Moons", genre: "Indie Pop", year: 2025,
+        Entry(artist: "Charli xcx", title: "BRAT", genre: "Electronic", year: 2024, love: 1.0,
+              artwork: "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/88/4e/63/884e6321-ad41-aab1-f6f0-20efcafcfd55/075679666130.jpg/1400x1400bb.jpg",
+              songs: [("360", 134), ("Club classics", 154), ("Sympathy is a knife", 151), ("I might say something stupid", 109), ("Talk talk", 162), ("Von dutch", 164), ("Everything is romantic", 203), ("Rewind", 168)]),
+        Entry(artist: "Doja Cat", title: "Planet Her", genre: "Pop", year: 2021, love: 0.78,
+              artwork: "https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/4f/4b/ee/4f4bee71-d197-67ab-2a42-913dc416df0d/886449138869.jpg/1400x1400bb.jpg",
+              songs: [("Woman", 173), ("Naked", 224), ("Payday (feat. Young Thug)", 213), ("Get Into It (Yuh)", 138), ("Need To Know", 211), ("Love To Dream", 217), ("You Right", 186), ("Been Like This", 177)]),
+        Entry(artist: "Yeat", title: "2093", genre: "Hip-Hop", year: 2024, love: 0.7,
+              artwork: "https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/b1/69/86/b169862a-cdb8-6a0a-8359-03e86921f306/24UMGIM13668.rgb.jpg/1400x1400bb.jpg",
+              songs: [("Psycho CEO", 226), ("Power Trip", 265), ("Breathe", 171), ("Morë", 165), ("Bought The Earth", 178), ("Nothing Changë", 237), ("U Should Know", 186), ("Lyfestylë", 237)]),
+        Entry(artist: "Drake", title: "For All The Dogs", genre: "Hip-Hop", year: 2023, love: 0.42,
+              artwork: "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/fa/9e/e6/fa9ee672-0880-2b5b-a69d-981e8fcb807e/23UM1IM09863.rgb.jpg/1400x1400bb.jpg",
+              songs: [("Virginia Beach", 251), ("Amen (feat. Teezo Touchdown)", 141), ("Calling For You (feat. 21 Savage)", 286), ("Fear Of Heights", 155), ("Daylight", 164), ("First Person Shooter (feat. J. Cole)", 247), ("IDGAF (feat. Yeat)", 260), ("7969 Santa", 260)]),
+        Entry(artist: "Charli xcx", title: "CRASH", genre: "Pop", year: 2022, love: 0.72,
+              artwork: "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/86/08/4f/86084fe8-8613-74a6-846a-f6419e030c5c/190296409165.jpg/1400x1400bb.jpg",
+              songs: [("Crash", 130), ("New Shapes (feat. Caroline Polachek & Christine and the Queens)", 201), ("Good Ones", 137), ("Constant Repeat", 189), ("Beg For You (feat. Rina Sawayama)", 168), ("Move Me", 147), ("Baby", 160), ("Lightning", 237)]),
+        Entry(artist: "Doja Cat", title: "Scarlet", genre: "Rap", year: 2023, love: 0.45,
+              artwork: "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/21/61/09/216109c7-74f9-a99a-f2e9-0405d7ed2fea/196871470148.jpg/1400x1400bb.jpg",
+              songs: [("Paint The Town Red", 230), ("Demons", 196), ("Ouchies", 122), ("97", 178), ("Gun", 177), ("Go Off", 197), ("Shutcho", 187), ("Agora Hills", 265)]),
+        Entry(artist: "Drake", title: "Take Care", genre: "Hip-Hop", year: 2011, love: 0.66,
+              artwork: "https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/d2/53/62/d2536245-b94c-b3fd-7168-9512f655f6d4/00602527899091.rgb.jpg/1400x1400bb.jpg",
+              songs: [("Over My Dead Body", 273), ("Shot for Me", 225), ("Headlines", 236), ("Crew Love (feat. The Weeknd)", 209), ("Take Care (feat. Rihanna)", 277), ("Marvin's Room", 347), ("Buried Alive Interlude (feat. Kendrick Lamar)", 151), ("Under Ground Kings", 213)]),
+        Entry(artist: "Yeat", title: "2 Alivë", genre: "Hip-Hop", year: 2022, love: 0.5,
+              artwork: "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/6c/13/d6/6c13d6fc-2993-020f-22a6-82c68cfe908c/22UMGIM22801.rgb.jpg/1400x1400bb.jpg",
+              songs: [("Poppin", 167), ("Outsidë (feat. Young Thug)", 231), ("Rëal six", 209), ("Nvr again", 166), ("Luh gëek", 176), ("Rackz got më (feat. Gunna)", 181), ("Doublë", 170), ("On tha linë", 155)]),
+        Entry(artist: "Charli xcx", title: "how i'm feeling now", genre: "Pop", year: 2020, love: 0.6,
+              artwork: "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/1a/5c/e9/1a5ce93c-aef4-6667-b7d1-7162203e1c39/190295229993.jpg/1400x1400bb.jpg",
+              songs: [("pink diamond", 124), ("forever", 244), ("claws", 149), ("7 years", 195), ("detonate", 219), ("enemy", 223), ("i finally understand", 152), ("c2.0", 221)]),
+        Entry(artist: "Drake", title: "Views", genre: "Hip-Hop", year: 2016, love: 0.5,
+              artwork: "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/95/f5/87/95f587f7-21c3-d5f9-d81a-4350f9caa020/16UMGIM27643.rgb.jpg/1400x1400bb.jpg",
+              songs: [("Keep the Family Close", 329), ("9", 256), ("U With Me?", 297), ("Feel No Ways", 241), ("Hype", 209), ("Weston Road Flows", 254), ("Redemption", 334), ("With You (feat. PARTYNEXTDOOR)", 195)]),
+        Entry(artist: "Doja Cat", title: "Hot Pink", genre: "R&B", year: 2019, love: 0.55,
+              artwork: "https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/f3/03/40/f30340af-55d6-11bb-f59c-b03705360715/886447991831.jpg/1400x1400bb.jpg",
+              songs: [("Won't Bite (feat. Smino)", 195), ("Rules", 187), ("Say So", 238), ("Like That (feat. Gucci Mane)", 163), ("Addiction", 208), ("Streets", 227), ("Shine", 160)]),
+        Entry(artist: "Drake", title: "Scorpion", genre: "Hip-Hop", year: 2018, love: 0.46,
+              artwork: "https://is1-ssl.mzstatic.com/image/thumb/Music115/v4/bb/6d/8f/bb6d8f67-6d04-10b5-dd62-eb5809ac54fc/00602567879152.rgb.jpg/1400x1400bb.jpg",
+              songs: [("Survival", 136), ("Nonstop", 239), ("Elevate", 185), ("Emotionless", 302), ("God's Plan", 199), ("I'm Upset", 214), ("8 Out Of 10", 196), ("Mob Ties", 205)]),
+        Entry(artist: "Yeat", title: "AftërLyfe", genre: "Hip-Hop", year: 2023, love: 0.36,
+              artwork: "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/6c/01/ba/6c01ba5c-ba17-6be7-bb8d-cf26054df5d6/23UMGIM16901.rgb.jpg/1400x1400bb.jpg",
+              songs: [("No morë talk", 239), ("Shmunk (feat. YoungBoy Never Broke Again)", 230), ("Bëttr 0ff", 230), ("Rav3 p4rty (feat. Kranky Kranky)", 199), ("Nun id change", 211), ("Woa...!", 170), ("Now (feat. LUH GEEKY)", 272), ("Slamm", 145)]),
+        // The song the demo plays is invented, with words written for LINER., so no one's lyrics are shown.
+        Entry(artist: "Marlowe Vane", title: "Paper Moons", genre: "Indie Pop", year: 2025, love: 0.12,
               colours: [0xF2A65A, 0xE4572E, 0x2E1F47, 0xF7D488], style: .sun,
-              songs: ["Paper Moons", "Kerosene Summer", "Lightweight", "Postcode", "Hold the Door", "Velvet Static", "Night Bus Home", "Ribbons"], love: 1),
-        Entry(artist: "SOLENNE", title: "Chrome Heart", genre: "Electronic", year: 2024,
-              colours: [0x00F0FF, 0x7B2FF7, 0x0B0B2B, 0xFF4FD8], style: .rings,
-              songs: ["Chrome Heart", "Satellite Kiss", "Afterhours", "Mirrorball", "Signal", "Zero Gravity", "Low Orbit"], love: 0.92),
-        Entry(artist: "Ivy Okafor", title: "Saltwater Hymns", genre: "R&B", year: 2025,
-              colours: [0x0F4C5C, 0x5FA8D3, 0xE9C46A, 0x1B263B], style: .mesh,
-              songs: ["Saltwater", "Undertow", "Honey, Slowly", "Blue Hour", "Tides", "Lantern", "Sunday Light", "Shoreline"], love: 0.86),
-        Entry(artist: "Theo Lark", title: "Wide Awake, Dreaming", genre: "Pop", year: 2025,
-              colours: [0xFFB5C2, 0xFF6F91, 0x845EC2, 0xFFC75F], style: .type,
-              songs: ["Wide Awake", "Sugarcoat", "Fever Dream", "Halfway Home", "Daylight Savings", "Pillow Talk", "Run It Back"], love: 0.8),
-        Entry(artist: "The Night Ferry", title: "Harbour Lights", genre: "Dream Pop", year: 2023,
-              colours: [0x14213D, 0xFCA311, 0x3A506B, 0xE5E5E5], style: .bars,
-              songs: ["Harbour Lights", "Fog Signal", "Crossing", "Port of Call", "Lighthouse Keeper", "Deck Chairs", "Last Sailing"], love: 0.74),
-        Entry(artist: "Noor", title: "Golden Hour Radio", genre: "Soul", year: 2024,
-              colours: [0xD4A373, 0x9C6644, 0xFEFAE0, 0x582F0E], style: .sun,
-              songs: ["Golden Hour", "Radio Love", "Static Heart", "Call Me Back", "Amber", "Late Show", "Frequency"], love: 0.7),
-        Entry(artist: "Arjun Rao", title: "Monsoon Letters", genre: "Indie", year: 2023,
-              colours: [0x2D6A4F, 0x95D5B2, 0x081C15, 0xD8F3DC], style: .mesh,
-              songs: ["Monsoon Letters", "Chai at Four", "Rooftops", "Paper Boats", "Old City", "Monsoon Reprise"], love: 0.66),
-        Entry(artist: "Kite & Harbour", title: "Northbound", genre: "Folk", year: 2022,
-              colours: [0x6B705C, 0xCB997E, 0xFFE8D6, 0x3F4238], style: .bars,
-              songs: ["Northbound", "Pine & Ash", "Woodsmoke", "Letters Home", "River Song", "Wintering"], love: 0.55),
-        Entry(artist: "SOLENNE", title: "Midnight Index", genre: "Electronic", year: 2025,
-              colours: [0xFF006E, 0x3A0CA3, 0x050505, 0xFB5607], style: .type,
-              songs: ["Midnight Index", "Pulse", "Neon Rain", "Cold Open", "Afterimage", "Loop 47"], love: 0.62),
-        Entry(artist: "Low Tide Club", title: "Summer Static", genre: "Alternative", year: 2021,
-              colours: [0xFFBE0B, 0xFB5607, 0x3A86FF, 0xFFFFFF], style: .rings,
-              songs: ["Summer Static", "Skate Park", "Sunburn", "Loud Quiet Loud", "Polaroid", "Garage Door"], love: 0.48),
-        Entry(artist: "Ember Park", title: "Lights Out Lullabies", genre: "Lo-fi", year: 2022,
-              colours: [0x22223B, 0x4A4E69, 0x9A8C98, 0xF2E9E4], style: .mesh,
-              songs: ["Lights Out", "Rain on Glass", "3 A.M.", "Slow Tape", "Window Seat", "Goodnight, Moon"], love: 0.44),
-        Entry(artist: "Marlowe Vane", title: "Glass Season", genre: "Indie Pop", year: 2021,
-              colours: [0xA2D2FF, 0xBDE0FE, 0xCDB4DB, 0x22223B], style: .rings,
-              songs: ["Glass Season", "First Frost", "Tangerine", "Small Hours", "Snow Globe", "Weather Report"], love: 0.58),
-        Entry(artist: "Ivy Okafor", title: "Slow Bloom", genre: "R&B", year: 2022,
-              colours: [0x780000, 0xC1121F, 0xFDF0D5, 0x003049], style: .type,
-              songs: ["Slow Bloom", "Petals", "Gardenia", "Overgrown", "Greenhouse", "Bloom Again"], love: 0.5),
-        Entry(artist: "Theo Lark", title: "Postcards", genre: "Pop", year: 2021,
-              colours: [0x90E0EF, 0x0077B6, 0xFFD166, 0x03045E], style: .sun,
-              songs: ["Postcards", "Wish You Were Here", "Seaside", "Lost Luggage", "Departures"], love: 0.4),
-        Entry(artist: "The Night Ferry", title: "Undertow EP", genre: "Dream Pop", year: 2024,
-              colours: [0x2B2D42, 0x8D99AE, 0xEF233C, 0xEDF2F4], style: .bars,
-              songs: ["Undertow", "Slow Wake", "Keel", "Ballast"], love: 0.36),
-        Entry(artist: "Noor", title: "Velvet Tapes", genre: "Soul", year: 2022,
-              colours: [0x5F0F40, 0x9A031E, 0xFB8B24, 0xE36414], style: .rings,
-              songs: ["Velvet", "Tape Hiss", "Side A", "Rewind", "B-Side Love"], love: 0.33),
+              songs: [("Paper Moons", 214), ("Kerosene Summer", 189), ("Night Bus Home", 201), ("Ribbons", 176)]),
     ]
 
     /// Album IDs start here; song IDs are album × 100 + track.
     static func albumID(_ index: Int) -> UInt64 { UInt64(7_000 + index) }
 
-    /// The song the demo plays: track one of the first album.
-    static var nowPlayingID: UInt64 { albumID(0) * 100 + 1 }
+    /// The invented album the demo plays from (the last one).
+    static var nowPlayingAlbum: UInt64 { albumID(entries.count - 1) }
+    /// The song the demo plays: its first track.
+    static var nowPlayingID: UInt64 { nowPlayingAlbum * 100 + 1 }
 
     /// The 90-second pad from the spike lab stands in for every song's audio, so LINER.'s own player can play it.
     static var toneURL: URL { LoopVideoMaker.folder.appending(path: "liner-test-tone.m4a") }
@@ -86,7 +84,7 @@ enum DemoLibrary {
         for (a, e) in entries.enumerated() {
             let id = albumID(a)
             var ids: [UInt64] = []
-            for (t, title) in e.songs.enumerated() {
+            for (t, (title, length)) in e.songs.enumerated() {
                 let sid = id * 100 + UInt64(t + 1)
                 ids.append(sid)
                 // Openers and singles get played most; a little wobble so ranks look real.
@@ -95,7 +93,7 @@ enum DemoLibrary {
                 let wobble = Double((Int(sid) * 37) % 23) / 23.0 * 0.35 + 0.8
                 let plays = Int(base * shape * wobble)
                 songs.append(Song(id: sid, title: title, artist: e.artist, albumTitle: e.title, albumArtist: e.artist,
-                                  albumID: id, genre: e.genre, composer: e.artist, duration: 168 + Double((Int(sid) * 53) % 110),
+                                  albumID: id, genre: e.genre, composer: e.artist, duration: length,
                                   playCount: plays, rating: max(0, 5 - t / 2), trackNumber: t + 1, discNumber: 1,
                                   dateAdded: .now.addingTimeInterval(-Double(a) * 9 * day - Double(t)),
                                   lastPlayed: .now.addingTimeInterval(-Double(a + t) * 3600),

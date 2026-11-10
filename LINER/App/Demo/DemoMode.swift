@@ -6,7 +6,7 @@ import SwiftUI
 enum Demo {
     private static let env = ProcessInfo.processInfo.environment
     static let isOn = env["LINER_DEMO"] == "1"
-    /// splash, crate, player, lyrics, share, stats, recap, library or island.
+    /// splash, crate, gatefold, room, player, lyrics, share, stats, recap, library or island.
     static let scene = isOn ? (env["LINER_SCENE"] ?? "splash") : ""
 
     /// Whether the opening animation plays before the scene.
@@ -19,7 +19,7 @@ enum Demo {
         guard isOn else { return }
         let d = UserDefaults.standard
         d.set(true, forKey: "musicConnected")
-        d.set(false, forKey: "vinylMode")
+        d.set(["gatefold", "room"].contains(scene), forKey: "vinylMode")
         d.set(false, forKey: "playerVinyl")
         d.set(true, forKey: "openPlayerOnPlay")
         d.set(scene == "recap" ? "Recaps" : "Overview", forKey: "stats.page")
@@ -36,21 +36,24 @@ enum Demo {
         }
     }
 
-    /// Draws every cover and artist photo once and stores them where real artwork would be.
+    /// Real albums' covers come from Apple Music's servers; the invented album's cover and artist photo are
+    /// drawn once and stored where real artwork would be.
     @MainActor private static func drawArtwork() {
-        guard !UserDefaults.standard.bool(forKey: "demo.art.v1") else { return }
         for (i, e) in DemoLibrary.entries.enumerated() {
+            if let s = e.artwork, let url = URL(string: s) { ArtworkCache.shared.register(remote: url, for: DemoLibrary.albumID(i)) }
+        }
+        guard !UserDefaults.standard.bool(forKey: "demo.art.v2") else { return }
+        for (i, e) in DemoLibrary.entries.enumerated() where e.artwork == nil {
             let cover = ImageRenderer(content: DemoCover(e).frame(width: 1400, height: 1400))
             cover.scale = 1
             if let img = cover.uiImage { ArtworkCache.shared.seed(img, album: DemoLibrary.albumID(i)) }
         }
-        var done = Set<String>()
-        for e in DemoLibrary.entries where done.insert(e.artist).inserted {
+        for e in DemoLibrary.entries where e.artwork == nil {
             let photo = ImageRenderer(content: DemoPortrait(colours: e.colours.map(Color.init(hex:))).frame(width: 800, height: 800))
             photo.scale = 1
             if let img = photo.uiImage { ArtistImageStore.shared.seed(img, for: e.artist) }
         }
-        UserDefaults.standard.set(true, forKey: "demo.art.v1")
+        UserDefaults.standard.set(true, forKey: "demo.art.v2")
     }
 
     /// After launch: start the song, or switch to Vinyl Mode, as the scene asks.
@@ -60,7 +63,7 @@ enum Demo {
             _ = try? await ToneMaker.make()
             try? await Task.sleep(for: .seconds(0.8))
             let snap = DemoLibrary.snapshot
-            guard let album = snap.album(DemoLibrary.albumID(0)) else { return }
+            guard let album = snap.album(DemoLibrary.nowPlayingAlbum) else { return }
             player.play(songs: snap.songs(album.songIDs))
             try? await Task.sleep(for: .seconds(0.4))
             player.seek(to: 38)
@@ -85,6 +88,42 @@ enum Demo {
             open(.share)
         default: break
         }
+    }
+
+    /// Vinyl Mode's crate is up: flip to a record and open its gatefold, or go into the Listening Room.
+    @MainActor static func crateShown(records: [String], focus: (String) -> Void, open: (String) -> Void, room: () -> Void) async {
+        guard isOn, records.count > 2 else { return }
+        switch scene {
+        case "crate":
+            try? await Task.sleep(for: .seconds(1.6))
+            focus(records[1])
+            try? await Task.sleep(for: .seconds(1.0))
+            focus(records[2])
+        case "gatefold":
+            try? await Task.sleep(for: .seconds(1.4))
+            focus(records[1])
+            try? await Task.sleep(for: .seconds(1.1))
+            open(records[1])
+        case "room":
+            try? await Task.sleep(for: .seconds(1.0))
+            room()
+        default: break
+        }
+    }
+
+    /// The Listening Room: take a record off the shelf, open its sleeve so the record slips out, then another.
+    @MainActor static func roomShown(pull: (Int) -> Void, openSleeve: () -> Void, stow: () -> Void) async {
+        guard scene == "room" else { return }
+        try? await Task.sleep(for: .seconds(1.6))
+        pull(0)
+        try? await Task.sleep(for: .seconds(1.5))
+        openSleeve()
+        try? await Task.sleep(for: .seconds(3.2))
+        stow()
+        try? await Task.sleep(for: .seconds(1.6))
+        pull(2)
+        try? await Task.sleep(for: .seconds(1.5))
+        openSleeve()
     }
 
     /// Recap story mode: moves on a card every couple of seconds, as if tapped.
@@ -126,7 +165,7 @@ private struct DemoScroll: ViewModifier {
 }
 
 #Preview {
-    ScrollView { VStack { ForEach(0..<6, id: \.self) { DemoCover(DemoLibrary.entries[$0]).frame(width: 200) } } }
+    ScrollView { VStack { ForEach(0..<6, id: \.self) { _ in DemoCover(DemoLibrary.entries[DemoLibrary.entries.count - 1]).frame(width: 200) } } }
         .demoScroll("splash", to: 400)
         .background(.black)
         .environment(PreviewData.library)

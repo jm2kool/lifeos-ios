@@ -15,7 +15,7 @@ enum LyricsStore {
         if !refresh, let cached = cache(id) {
             return make(cached.lrc, cached.plain)
         }
-        guard UserDefaults.standard.string(forKey: "lyricsSource") != "off" else { return nil }
+        guard UserDefaults.standard.string(forKey: "lyricsSource") != "off", !Demo.isOn else { return nil }
         let result = await LRCLIB.fetch(title: item.title, artist: item.artist, album: item.albumTitle, duration: item.duration)
         let context = Store.shared.context
         if let old = cache(id) { context.delete(old) }

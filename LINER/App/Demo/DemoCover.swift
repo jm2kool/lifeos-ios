@@ -125,8 +125,8 @@ extension Color {
 
 #Preview {
     LazyVGrid(columns: [GridItem(), GridItem()]) {
-        ForEach(0..<4, id: \.self) { DemoCover(DemoLibrary.entries[$0]) }
-        DemoPortrait(colours: DemoLibrary.entries[0].colours.map(Color.init(hex:))).grayscale(1)
+        DemoCover(DemoLibrary.entries[DemoLibrary.entries.count - 1])
+        DemoPortrait(colours: DemoLibrary.entries[DemoLibrary.entries.count - 1].colours.map(Color.init(hex:))).grayscale(1)
     }
     .padding().background(.black)
     .environment(PreviewData.library)

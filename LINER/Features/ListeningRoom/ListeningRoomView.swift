@@ -50,6 +50,7 @@ struct ListeningRoomView: View {
         .keepsScreenAwake()
         .sensoryFeedback(.impact(weight: .light), trigger: phase)
         .sensoryFeedback(.selection, trigger: near)
+        .task { await Demo.roomShown(pull: { pull($0) }, openSleeve: { openSleeve() }, stow: { stow() }) }
     }
 
     // MARK: The room

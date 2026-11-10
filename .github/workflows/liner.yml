@@ -121,7 +121,9 @@ jobs:
             kill -INT $REC; wait $REC || true
           }
           scene splash 12 9
-          scene crate 9 7
+          scene crate 8 5
+          scene gatefold 9 6
+          scene room 17 9
           scene player 13 3
           scene lyrics 9 6
           scene share 9 6
