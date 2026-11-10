@@ -37,6 +37,8 @@ struct RootView: View {
         .sheet(item: $passports.song) { SongPassportSheet(item: $0) }
         .sheet(item: $passports.album) { AlbumPassportSheet(subject: $0) }
         .sheet(item: $passports.editions) { EditionsSheet(subject: $0) }
+        .sheet(item: $passports.grouping) { GroupAlbumsSheet(album: $0) }
+        .sheet(item: $passports.sides) { SidesEditor(record: $0) }
         .modifier(CoverPickerHost())
         .sheet(item: $prompts.current, onDismiss: { NewAlbumPrompts.shared.showNext(library.snapshot) }) { AlbumRatingPrompt(album: $0) }
         .task { if library.isAuthorized && connected && !library.hasLoaded { await library.refresh() } }

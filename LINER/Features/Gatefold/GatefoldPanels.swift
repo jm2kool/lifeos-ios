@@ -10,6 +10,8 @@ struct GatefoldCover: View {
     let width: CGFloat
     /// Portrait only: a quiet "Tracks ›" on the right edge.
     var showsHint = true
+    /// Points kept clear at the bottom (for the mini player).
+    var bottomInset: CGFloat = 0
     @Environment(\.gatefoldMetaVisible) private var visible
     @Environment(LibraryService.self) private var library
 
@@ -27,7 +29,7 @@ struct GatefoldCover: View {
             ], startPoint: .top, endPoint: .bottom)
             meta(u)
                 .padding(.horizontal, 7 * u)
-                .padding(.bottom, (showsHint ? 16 : 6) * u)
+                .padding(.bottom, (showsHint ? 16 : 6) * u + bottomInset)
                 .opacity(visible ? 1 : 0)
                 .animation(.easeOut(duration: 0.4).delay(visible ? 0.2 : 0), value: visible)
             if showsHint && visible {
@@ -114,6 +116,10 @@ struct GatefoldTracks: View {
     let nowPlayingID: String?
     /// Full Album / Saved Album, for albums.
     var tracklist: Choice? = nil
+    /// Points kept clear at the bottom (for the mini player).
+    var bottomInset: CGFloat = 0
+    /// Opens the sides editor (which songs go on Side A, B, C…).
+    var onArrange: (() -> Void)? = nil
     let onPlay: (Int) -> Void
 
     struct Choice {
@@ -139,7 +145,7 @@ struct GatefoldTracks: View {
                 }
                 .padding(.horizontal, 8 * u)
                 .padding(.top, (tall ? 30 : 8) * u)
-                .padding(.bottom, 48 * u)
+                .padding(.bottom, 48 * u + bottomInset)
             }
             .scrollIndicators(.hidden)
             RecordDisc(record: record, side: "A")
@@ -150,23 +156,18 @@ struct GatefoldTracks: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
                 .allowsHitTesting(false)
             LinearGradient(colors: [.clear, Color(white: 0.05)], startPoint: .top, endPoint: .bottom)
-                .frame(height: 22 * u).allowsHitTesting(false)
+                .frame(height: 22 * u + bottomInset).allowsHitTesting(false)
             Button { onPlay(0) } label: {
                 Label("Put it on", systemImage: "play.fill").font(.system(size: 4 * u, weight: .bold))
                     .padding(.horizontal, 2 * u).frame(height: 12 * u)
             }
             .buttonStyle(.linerPrimary).buttonBorderShape(.capsule)
-            .padding(.leading, 8 * u).padding(.bottom, (tall ? 16 : 7) * u)
+            .padding(.leading, 8 * u).padding(.bottom, (tall ? 16 : 7) * u + bottomInset)
         }
         .clipped()
     }
 
-    private struct Side { let name: String; let range: Range<Int> }
-
-    private var sides: [Side] {
-        let n = record.tracks.count, half = (n + 1) / 2
-        return n > 1 ? [Side(name: "A", range: 0..<half), Side(name: "B", range: half..<n)] : [Side(name: "A", range: 0..<n)]
-    }
+    private var sides: [VinylSide] { record.sideList }
 
     private func header(_ u: CGFloat) -> some View {
         HStack(spacing: 4 * u) {
@@ -176,7 +177,17 @@ struct GatefoldTracks: View {
                 Text(record.title).font(.serif(7.4 * u)).lineLimit(1).minimumScaleFactor(0.6)
                 Text(record.artist).font(.system(size: 2.6 * u, weight: .semibold)).tracking(0.65 * u).textCase(.uppercase)
                     .foregroundStyle(Palette.label).lineLimit(1)
-                if let t = tracklist { switcher(t, u) }
+                HStack(spacing: 3 * u) {
+                    if let t = tracklist { switcher(t, u) }
+                    if let onArrange {
+                        Button(action: onArrange) {
+                            Label("Sides", systemImage: "square.split.2x1").font(.system(size: 2.6 * u, weight: .semibold)).tracking(0.65 * u)
+                                .textCase(.uppercase).foregroundStyle(tint)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Arrange the sides")
+                    }
+                }
             }
         }
     }
@@ -202,7 +213,7 @@ struct GatefoldTracks: View {
         .accessibilityLabel("Tracklist: \(t.savedOnly ? "Saved Album" : "Full Album")")
     }
 
-    private func sideList(_ side: Side, _ u: CGFloat) -> some View {
+    private func sideList(_ side: VinylSide, _ u: CGFloat) -> some View {
         let minutes = Int((record.tracks[side.range].reduce(0) { $0 + $1.duration } / 60).rounded())
         return VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 3 * u) {

@@ -3,7 +3,8 @@ import SwiftUI
 /// The turntable (SPEC §6.16), opened by "Put it on" in the crate: the record lands on the deck and plays at
 /// once, with the needle drop sound alongside. The deck is the same as the player's vinyl look: the arm follows
 /// the song, pick it up to move through it or set it down off the record to pause; tap the record to pause or
-/// play, drag it to scratch; swipe up on it (or the flip button) for Side B.
+/// play, drag it to scratch; swipe up on it (or the flip button) for the next side (your own sides when you've
+/// arranged them). Tap the label in the middle for the setlist.
 struct TurntableView: View {
     let record: VinylRecord
     /// The record drops onto a plain record waiting on the deck ("Put it on" from the crate or a sleeve).
@@ -11,8 +12,19 @@ struct TurntableView: View {
     @Environment(PlaybackCoordinator.self) private var player
     @Environment(\.dismiss) private var dismiss
     @State private var landed = false
-    @State private var side = "A"
+    /// The side you last turned to (the label follows the song as it plays on into the next side).
+    @State private var sideIndex = 0
     @State private var flipped = 0.0
+    @State private var picking = false
+
+    private var sides: [VinylSide] { record.sideList }
+    /// The side of the song playing, or the one you turned to.
+    private var side: String {
+        if let mine, let i = record.tracks.firstIndex(where: { $0.id == mine.id }), let s = sides.first(where: { $0.range.contains(i) }) { return s.name }
+        return sides.indices.contains(sideIndex) ? sides[sideIndex].name : "A"
+    }
+    private var nextSide: String { sides.isEmpty ? "A" : sides[(currentSideIndex + 1) % sides.count].name }
+    private var currentSideIndex: Int { sides.firstIndex { $0.name == side } ?? 0 }
 
     private var mine: QueueItem? { player.current.flatMap { c in record.tracks.contains { $0.id == c.id } ? c : nil } }
 
@@ -26,8 +38,10 @@ struct TurntableView: View {
                     .rotation3DEffect(.degrees(flipped), axis: (x: 1, y: 0, z: 0))
                     .scaleEffect(landed ? 1 : 0.86)
                     .opacity(landed ? 1 : 0)
+                    // Outside the flip, so the setlist always reads the right way up.
+                    .overlay { setlist }
                     .simultaneousGesture(DragGesture(minimumDistance: 40).onEnded { v in
-                        if v.translation.height < -120 && abs(v.translation.width) < 60 { flip() }
+                        if !picking, v.translation.height < -120, abs(v.translation.width) < 60 { flip() }
                     })
                 Spacer(minLength: 0)
                 controls
@@ -42,9 +56,23 @@ struct TurntableView: View {
 
     @ViewBuilder private var deck: some View {
         if let item = mine {
-            PlayerVinyl(item: item, side: side, dropIn: dropIn, dropDelay: 0.45).frame(maxWidth: 440)
+            PlayerVinyl(item: item, side: side, dropIn: dropIn, dropDelay: 0.45, onLabelTap: { picking = true }).frame(maxWidth: 440)
         } else {
             RecordDisc(record: record, side: side).padding(40).frame(maxWidth: 440)
+        }
+    }
+
+    @ViewBuilder private var setlist: some View {
+        if picking {
+            ZStack {
+                Color.black.opacity(0.001).onTapGesture { picking = false }
+                SetlistCard(record: record, currentID: player.current?.id, pick: { i in
+                    picking = false
+                    SetlistPlay.play(record, at: i, player: player)
+                }, close: { picking = false })
+                .frame(maxWidth: 400).padding(18)
+            }
+            .transition(.outOfTheLabel)
         }
     }
 
@@ -68,7 +96,7 @@ struct TurntableView: View {
                     if playing { player.pause(); VinylSounds.shared.stopCrackle() } else { startPlaying() }
                 }
                 GlassCircleButton(systemImage: "forward.fill", label: "Next") { player.next() }
-                GlassCircleButton(systemImage: "arrow.up.and.down.text.horizontal", label: "Flip to Side \(side == "A" ? "B" : "A")") { flip() }
+                GlassCircleButton(systemImage: "arrow.up.and.down.text.horizontal", label: "Turn to Side \(nextSide)") { flip() }
             }
         }
     }
@@ -81,7 +109,7 @@ struct TurntableView: View {
         if already {
             if !player.isPlaying { player.resume() }
         } else {
-            player.play(record.tracks, startAt: side == "A" ? 0 : record.tracks.count / 2, openPlayer: false)
+            player.play(record.tracks, startAt: sides.indices.contains(sideIndex) ? sides[sideIndex].range.lowerBound : 0, openPlayer: false)
         }
         // From the crate the music and the pop have already started; don't play the pop twice.
         // With the drop-in, the needle sound comes when the record lands instead.
@@ -90,13 +118,13 @@ struct TurntableView: View {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
 
-    /// Side B: the second half of the tracklist.
+    /// The next side (back to Side A after the last).
     private func flip() {
-        guard record.tracks.count > 1 else { return }
+        guard sides.count > 1 else { return }
         withAnimation(.easeInOut(duration: 0.6)) { flipped += 180 }
-        side = side == "A" ? "B" : "A"
+        sideIndex = (currentSideIndex + 1) % sides.count
         UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
-        player.play(record.tracks, startAt: side == "A" ? 0 : record.tracks.count / 2, openPlayer: false)
+        player.play(record.tracks, startAt: sides[sideIndex].range.lowerBound, openPlayer: false)
         VinylSounds.shared.needleDrop()
     }
 }

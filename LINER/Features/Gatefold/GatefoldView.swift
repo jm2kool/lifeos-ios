@@ -21,6 +21,8 @@ struct GatefoldView: View {
     @State private var recordOut = false
     @State private var turntable: VinylRecord?
     @State private var busy = false
+    /// The sides editor, open for this record.
+    @State private var arranging: VinylRecord?
     /// Full Album (as Apple Music lists it, the songs you don't have streamed) or Saved Album, shared with the
     /// album page.
     @AppStorage(AlbumTracklist.storageKey) private var savedOnlyAlbums = ""
@@ -39,23 +41,24 @@ struct GatefoldView: View {
             let land = size.width > size.height
             let now = placement(stage, size: size, origin: origin)
             let final = placement(.inside, size: size, origin: origin)
+            let inset = land ? 0 : room
             ZStack(alignment: .topLeading) {
                 Color.black.opacity(now.dim).ignoresSafeArea()
                 if settled && !land {
-                    spread(size: size)
+                    spread(size: size, inset: inset)
                 } else {
-                    coverPanel(final.left.size, inside: stage == .inside)
+                    coverPanel(final.left.size, inside: stage == .inside, inset: inset)
                         .frame(width: now.left.width, height: now.left.height)
                         .clipShape(RoundedRectangle(cornerRadius: now.corner, style: .continuous))
                         .rotation3DEffect(.degrees(now.leftAngle), axis: (x: 0, y: 1, z: 0), anchor: .trailing, perspective: 0.6)
                         .position(x: now.left.midX, y: now.left.midY)
-                    scaled(tracksPanel(final.right.size), final: final.right.size, to: now.right.size)
+                    scaled(tracksPanel(final.right.size, inset: inset), final: final.right.size, to: now.right.size)
                         .clipShape(RoundedRectangle(cornerRadius: now.corner, style: .continuous))
                         .rotation3DEffect(.degrees(now.rightAngle), axis: (x: 0, y: 1, z: 0), anchor: .leading, perspective: 0.6)
                         .opacity(now.rightOpacity)
                         .position(x: now.right.midX, y: now.right.midY)
                 }
-                chrome(land: land).opacity(stage == .inside ? 1 : 0)
+                chrome(land: land, inset: inset).opacity(stage == .inside ? 1 : 0)
             }
             .frame(width: size.width, height: size.height)
         }
@@ -63,10 +66,15 @@ struct GatefoldView: View {
         .statusBarHidden(stage == .inside)
         .task { await load() }
         .task { await open() }
+        .sheet(item: $arranging) { SidesEditor(record: $0) }
         .fullScreenCover(item: $turntable, onDismiss: { withAnimation(.liner) { recordOut = false } }) { TurntableView(record: $0, dropIn: true) }
     }
 
     // MARK: Where things are
+
+    /// Room kept at the bottom for the mini player while something's playing, so it never covers the sleeve's
+    /// title, the page dots or "Put it on".
+    private var room: CGFloat { player.current == nil ? 0 : 84 }
 
     /// The two sides of the sleeve at each stage: lifted from the crate, opening from the spine (both sides
     /// angled like a half-open gatefold), lying flat, then grown to fill the screen.
@@ -89,8 +97,9 @@ struct GatefoldView: View {
         case .inside:
             guard land else { return Placement(left: CGRect(origin: .zero, size: size), right: CGRect(x: w, y: 0, width: w, height: h), corner: 0, dim: 1) }
             // Two squares side by side with a plain gap between them.
-            let gap = max(12, h * 0.045), side = min(h * 0.92, (w - gap - w * 0.12) / 2)
-            let left = CGRect(x: (w - side * 2 - gap) / 2, y: (h - side) / 2, width: side, height: side)
+            let tall = h - room * 0.8
+            let gap = max(12, h * 0.045), side = min(tall * 0.92, (w - gap - w * 0.12) / 2)
+            let left = CGRect(x: (w - side * 2 - gap) / 2, y: (tall - side) / 2, width: side, height: side)
             return Placement(left: left, right: left.offsetBy(dx: side + gap, dy: 0), corner: 8, dim: 1)
         }
     }
@@ -107,14 +116,14 @@ struct GatefoldView: View {
     // MARK: Pieces
 
     /// Portrait, once open: a paged spread, folding a little at the crease as you swipe.
-    private func spread(size: CGSize) -> some View {
+    private func spread(size: CGSize, inset: CGFloat) -> some View {
         ScrollView(.horizontal) {
             HStack(spacing: 0) {
-                coverPanel(size, inside: true).frame(width: size.width, height: size.height).id(0)
+                coverPanel(size, inside: true, inset: inset).frame(width: size.width, height: size.height).id(0)
                     .scrollTransition(axis: .horizontal) { c, phase in
                         c.rotation3DEffect(.degrees(phase.value * -18), axis: (x: 0, y: 1, z: 0), anchor: .trailing, perspective: 0.6)
                     }
-                tracksPanel(size).frame(width: size.width, height: size.height).id(1)
+                tracksPanel(size, inset: inset).frame(width: size.width, height: size.height).id(1)
                     .scrollTransition(axis: .horizontal) { c, phase in
                         c.rotation3DEffect(.degrees(phase.value * -18), axis: (x: 0, y: 1, z: 0), anchor: .leading, perspective: 0.6)
                     }
@@ -127,17 +136,19 @@ struct GatefoldView: View {
         .sensoryFeedback(.selection, trigger: page)
     }
 
-    private func coverPanel(_ size: CGSize, inside: Bool) -> some View {
-        GatefoldCover(record: shown, album: album, cover: cover, tint: tint, width: size.width, showsHint: size.width < size.height)
+    private func coverPanel(_ size: CGSize, inside: Bool, inset: CGFloat) -> some View {
+        GatefoldCover(record: shown, album: album, cover: cover, tint: tint, width: size.width, showsHint: size.width < size.height,
+                      bottomInset: inset)
             .environment(\.gatefoldMetaVisible, inside)
     }
 
-    private func tracksPanel(_ size: CGSize) -> some View {
+    private func tracksPanel(_ size: CGSize, inset: CGFloat) -> some View {
         GatefoldTracks(record: shown, cover: cover, tint: tint, width: size.width, tall: size.height > size.width + 1, recordOut: recordOut,
-                       nowPlayingID: player.current?.id, tracklist: tracklistChoice) { putOn(at: $0) }
+                       nowPlayingID: player.current?.id, tracklist: tracklistChoice, bottomInset: inset,
+                       onArrange: { arranging = shown }) { putOn(at: $0) }
     }
 
-    private func chrome(land: Bool) -> some View {
+    private func chrome(land: Bool, inset: CGFloat) -> some View {
         ZStack(alignment: .topLeading) {
             GlassCircleButton(systemImage: "chevron.left", label: "Close the sleeve", size: 44) { Task { await close() } }
                 .padding(.leading, land ? 24 : 20).padding(.top, land ? 20 : 62)
@@ -149,7 +160,7 @@ struct GatefoldView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                .padding(.bottom, 26)
+                .padding(.bottom, 26 + inset)
                 .animation(.liner, value: page)
             }
         }
@@ -171,9 +182,9 @@ struct GatefoldView: View {
 
     /// The record as shown: the full album unless you chose Saved Album for it.
     private var shown: VinylRecord {
-        guard album != nil, !savedOnly, let full else { return record }
+        guard album != nil, !savedOnly, let full else { return record.sided() }
         return VinylRecord(id: record.id, title: record.title, artist: record.artist, year: record.year, albumID: record.albumID,
-                           coverData: record.coverData, tracks: full, source: record.source)
+                           coverData: record.coverData, tracks: full, source: record.source).sided()
     }
 
     /// The Full Album / Saved Album switch on the tracklist side (albums only).

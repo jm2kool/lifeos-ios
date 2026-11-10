@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Sing-along lyrics (SPEC §6.6): big serif lines over the blurred cover. The active line is bright, past lines
-/// fade, future lines are dim; it opens on the line being sung and scrolls to keep it about a third of the way down. Tap a line to
+/// Sing-along lyrics (SPEC §6.6): big serif lines over the blurred cover, each word lighting up as it's sung (see
+/// `SingAlongLyrics`); it opens on the line being sung and keeps it about a third of the way down. Tap a line to
 /// jump there; hold it to save the line or make it a favourite moment. Share picks a run of lines (like Apple Music)
 /// and puts them on a story card.
 struct LyricsView: View {
@@ -157,15 +157,10 @@ struct LyricsView: View {
     @ViewBuilder private var content: some View {
         if loading {
             Spacer(); ProgressView(); Spacer()
+        } else if selecting, !allLines.isEmpty {
+            choosingLines(size: lyrics?.isSynced == true ? 28 : 24)
         } else if let lyrics, lyrics.isSynced {
-            synced(lyrics)
-        } else if selecting, lyrics?.plain != nil {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(Array(allLines.enumerated()), id: \.offset) { i, text in pickable(text, index: i, size: 24) }
-                }
-                .padding(.horizontal, 14).padding(.vertical, 24)
-            }
+            SingAlongLyrics(lyrics: lyrics, onSave: save(line:), onMoment: saveMoment, onShare: { startSelecting(at: $0.id) })
         } else if let plain = lyrics?.plain {
             ScrollView {
                 Text(plain).font(.serif(24)).lineSpacing(8).padding(24).frame(maxWidth: .infinity, alignment: .leading)
@@ -179,57 +174,20 @@ struct LyricsView: View {
         }
     }
 
-    private func synced(_ lyrics: Lyrics) -> some View {
-        TimelineView(.periodic(from: .now, by: 0.1)) { _ in
-            let active = lyrics.activeIndex(at: player.currentTime + 0.25)
-            ScrollViewReader { proxy in
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 22) {
-                        Color.clear.frame(height: 200)
-                        ForEach(lyrics.lines) { line in
-                            Group {
-                                if selecting { pickable(line.text, index: line.id, size: 28).padding(.horizontal, -10) }
-                                else { lineView(line, state: active.map { line.id < $0 ? -1 : (line.id == $0 ? 0 : 1) } ?? 1) }
-                            }
-                            .id(line.id)
-                        }
-                        Color.clear.frame(height: 420)
-                    }
-                    .padding(.horizontal, 24)
+    /// Every line, ready to pick for a story card; opens on the first line picked (or the one being sung).
+    private func choosingLines(size: CGFloat) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Array(allLines.enumerated()), id: \.offset) { i, text in pickable(text, index: i, size: size).id(i) }
                 }
-                .onChange(of: active) { _, now in
-                    guard let now, !selecting else { return }
-                    withAnimation(.liner) { proxy.scrollTo(now, anchor: UnitPoint(x: 0.5, y: 0.35)) }
-                }
-                // Opening the lyrics lands straight on the line being sung, not the top of the song.
-                .task(id: lyrics) {
-                    let now = lyrics.activeIndex(at: player.currentTime + 0.25) ?? 0
-                    proxy.scrollTo(now, anchor: UnitPoint(x: 0.5, y: 0.35))
-                    try? await Task.sleep(for: .milliseconds(50))
-                    proxy.scrollTo(now, anchor: UnitPoint(x: 0.5, y: 0.35))
-                }
+                .padding(.horizontal, 14).padding(.vertical, 24)
+            }
+            .onAppear {
+                let start = picked?.lowerBound ?? lyrics?.activeIndex(at: player.currentTime) ?? 0
+                proxy.scrollTo(start, anchor: UnitPoint(x: 0.5, y: 0.35))
             }
         }
-    }
-
-    /// state: -1 past, 0 active, 1 future.
-    private func lineView(_ line: Lyrics.Line, state: Int) -> some View {
-        Text(line.text.isEmpty ? "♪" : line.text)
-            .font(.serif(state == 0 ? 34 : 30, weight: state == 0 ? .semibold : .regular))
-            .foregroundStyle(.white.opacity(state == 0 ? 1 : (state < 0 ? 0.28 : 0.45)))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-            .animation(.easeOut(duration: 0.25), value: state)
-            .onTapGesture { player.seek(to: line.time) }
-            .contextMenu {
-                Button("Save line", systemImage: "bookmark") { save(line: line) }
-                Button("Save as favourite moment", systemImage: "star") { saveMoment(line) }
-                if player.current != nil, !line.text.isEmpty {
-                    Button("Share lyrics", systemImage: "square.and.arrow.up") { startSelecting(at: line.id) }
-                }
-            }
-            .accessibilityAddTraits(state == 0 ? .isSelected : [])
-            .accessibilityHint("Double-tap to jump here")
     }
 
     private func save(line: Lyrics.Line) {
