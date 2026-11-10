@@ -1,20 +1,17 @@
 import Foundation
 
-/// The library for demo mode: real albums (Charli xcx, Drake, Doja Cat, Yeat) with made-up play counts, so the
+/// The library for demo mode: real albums (Charli xcx, Drake, Doja Cat, Yeat, ADÉLA) with made-up play counts, so the
 /// simulator recordings (and the promo video cut from them) show a lived-in LINER.
 @MainActor
 enum DemoLibrary {
-    /// One album: who, what, its songs (title, seconds) and how much it gets played (0…1). Real albums carry
-    /// their Apple Music cover URL; the invented one draws its own cover.
+    /// One album: who, what, its Apple Music cover, its songs (title, seconds) and how much it gets played (0…1).
     struct Entry {
         let artist: String
         let title: String
         let genre: String
         let year: Int
         let love: Double
-        var artwork: String? = nil
-        var colours: [UInt32] = []
-        var style: DemoCover.Style = .sun
+        let artwork: String
         let songs: [(String, Double)]
     }
 
@@ -58,19 +55,19 @@ enum DemoLibrary {
         Entry(artist: "Yeat", title: "AftërLyfe", genre: "Hip-Hop", year: 2023, love: 0.36,
               artwork: "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/6c/01/ba/6c01ba5c-ba17-6be7-bb8d-cf26054df5d6/23UMGIM16901.rgb.jpg/1400x1400bb.jpg",
               songs: [("No morë talk", 239), ("Shmunk (feat. YoungBoy Never Broke Again)", 230), ("Bëttr 0ff", 230), ("Rav3 p4rty (feat. Kranky Kranky)", 199), ("Nun id change", 211), ("Woa...!", 170), ("Now (feat. LUH GEEKY)", 272), ("Slamm", 145)]),
-        // The song the demo plays is invented, with words written for LINER., so no one's lyrics are shown.
-        Entry(artist: "Marlowe Vane", title: "Paper Moons", genre: "Indie Pop", year: 2025, love: 0.12,
-              colours: [0xF2A65A, 0xE4572E, 0x2E1F47, 0xF7D488], style: .sun,
-              songs: [("Paper Moons", 214), ("Kerosene Summer", 189), ("Night Bus Home", 201), ("Ribbons", 176)]),
+        // The album the demo plays from: "Hitachi" (track 6). Its lyrics come from LRCLIB, as for any song.
+        Entry(artist: "ADÉLA", title: "PRIMA", genre: "Pop", year: 2026, love: 0.34,
+              artwork: "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/5d/77/7b/5d777b87-e796-0b3e-cef6-d37d993dd8fe/26UMGIM82371.rgb.jpg/1400x1400bb.jpg",
+              songs: [("KGB", 158), ("Nicole Kidman", 181), ("I'm The Man", 150), ("Boys", 145), ("Red Bottoms", 187), ("Hitachi", 216), ("Fantasize", 183), ("Starving Artist", 180)]),
     ]
 
     /// Album IDs start here; song IDs are album × 100 + track.
     static func albumID(_ index: Int) -> UInt64 { UInt64(7_000 + index) }
 
-    /// The invented album the demo plays from (the last one).
+    /// The album the demo plays from (the last one).
     static var nowPlayingAlbum: UInt64 { albumID(entries.count - 1) }
-    /// The song the demo plays: its first track.
-    static var nowPlayingID: UInt64 { nowPlayingAlbum * 100 + 1 }
+    /// Where in that album the demo starts: "Hitachi".
+    static let nowPlayingTrack = 5
 
     /// The 90-second pad from the spike lab stands in for every song's audio, so LINER.'s own player can play it.
     static var toneURL: URL { LoopVideoMaker.folder.appending(path: "liner-test-tone.m4a") }
@@ -123,21 +120,6 @@ enum DemoLibrary {
         snap.scannedAt = .now
         return snap
     }
-
-    /// Words for the song the demo plays (written for LINER., so they're free to show), timed from 0:40.
-    static let lyrics = """
-    [00:36.00] ♪
-    [00:40.00] We folded the city into paper moons
-    [00:44.20] Hung them over the bed in your old room
-    [00:48.40] Every light on the street was a song we knew
-    [00:52.60] And I played them all back to you
-    [00:56.80] Oh, turn it up, let the needle fall
-    [01:01.00] Every play is a postcard on the wall
-    [01:05.20] Count the nights by the songs we wore
-    [01:09.40] Paper moons, we were made for more
-    [01:13.60] We were made for more
-    [01:18.00] ♪
-    """
 }
 
 private extension Array where Element: Hashable {

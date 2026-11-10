@@ -14,7 +14,7 @@ enum Demo {
     /// Whether the scene starts with a song playing.
     static var plays: Bool { ["player", "lyrics", "share", "island"].contains(scene) }
 
-    /// Before the first view: settings for the scene, then covers, artist photos, lyrics and play history.
+    /// Before the first view: settings for the scene, album covers and play history.
     @MainActor static func prepare() {
         guard isOn else { return }
         let d = UserDefaults.standard
@@ -24,12 +24,9 @@ enum Demo {
         d.set(true, forKey: "openPlayerOnPlay")
         d.set(scene == "recap" ? "Recaps" : "Overview", forKey: "stats.page")
         d.set(["stats", "recap"].contains(scene) ? "stats" : scene == "library" ? "library" : "home", forKey: "root.tab")
-        drawArtwork()
-        let context = Store.shared.context
-        let lyricsID = "lib-\(DemoLibrary.nowPlayingID)"
-        let existing = (try? context.fetch(FetchDescriptor<LyricsCache>(predicate: #Predicate { $0.itemID == lyricsID }))) ?? []
-        if existing.isEmpty { context.insert(LyricsCache(itemID: lyricsID, lrc: DemoLibrary.lyrics, plain: nil)) }
-        Store.shared.save()
+        for (i, e) in DemoLibrary.entries.enumerated() {
+            if let url = URL(string: e.artwork) { ArtworkCache.shared.register(remote: url, for: DemoLibrary.albumID(i)) }
+        }
         if !d.bool(forKey: "demo.seeded.v2") {
             seedHistory(DemoLibrary.snapshot)
             d.set(true, forKey: "demo.seeded.v2")
@@ -46,7 +43,7 @@ enum Demo {
         var plan: [Int: [(UInt64, Int)]] = [:]
         var totals: [UInt64: Int] = [:]
         for day in 1...days {
-            for s in snap.songs where s.albumID != DemoLibrary.nowPlayingAlbum {
+            for s in snap.songs {
                 let n = Int((Double(s.playCount) * 0.006 * Double.random(in: 0.85...1.15)).rounded())
                 guard n > 0 else { continue }
                 plan[day, default: []].append((s.id, n))
@@ -71,26 +68,6 @@ enum Demo {
         Store.shared.save()
     }
 
-    /// Real albums' covers come from Apple Music's servers; the invented album's cover and artist photo are
-    /// drawn once and stored where real artwork would be.
-    @MainActor private static func drawArtwork() {
-        for (i, e) in DemoLibrary.entries.enumerated() {
-            if let s = e.artwork, let url = URL(string: s) { ArtworkCache.shared.register(remote: url, for: DemoLibrary.albumID(i)) }
-        }
-        guard !UserDefaults.standard.bool(forKey: "demo.art.v2") else { return }
-        for (i, e) in DemoLibrary.entries.enumerated() where e.artwork == nil {
-            let cover = ImageRenderer(content: DemoCover(e).frame(width: 1400, height: 1400))
-            cover.scale = 1
-            if let img = cover.uiImage { ArtworkCache.shared.seed(img, album: DemoLibrary.albumID(i)) }
-        }
-        for e in DemoLibrary.entries where e.artwork == nil {
-            let photo = ImageRenderer(content: DemoPortrait(colours: e.colours.map(Color.init(hex:))).frame(width: 800, height: 800))
-            photo.scale = 1
-            if let img = photo.uiImage { ArtistImageStore.shared.seed(img, for: e.artist) }
-        }
-        UserDefaults.standard.set(true, forKey: "demo.art.v2")
-    }
-
     /// After launch: start the song, or switch to Vinyl Mode, as the scene asks.
     @MainActor static func run(player: PlaybackCoordinator) async {
         guard isOn else { return }
@@ -99,9 +76,9 @@ enum Demo {
             try? await Task.sleep(for: .seconds(0.8))
             let snap = DemoLibrary.snapshot
             guard let album = snap.album(DemoLibrary.nowPlayingAlbum) else { return }
-            player.play(songs: snap.songs(album.songIDs))
+            player.play(songs: snap.songs(album.songIDs), startAt: DemoLibrary.nowPlayingTrack)
             try? await Task.sleep(for: .seconds(0.4))
-            player.seek(to: 38)
+            player.seek(to: 21)
         } else if scene == "crate" {
             try? await Task.sleep(for: .seconds(2.2))
             UserDefaults.standard.set(true, forKey: "vinylMode")
@@ -200,7 +177,7 @@ private struct DemoScroll: ViewModifier {
 }
 
 #Preview {
-    ScrollView { VStack { ForEach(0..<6, id: \.self) { _ in DemoCover(DemoLibrary.entries[DemoLibrary.entries.count - 1]).frame(width: 200) } } }
+    ScrollView { VStack { ForEach(0..<20, id: \.self) { Text("Row \($0)").font(.serif(30)).frame(height: 120) } } }
         .demoScroll("splash", to: 400)
         .background(.black)
         .environment(PreviewData.library)

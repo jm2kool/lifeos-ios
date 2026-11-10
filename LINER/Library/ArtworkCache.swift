@@ -88,15 +88,6 @@ final class ArtworkCache: @unchecked Sendable {
         memory.setObject(img, forKey: k as NSString, cost: cost)
     }
 
-    /// Demo mode: writes a made-up cover to disk at every size, so it loads like real artwork.
-    func seed(_ image: UIImage, album: UInt64) {
-        for side in [160, 320, 640, 1000, 1600] {
-            let file = folder.appending(path: "\(key(album, side)).jpg")
-            guard !FileManager.default.fileExists(atPath: file.path) else { continue }
-            if let jpeg = Self.resize(image, to: side).jpegData(compressionQuality: 0.9) { try? jpeg.write(to: file, options: .atomic) }
-        }
-    }
-
     /// Clears memory and disk (Settings → rebuild).
     func clear() {
         memory.removeAllObjects()
