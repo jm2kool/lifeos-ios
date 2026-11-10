@@ -30,10 +30,45 @@ enum Demo {
         let existing = (try? context.fetch(FetchDescriptor<LyricsCache>(predicate: #Predicate { $0.itemID == lyricsID }))) ?? []
         if existing.isEmpty { context.insert(LyricsCache(itemID: lyricsID, lrc: DemoLibrary.lyrics, plain: nil)) }
         Store.shared.save()
-        if !d.bool(forKey: "demo.seeded") {
-            DebugSeeder.seed(DemoLibrary.snapshot)
-            d.set(true, forKey: "demo.seeded")
+        if !d.bool(forKey: "demo.seeded.v2") {
+            seedHistory(DemoLibrary.snapshot)
+            d.set(true, forKey: "demo.seeded.v2")
         }
+    }
+
+    /// Three weeks of plays, each song's share following its all-time count, so recaps rank the way the stats do.
+    /// Rows are marked as seeded, like Settings → test data.
+    @MainActor private static func seedHistory(_ snap: LibrarySnapshot) {
+        let context = Store.shared.context
+        let days = 21
+        let start = Calendar.current.startOfDay(for: .now).addingTimeInterval(-Double(days) * 86_400)
+        UserDefaults.standard.set(start, forKey: "recaps.baseline")
+        var plan: [Int: [(UInt64, Int)]] = [:]
+        var totals: [UInt64: Int] = [:]
+        for day in 1...days {
+            for s in snap.songs where s.albumID != DemoLibrary.nowPlayingAlbum {
+                let n = Int((Double(s.playCount) * 0.006 * Double.random(in: 0.85...1.15)).rounded())
+                guard n > 0 else { continue }
+                plan[day, default: []].append((s.id, n))
+                totals[s.id, default: 0] += n
+            }
+        }
+        var counts = Dictionary(uniqueKeysWithValues: snap.songs.map { ($0.id, max(0, $0.playCount - (totals[$0.id] ?? 0))) })
+        for s in snap.songs {
+            let row = PlaySnapshot(date: start, persistentID: s.id, playCount: counts[s.id] ?? 0)
+            row.seeded = true
+            context.insert(row)
+        }
+        for day in 1...days {
+            let date = start.addingTimeInterval(Double(day) * 86_400 - 3600)
+            for (id, n) in plan[day] ?? [] {
+                counts[id, default: 0] += n
+                let row = PlaySnapshot(date: date, persistentID: id, playCount: counts[id] ?? 0)
+                row.seeded = true
+                context.insert(row)
+            }
+        }
+        Store.shared.save()
     }
 
     /// Real albums' covers come from Apple Music's servers; the invented album's cover and artist photo are

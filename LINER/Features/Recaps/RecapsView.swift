@@ -39,6 +39,8 @@ struct RecapsView: View {
         history = await RecapLoader.history(library: library)
         if period == nil || period?.kind != kind { period = periods.first }
         if Demo.scene == "recap", history != nil, !showStory {
+            // Last week, which is complete (this one has only just begun).
+            period = periods.dropFirst().first ?? period
             try? await Task.sleep(for: .seconds(1.6))
             showStory = true
         }
