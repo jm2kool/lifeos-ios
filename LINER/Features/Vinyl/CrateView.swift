@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Home in Vinyl Mode: flip through sleeves in 3D (a tick under your finger for each record), the backdrop takes
 /// the colours of the record in front. Tap an album to open its gatefold sleeve; "Put it on" carries it to the
-/// turntable. Double-tap the Vinyl Mode switch for the Listening Room.
+/// turntable. The sofa button opens the Listening Room.
 struct CrateView: View {
     /// Opens Settings from the crate's header.
     var onSettings: () -> Void = {}
@@ -61,7 +61,6 @@ struct CrateView: View {
         .fullScreenCover(item: $playing) { r in
             TurntableView(record: r, dropIn: true)
         }
-        .fullScreenCover(isPresented: $room) { ListeningRoomView() }
         .sensoryFeedback(.impact(weight: .medium), trigger: taps)
         .toolbar(.hidden, for: .navigationBar)
     }
@@ -98,23 +97,18 @@ struct CrateView: View {
                 Text("Vinyl Mode").linerLabel(size: 10)
             }
             Spacer()
-            // Mood, Vinyl Mode (lit while on: tap to go back to the normal Home, double-tap for the Listening Room)
-            // and Settings in one capsule.
+            // Mood, the Listening Room, Vinyl Mode (lit while on: tap to go back to the normal Home) and Settings in
+            // one capsule. The room has its own button (a double-tap on the record was easy to miss).
             HStack(spacing: 2) {
                 capsuleButton("sparkles", "New mood playlist", action: onMood)
-                Image(systemName: "record.circle.fill").font(.system(size: 17, weight: .medium)).foregroundStyle(.white)
-                    .frame(width: 42, height: 42).contentShape(Rectangle())
-                    .onTapGesture(count: 2) { taps += 1; room = true }
-                    .onTapGesture { withAnimation(.liner) { vinylMode = false } }
-                    .accessibilityElement()
-                    .accessibilityAddTraits(.isButton)
-                    .accessibilityLabel("Turn off Vinyl Mode")
-                    .accessibilityAction { withAnimation(.liner) { vinylMode = false } }
-                    .accessibilityAction(named: "Listening Room") { room = true }
+                capsuleButton("sofa.fill", "Listening Room") { taps += 1; room = true }
+                capsuleButton("record.circle.fill", "Turn off Vinyl Mode") { withAnimation(.liner) { vinylMode = false } }
                 capsuleButton("gearshape", "Settings", action: onSettings)
             }
             .padding(.horizontal, 4)
             .glassEffect(.regular.interactive(), in: .capsule)
+            // Its own presenter, so it never competes with the turntable's on the crate.
+            .fullScreenCover(isPresented: $room) { ListeningRoomView() }
         }
     }
 
