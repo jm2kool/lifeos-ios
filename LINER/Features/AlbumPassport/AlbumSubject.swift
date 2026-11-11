@@ -24,4 +24,8 @@ final class PassportPresenter {
     var editions: AlbumSubject?
     var cover: CoverRequest?
     var logo: LogoRequest?
+    /// Grouping versions of an album by hand.
+    var grouping: Album?
+    /// Arranging a record's sides.
+    var sides: VinylRecord?
 }

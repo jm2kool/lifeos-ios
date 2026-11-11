@@ -31,12 +31,14 @@ enum LibraryScanner {
                          rating: rated.isEmpty ? 0 : Double(rated.reduce(0) { $0 + $1.rating }) / Double(rated.count))
         }
 
-        // Editions of one album ("WILD", "WILD (Deluxe)") become one album led by the biggest edition.
+        // Editions of one album ("WILD", "WILD (Deluxe)") become one album led by the biggest edition, as do albums
+        // you grouped yourself.
         var aliases: [UInt64: UInt64] = [:]
         var artworkSongs: [UInt64: UInt64] = [:]
         for s in songs where s.hasArtwork && artworkSongs[s.albumID] == nil { artworkSongs[s.albumID] = s.id }
-        if AlbumEditions.isOn {
-            let grouped = AlbumEditions.merge(albums, songs: songs)
+        let userGroups = AlbumGroups.groups
+        if AlbumEditions.isOn || !userGroups.isEmpty {
+            let grouped = AlbumEditions.merge(albums, songs: songs, auto: AlbumEditions.isOn, userGroups: userGroups, split: AlbumGroups.split)
             albums = grouped.albums
             songs = grouped.songs
             aliases = grouped.aliases

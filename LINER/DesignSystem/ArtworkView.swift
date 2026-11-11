@@ -41,7 +41,8 @@ struct ArtworkView: View {
     }
 }
 
-/// A black-and-white artist photo, falling back to their top album's cover (also in black and white).
+/// A black-and-white artist photo (or the poster you picked for them), falling back to their top album's cover
+/// (also in black and white).
 struct ArtistPortraitView: View {
     let name: String
     var fallbackAlbumID: UInt64?
@@ -51,9 +52,10 @@ struct ArtistPortraitView: View {
     @State private var tried = false
 
     var body: some View {
+        let mine = ArtistPosters.shared.image(name)
         ZStack {
-            if let portrait {
-                FillImage(image: portrait).transition(.opacity)
+            if let shown = mine ?? portrait {
+                FillImage(image: shown).transition(.opacity).id(ObjectIdentifier(shown))
             } else if tried {
                 ArtworkView(albumID: fallbackAlbumID, cornerRadius: 0).grayscale(1)
             } else {
@@ -61,7 +63,8 @@ struct ArtistPortraitView: View {
             }
         }
         .clipped()
-        .task(id: name) {
+        .task(id: "\(name)-\(ArtistPosters.shared.version(name))") {
+            if let mine { onLoad?(mine); return }
             if let hit = ArtistImageStore.shared.cached(name) { portrait = hit; tried = true; onLoad?(hit); return }
             let loaded = await ArtistImageStore.shared.portrait(for: name)
             withAnimation(.easeOut(duration: 0.25)) { portrait = loaded; tried = true }

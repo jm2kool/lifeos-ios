@@ -1,8 +1,10 @@
+import PhotosUI
 import SwiftUI
 
 /// An artist (SPEC §6.3): black-and-white portrait, serif name, Play/Shuffle, then a switch between their Page
 /// (Apple Music's catalogue: top songs, albums, singles) and LINER. stats (your history with them, My Top
-/// Songs, totals, your albums and songs). The title style is picked in Settings → Artist titles.
+/// Songs, totals, your albums and songs). The title style is picked in Settings → Artist titles; the ••• menu
+/// changes the poster to a photo of your own.
 struct ArtistDetailView: View {
     enum Tab: String, CaseIterable, Identifiable { case page = "Page", stats = "Stats"; var id: String { rawValue } }
 
@@ -17,6 +19,10 @@ struct ArtistDetailView: View {
     @AppStorage("artist.tab") private var tab: Tab = .page
     @State private var page: AppleCatalog.ArtistPage?
     @State private var loadingPage = true
+    /// Choosing your own poster: the Photos picker, and whether to keep the photo's colours.
+    @State private var choosingPoster = false
+    @State private var posterItem: PhotosPickerItem?
+    @State private var posterInColour = false
 
     var body: some View {
         let albums = library.snapshot.albums(of: artist).sorted { $0.playCount > $1.playCount }
@@ -76,7 +82,34 @@ struct ArtistDetailView: View {
             ToolbarItem(placement: .topBarLeading) {
                 Button("Back", systemImage: "chevron.left") { dismiss() }
             }
+            ToolbarItem(placement: .topBarTrailing) { posterMenu }
         }
+        .photosPicker(isPresented: $choosingPoster, selection: $posterItem, matching: .images)
+        .onChange(of: posterItem) { _, item in
+            guard let item else { return }
+            Task {
+                if let data = try? await item.loadTransferable(type: Data.self) {
+                    ArtistPosters.shared.set(data, blackAndWhite: !posterInColour, for: artist.name)
+                    player.notice = "New poster for \(artist.name)."
+                }
+                posterItem = nil
+            }
+        }
+    }
+
+    private var posterMenu: some View {
+        Menu {
+            Button("Choose Poster Photo", systemImage: "photo") { posterInColour = false; choosingPoster = true }
+            Button("Choose Poster in Colour", systemImage: "paintpalette") { posterInColour = true; choosingPoster = true }
+            if ArtistPosters.shared.image(artist.name) != nil {
+                Button("Use the Original Poster", systemImage: "arrow.uturn.backward", role: .destructive) {
+                    ArtistPosters.shared.set(nil, blackAndWhite: true, for: artist.name)
+                }
+            }
+        } label: {
+            Label("Poster", systemImage: "ellipsis")
+        }
+        .accessibilityLabel("Artist poster")
     }
 
     /// The Page's top songs, ready to queue (your copies where you have them).

@@ -11,6 +11,8 @@ struct PlayerVinyl: View {
     var dropIn = false
     /// How long it hovers before it drops.
     var dropDelay = 0.25
+    /// Tapping the label in the middle of the record calls this (the setlist) instead of pausing.
+    var onLabelTap: (() -> Void)? = nil
     @Environment(PlaybackCoordinator.self) private var player
     @Environment(LibraryService.self) private var library
     @State private var spin = SpinState()
@@ -50,6 +52,11 @@ struct PlayerVinyl: View {
             .gesture(dragGesture(deck))
             .simultaneousGesture(SpatialTapGesture().onEnded { tap in
                 guard deck.isOnRecord(tap.location) else { return }
+                if let onLabelTap, deck.isOnLabel(tap.location) {
+                    onLabelTap()
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    return
+                }
                 player.togglePlayPause()
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             })
@@ -61,7 +68,7 @@ struct PlayerVinyl: View {
         .onChange(of: player.isPlaying) { _, playing in if playing { arm.parked = false } }
         .onChange(of: item.id) { arm.sample(0) }
         .task { await drop() }
-        .task(id: item.id) {
+        .task(id: "\(item.id)|\(LyricTimings.shared.version)") {
             if case .local(let t) = item, let url = t.coverURL { cover = try? Data(contentsOf: url) } else { cover = nil }
             lyrics = nil
             let found = await LyricsStore.lyrics(for: item)
@@ -71,6 +78,7 @@ struct PlayerVinyl: View {
         .accessibilityLabel("Turntable: \(item.title)")
         .accessibilityHint("Double-tap to play or pause.")
         .accessibilityAction(named: player.isPlaying ? "Pause" : "Play") { player.togglePlayPause() }
+        .accessibilityAction(named: "Pick a song") { onLabelTap?() }
     }
 
     // MARK: Drawing
@@ -104,9 +112,12 @@ struct PlayerVinyl: View {
                 .position(d.center)
             if let lyrics {
                 let i = lyrics.activeIndex(at: time + 0.25) ?? -1
-                RecordLyrics(current: lyrics.lines.indices.contains(i) ? lyrics.lines[i].text : "",
+                let line = lyrics.lines.indices.contains(i) ? lyrics.lines[i] : nil
+                RecordLyrics(current: line?.sungText ?? "",
                              next: lyrics.lines.indices.contains(i + 1) ? lyrics.lines[i + 1].text : "",
-                             index: i, radius: d.radius, spin: angle)
+                             index: i, radius: d.radius,
+                             progress: line.map { (time + 0.25 - $0.time) / max(0.6, min($0.end - $0.time, 9)) } ?? 0.5,
+                             lit: line.flatMap { $0.words.isEmpty ? nil : $0.litCharacters(at: time + 0.2) })
                     .position(d.center)
                     .allowsHitTesting(false)
             }

@@ -4,7 +4,8 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// Export / import of everything you wrote in LINER. (SPEC §6.17) as one JSON file: passports, rankings, pins,
-/// editions, your album logos, mixtape details (not the audio files) and mood playlists.
+/// editions, mixtape details (not the audio files), mood playlists, your album groups, vinyl sides, the Listening
+/// Room shelf, your artist posters and your album logos.
 struct BackupFile: Codable {
     struct Song: Codable { var itemID: String; var key: Data; var rating: Int?; var moods: [String]; var notes: String; var connection: String; var moments: Data; var lyricLines: [String] }
     struct Album: Codable { var albumID: String; var key: Data; var rating: Int?; var ranking: [String]; var pinned: Bool; var appearance: String; var cover: Data?; var activeEdition: UUID? }
@@ -21,7 +22,12 @@ struct BackupFile: Codable {
     var mixtapes: [MixtapeItem] = []
     var moods: [Mood] = []
     var pinnedPlaylists: [Int64] = []
-    /// Album logos you added yourself, as PNGs by album ID (missing in backups from before 1.5).
+    // Added in 1.5 (older backups don't have them).
+    var albumGroups: [[String]]?
+    var albumSplits: [String]?
+    var vinylSides: [String: [[String]]]?
+    var roomShelf: [String]?
+    var artistPosters: [String: Data]?
     var albumLogos: [String: Data]?
 }
 
@@ -48,8 +54,14 @@ enum BackupService {
             .init(id: $0.id, name: $0.name, summary: $0.summary, prompt: $0.prompt, recipe: $0.recipeData, tracks: $0.trackIDs, autoRefresh: $0.autoRefresh)
         }
         b.pinnedPlaylists = ((try? c.fetch(FetchDescriptor<PinnedPlaylist>())) ?? []).map(\.playlistID)
+        let groups = AlbumGroups.stored
+        b.albumGroups = groups.groups
+        b.albumSplits = groups.split
+        b.vinylSides = VinylSides.shared.layouts
+        b.roomShelf = RoomShelf.shared.ids
+        b.artistPosters = ArtistPosters.shared.all()
         let logos = CustomAlbumLogos.shared
-        b.albumLogos = Dictionary(uniqueKeysWithValues: logos.albumIDs.compactMap { id in logos.data(id).map { (String(id), $0) } })
+        b.albumLogos = Dictionary(logos.albumIDs.compactMap { id in logos.data(id).map { (String(id), $0) } }, uniquingKeysWith: { a, _ in a })
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         enc.dateEncodingStrategy = .iso8601
@@ -105,6 +117,10 @@ enum BackupService {
         for id in b.pinnedPlaylists where Store.shared.pinnedPlaylist(UInt64(bitPattern: id)) == nil {
             c.insert(PinnedPlaylist(playlistID: UInt64(bitPattern: id)))
         }
+        if b.albumGroups != nil || b.albumSplits != nil { AlbumGroups.restore(groups: b.albumGroups ?? [], split: b.albumSplits ?? []) }
+        if let sides = b.vinylSides { VinylSides.shared.replaceAll(sides) }
+        if let shelf = b.roomShelf { RoomShelf.shared.set(shelf) }
+        if let posters = b.artistPosters { ArtistPosters.shared.restore(posters) }
         for (id, png) in b.albumLogos ?? [:] { if let album = UInt64(id) { CustomAlbumLogos.shared.store(png, for: album) } }
         Store.shared.save()
         var summary = "Restored \(b.songs.count) song passports, \(b.albums.count) albums, \(b.editions.count) editions, \(b.mixtapes.count) mixtapes and \(b.moods.count) mood playlists."

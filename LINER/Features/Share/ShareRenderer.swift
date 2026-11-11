@@ -8,7 +8,10 @@ import SwiftUI
 @MainActor
 enum ShareRenderer {
     static func backgroundImage(for content: ShareContent) async -> UIImage? {
-        if let name = content.portraitName, let p = await ArtistImageStore.shared.portrait(for: name) { return p }
+        if let name = content.portraitName {
+            if let mine = ArtistPosters.shared.image(name) { return mine }
+            if let p = await ArtistImageStore.shared.portrait(for: name) { return p }
+        }
         if let item = content.coverItem { return await CoverArt.image(for: item, pixels: 1600) }
         if let id = content.albumID { return await ArtworkCache.shared.image(album: id, pixels: 1600) }
         return nil

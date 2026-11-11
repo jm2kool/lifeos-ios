@@ -81,6 +81,13 @@ struct SettingsView: View {
                 Section {
                     Toggle("Group album editions", isOn: $groupEditions)
                         .onChange(of: groupEditions) { Task { await library.refresh() } }
+                    if !AlbumGroups.isEmpty {
+                        Button("Forget the albums I grouped", role: .destructive) {
+                            AlbumGroups.reset()
+                            message = "Your own album groups are gone; albums are grouped by name again."
+                            Task { await library.refresh() }
+                        }
+                    }
                     LabeledContent("Songs", value: library.snapshot.songs.count.grouped)
                     LabeledContent("Albums", value: library.snapshot.albums.count.grouped)
                     if library.hasLoaded {
@@ -89,7 +96,7 @@ struct SettingsView: View {
                     Button(library.isLoading ? "Rebuilding…" : "Rebuild stats") { Task { ArtworkCache.shared.clear(); await library.refresh() } }
                         .disabled(library.isLoading)
                 } header: { Text("Library") } footer: {
-                    Text("With Group album editions on, “WILD” and “WILD (Deluxe)” show as one album led by the biggest edition, with any extra songs added.")
+                    Text("With Group album editions on, “WILD” and “WILD (Deluxe)” show as one album led by the biggest edition, with any extra songs added. Group other versions yourself (or separate them) from an album's menu: Group Versions.")
                 }
                 Section {
                     Button(recalibrating ? "Recalibrating…" : "Recalibrate Apple Music", systemImage: "arrow.triangle.2.circlepath") {
@@ -107,7 +114,7 @@ struct SettingsView: View {
                     if let exportURL { ShareLink("Save or send the backup", item: exportURL) }
                     Button("Import backup", systemImage: "square.and.arrow.down") { importing = true }
                 } header: { Text("Backup") } footer: {
-                    Text("Passports, rankings, pins, editions, your album logos, mixtape details and mood playlists. Mixtape audio files stay in the Files app under \(AppBrand.name).")
+                    Text("Passports, rankings, pins, editions, mixtape details, mood playlists, album groups, vinyl sides, the Listening Room shelf and artist posters and your album logos. Mixtape audio files stay in the Files app under \(AppBrand.name).")
                 }
                 Section {
                     NavigationLink("Spike lab") { SpikeHomeView() }
@@ -139,7 +146,7 @@ struct SettingsView: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done", systemImage: "checkmark") { dismiss() } } }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
                 guard case .success(let url) = result else { return }
-                do { message = try BackupService.restore(url); library.reloadPersonalRatings() } catch { message = "Couldn't read that backup: \(error.localizedDescription)" }
+                do { message = try BackupService.restore(url); library.reloadPersonalRatings(); Task { await library.refresh() } } catch { message = "Couldn't read that backup: \(error.localizedDescription)" }
             }
             .onAppear { updateCache() }
             .onChange(of: coverStyle) { PlaybackCoordinator.shared?.nowPlaying.animated.reset() }

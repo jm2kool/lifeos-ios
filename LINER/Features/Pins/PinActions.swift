@@ -63,6 +63,10 @@ struct AlbumActionsMenu: View {
         }
         AlbumLogoMenu(album: album)
         Button("Manage Editions", systemImage: "square.stack.3d.up") { passports.editions = .library(album, snapshot: library.snapshot) }
+        Button(album.editionIDs.count > 1 ? "Group or Separate Versions" : "Group Versions", systemImage: "square.on.square") {
+            passports.grouping = album
+        }
+        Button("Arrange Vinyl Sides", systemImage: "square.split.2x1") { passports.sides = .album(album, library.snapshot) }
     }
 }
 

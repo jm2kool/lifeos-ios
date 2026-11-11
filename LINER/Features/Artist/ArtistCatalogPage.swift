@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// The artist's Page, laid out like Apple Music: latest release, Top Songs in swipeable columns of four,
-/// Albums, and Singles & EPs — the whole catalogue, not just your library. Songs you own play from your
-/// library; the rest stream from Apple Music.
+/// Albums, and Singles & EPs — the whole catalogue, not just your library. Versions of one release show once,
+/// like grouped albums in the library. Songs you own play from your library; the rest stream from Apple Music.
 struct ArtistCatalogPage: View {
     let artist: Artist
     let page: AppleCatalog.ArtistPage?
@@ -13,10 +13,13 @@ struct ArtistCatalogPage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 28) {
             if let page {
-                if let latest = page.latest { latestRelease(latest) }
+                let albums = grouped(page.albums), singles = grouped(page.singles)
+                if let latest = (albums + singles).max(by: { ($0.releaseDate ?? .distantPast) < ($1.releaseDate ?? .distantPast) }) {
+                    latestRelease(latest)
+                }
                 if !page.topSongs.isEmpty { topSongs(page.topSongs) }
-                if !page.albums.isEmpty { releases("Albums", page.albums) }
-                if !page.singles.isEmpty { releases("Singles & EPs", page.singles) }
+                if !albums.isEmpty { releases("Albums", albums) }
+                if !singles.isEmpty { releases("Singles & EPs", singles) }
             } else if loading {
                 ProgressView().frame(maxWidth: .infinity).padding(40)
             } else {
@@ -24,6 +27,20 @@ struct ArtistCatalogPage: View {
                                message: "Apple Music doesn't list \(artist.name), or you're offline. Your own stats are in \(AppBrand.name) stats.")
             }
         }
+    }
+
+    /// Versions of one release shown once, as in your library: editions grouped by name ("WILD", "WILD (Deluxe)")
+    /// and the albums you grouped yourself; editions you separated stay apart.
+    private func grouped(_ releases: [AppleCatalog.Release]) -> [AppleCatalog.Release] {
+        let mine = library.snapshot.albums(of: artist)
+        let split = AlbumGroups.split
+        func names(_ album: Album) -> Set<String> {
+            let titles = library.snapshot.songs(album.songIDs).map(\.albumTitle) + [album.title]
+            return Set(titles.flatMap { [MediaKey.normalise($0), MediaKey.normalise(AlbumEditions.baseTitle($0))] })
+        }
+        let together = mine.filter { $0.editionIDs.count > 1 }.map(names)
+        let apart = mine.filter { split.contains($0.id) }.reduce(into: Set<String>()) { $0.insert(MediaKey.normalise($1.title)) }
+        return AppleCatalog.grouped(releases, together: together, apart: apart, byName: AlbumEditions.isOn)
     }
 
     /// Songs to queue for these tracks: your copies where you have them.

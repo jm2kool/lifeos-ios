@@ -39,11 +39,19 @@ enum AlbumEditions {
     }
 
     /// Merges editions. Returns the albums, the songs with their album ID pointing at the lead edition,
-    /// and a map from each folded-in edition's ID to the lead's ID.
-    static func merge(_ albums: [Album], songs: [Song]) -> (albums: [Album], songs: [Song], aliases: [UInt64: UInt64]) {
+    /// and a map from each folded-in edition's ID to the lead's ID. `auto` groups by name; `userGroups` are albums
+    /// you grouped yourself (always together), and albums in `split` are never grouped by name.
+    static func merge(_ albums: [Album], songs: [Song], auto: Bool = true, userGroups: [[UInt64]] = [],
+                      split: Set<UInt64> = []) -> (albums: [Album], songs: [Song], aliases: [UInt64: UInt64]) {
+        var mine: [UInt64: Int] = [:]
+        for (i, ids) in userGroups.enumerated() { for id in ids { mine[id] = i } }
         var groups: [String: [Album]] = [:]
         for a in albums where !a.isSingle {
-            groups[MediaKey.normalise(a.artist) + "|" + MediaKey.normalise(baseTitle(a.title)), default: []].append(a)
+            let key: String
+            if let g = mine[a.id] { key = "user|\(g)" }
+            else if auto && !split.contains(a.id) { key = MediaKey.normalise(a.artist) + "|" + MediaKey.normalise(baseTitle(a.title)) }
+            else { continue }
+            groups[key, default: []].append(a)
         }
         let songsByID = Dictionary(songs.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         var aliases: [UInt64: UInt64] = [:]
@@ -81,5 +89,52 @@ enum AlbumEditions {
             return copy
         }
         return (outAlbums, outSongs, aliases)
+    }
+}
+
+/// Albums you grouped yourself (versions the automatic grouping missed) and editions you split apart again.
+/// Kept as persistent IDs in UserDefaults, so the scanner can read them off the main thread.
+enum AlbumGroups {
+    static let groupsKey = "albumGroups", splitKey = "albumGroupsSplit"
+
+    /// Your groups, each a list of album persistent IDs.
+    static var groups: [[UInt64]] {
+        ((UserDefaults.standard.array(forKey: groupsKey) as? [[String]]) ?? []).map { $0.compactMap { UInt64($0) } }.filter { $0.count > 1 }
+    }
+
+    /// Albums never grouped by name (you separated them).
+    static var split: Set<UInt64> { Set((UserDefaults.standard.stringArray(forKey: splitKey) ?? []).compactMap { UInt64($0) }) }
+
+    /// Groups these albums (every edition of each) into one; groups already touching them join in.
+    static func group(_ ids: [UInt64]) {
+        var all = Set(ids)
+        var others: [[UInt64]] = []
+        for g in groups { if g.contains(where: { all.contains($0) }) { all.formUnion(g) } else { others.append(g) } }
+        save(others + [Array(all).sorted()], split: split.subtracting(all))
+    }
+
+    /// Separates an album's editions again: your group goes, and they're no longer grouped by name.
+    static func ungroup(_ ids: [UInt64]) {
+        let set = Set(ids)
+        save(groups.filter { g in !g.contains { set.contains($0) } }, split: split.union(set))
+    }
+
+    /// Forgets every group and separation you made.
+    static func reset() { save([], split: []) }
+
+    static var isEmpty: Bool { groups.isEmpty && split.isEmpty }
+
+    /// For backups: the groups and separations as strings.
+    static var stored: (groups: [[String]], split: [String]) {
+        (groups.map { $0.map { String($0) } }, split.map { String($0) })
+    }
+
+    static func restore(groups: [[String]], split: [String]) {
+        save(groups.map { $0.compactMap { UInt64($0) } } + self.groups, split: self.split.union(split.compactMap { UInt64($0) }))
+    }
+
+    private static func save(_ groups: [[UInt64]], split: Set<UInt64>) {
+        UserDefaults.standard.set(groups.filter { $0.count > 1 }.map { $0.map { String($0) } }, forKey: groupsKey)
+        UserDefaults.standard.set(split.map { String($0) }, forKey: splitKey)
     }
 }

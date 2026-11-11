@@ -58,8 +58,16 @@ struct AlbumDetailView: View {
         return parts.joined(separator: " · ")
     }
 
+    /// The songs in side order with where each side starts: your own sides for the album (Arrange Vinyl Sides),
+    /// or the two halves. Editions keep their own order.
+    private var sided: (tracks: [QueueItem], sides: [VinylSide]) {
+        let arranged = activeEdition == nil ? VinylSides.shared.arrange(tracks, for: subjectID) : (tracks: tracks, sides: [VinylSide]())
+        return (arranged.tracks, arranged.sides.isEmpty ? VinylSides.halves(arranged.tracks.count) : arranged.sides)
+    }
+
     var body: some View {
-        let list = tracks
+        let arranged = sided
+        let list = arranged.tracks
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 ZStack(alignment: .bottom) {
@@ -84,7 +92,7 @@ struct AlbumDetailView: View {
                 }
                 .padding(.horizontal, 16).padding(.top, -24)
 
-                tracklist(list).padding(.horizontal, 16).padding(.top, 18)
+                tracklist(list, sides: arranged.sides).padding(.horizontal, 16).padding(.top, 18)
 
                 if let date = library.snapshot.songs(album.songIDs).compactMap(\.releaseDate).first {
                     Text("Released \(date.formatted(date: .long, time: .omitted))")
@@ -114,14 +122,14 @@ struct AlbumDetailView: View {
         }
     }
 
-    /// The songs under "Side A" and "Side B", split where the gatefold sleeve splits them.
-    private func tracklist(_ list: [QueueItem]) -> some View {
+    /// The songs under "Side A", "Side B"…, split where the gatefold sleeve splits them.
+    private func tracklist(_ list: [QueueItem], sides: [VinylSide]) -> some View {
         let ownNumbers = trackNumbersLookRight(list)
         return VStack(spacing: 0) {
-            ForEach(RecordSide.split(list.count)) { side in
+            ForEach(sides, id: \.name) { side in
                 if list.count > 1 {
                     SideHeader(side: side, duration: list[side.range].reduce(0) { $0 + $1.duration })
-                        .padding(.top, side.name == "A" ? 0 : 22).padding(.bottom, 4)
+                        .padding(.top, side.range.lowerBound == 0 ? 0 : 22).padding(.bottom, 4)
                 }
                 ForEach(Array(side.range), id: \.self) { i in
                     PlayableQueueRow(item: list[i], list: list, number: ownNumbers ? (list[i].song?.trackNumber ?? i + 1) : i + 1)

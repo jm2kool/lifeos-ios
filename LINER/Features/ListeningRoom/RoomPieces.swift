@@ -25,11 +25,15 @@ struct RoomLayout {
              : CGRect(x: 0, y: shelf.maxY + 14, width: size.width, height: max(0, deck.minY - shelf.maxY - 14))
     }
 
-    func spine(_ i: Int, of n: Int) -> CGRect {
-        let inner = shelf.insetBy(dx: 8, dy: 0), gap: CGFloat = 2
-        let w = min(46, (inner.width - gap * CGFloat(max(n - 1, 0))) / CGFloat(max(n, 1)))
-        return CGRect(x: inner.minX + CGFloat(i) * (w + gap), y: shelf.minY + 8, width: w, height: shelf.height - 8)
-    }
+    /// The coordinate space the room is laid out in (spines report where they are in it).
+    static let space = "listeningRoom"
+
+    /// One spine: about fourteen fit across the shelf; swipe along it for the rest.
+    var spineSize: CGSize { CGSize(width: min(46, max(30, (shelf.width - 16) / 14 - 2)), height: shelf.height - 8) }
+    /// How far the record that's playing sticks up out of the shelf.
+    var raise: CGFloat { spineSize.height * 0.07 }
+    /// Where a spine sits when its own place isn't known yet (the first slot).
+    var firstSpine: CGRect { CGRect(origin: CGPoint(x: shelf.minX + 8, y: shelf.minY + 8), size: spineSize) }
 
     /// The sleeve pulled out, cover facing you.
     var closed: CGRect {
@@ -56,66 +60,12 @@ struct RoomLayout {
     var deckRecord: CGFloat { deck.width * 0.84 }
 }
 
-/// A record on the shelf, spine out: the title and artist in the colours of its cover.
-struct RoomSpine: View {
-    let album: Album
-    let rect: CGRect
-    @State private var colour = Color(white: 0.16)
-    @State private var light = false
-
-    var body: some View {
-        ZStack {
-            colour
-            LinearGradient(stops: [.init(color: .black.opacity(0.45), location: 0), .init(color: .clear, location: 0.22),
-                                   .init(color: .clear, location: 0.78), .init(color: .black.opacity(0.5), location: 1)],
-                           startPoint: .leading, endPoint: .trailing)
-            HStack(spacing: 8) {
-                Text(album.title).font(.serif(min(15, rect.width * 0.46)))
-                Text(album.artist).font(.system(size: min(8, rect.width * 0.24), weight: .semibold)).tracking(1.4).textCase(.uppercase).opacity(0.7)
-            }
-            .lineLimit(1)
-            .foregroundStyle(light ? Color.black.opacity(0.85) : Color.white.opacity(0.92))
-            .frame(width: rect.height - 16, alignment: .leading)
-            .rotationEffect(.degrees(90))
-            .frame(width: rect.width, height: rect.height)
-        }
-        .frame(width: rect.width, height: rect.height)
-        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 2, topTrailingRadius: 2))
-        .overlay(alignment: .top) { Rectangle().fill(.white.opacity(0.12)).frame(height: 1) }
-        .task(id: album.id) {
-            guard let img = await ArtworkCache.shared.image(album: album.id, pixels: 96),
-                  let rgb = Self.average(img) else { return }
-            let (r, g, b) = rgb
-            withAnimation(.easeOut(duration: 0.3)) {
-                colour = Color(red: r, green: g, blue: b)
-                light = 0.299 * r + 0.587 * g + 0.114 * b > 0.62
-            }
-        }
-    }
-
-    /// The cover's average colour: the small image squeezed into one pixel (quick, unlike the full analysis).
-    static func average(_ image: UIImage) -> (Double, Double, Double)? {
-        guard let cg = image.cgImage else { return nil }
-        var px = [UInt8](repeating: 0, count: 4)
-        let ok = px.withUnsafeMutableBytes { buf -> Bool in
-            guard let ctx = CGContext(data: buf.baseAddress, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
-                                      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
-            ctx.interpolationQuality = .medium
-            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: 1, height: 1))
-            return true
-        }
-        guard ok else { return nil }
-        return (Double(px[0]) / 255, Double(px[1]) / 255, Double(px[2]) / 255)
-    }
-}
-
 /// The inside of a sleeve in the room: its tracklist, laid out at a fixed size and scaled to the panel.
 struct RoomTracklist: View {
     let record: VinylRecord
     let tint: Color
 
     var body: some View {
-        let n = record.tracks.count, half = (n + 1) / 2
         ZStack(alignment: .topLeading) {
             Color(white: 0.05)
             LinearGradient(colors: [.black.opacity(0.6), .clear], startPoint: .leading, endPoint: .trailing).frame(width: 40)
@@ -124,7 +74,7 @@ struct RoomTracklist: View {
                 Text(record.artist).font(.system(size: 11, weight: .semibold)).tracking(2).textCase(.uppercase).foregroundStyle(tint).padding(.top, 6)
                 ForEach(Array(record.tracks.prefix(8).enumerated()), id: \.offset) { i, t in
                     HStack(alignment: .firstTextBaseline, spacing: 0) {
-                        Text(i < half ? "A\(i + 1)" : "B\(i - half + 1)").font(.system(size: 10, weight: .semibold)).foregroundStyle(Palette.faint)
+                        Text(record.sideLabel(i)).font(.system(size: 10, weight: .semibold)).foregroundStyle(Palette.faint)
                             .frame(width: 30, alignment: .leading)
                         Text(t.title).font(.serif(17)).lineLimit(1)
                         Spacer(minLength: 8)
@@ -139,6 +89,33 @@ struct RoomTracklist: View {
         }
         .frame(width: 300, height: 300)
         .clipped()
+    }
+}
+
+/// The playing record's setlist, sprung out of its label over the turntable (tap outside it to put it away).
+struct RoomSetlist: View {
+    let layout: RoomLayout
+    let record: VinylRecord?
+    let tint: Color
+    @Binding var picking: Bool
+    @Environment(PlaybackCoordinator.self) private var player
+
+    var body: some View {
+        let L = layout
+        ZStack {
+            if picking, let record {
+                Color.black.opacity(0.45).ignoresSafeArea().onTapGesture { picking = false }.transition(.opacity)
+                SetlistCard(record: record, currentID: player.current?.id, tint: tint, pick: { i in
+                    picking = false
+                    SetlistPlay.play(record, at: i, player: player)
+                }, close: { picking = false })
+                .frame(width: min(L.size.width - 32, L.deckRecord * 1.08), height: min(L.size.height * 0.8, L.deckRecord * 1.08))
+                .position(L.deckCenter)
+                .transition(.outOfTheLabel)
+            }
+        }
+        .frame(width: L.size.width, height: L.size.height)
+        .animation(.spring(response: 0.5, dampingFraction: 0.7), value: picking)
     }
 }
 
@@ -169,7 +146,7 @@ struct IdleDeck: View {
 #Preview {
     let a = PreviewData.snapshot.albums[0]
     HStack(spacing: 20) {
-        RoomSpine(album: a, rect: CGRect(x: 0, y: 0, width: 30, height: 220))
+        RoomSpine(record: .album(a, PreviewData.snapshot), size: CGSize(width: 30, height: 220))
         RoomTracklist(record: .album(a, PreviewData.snapshot), tint: .orange).scaleEffect(0.6).frame(width: 180, height: 180)
         IdleDeck().frame(width: 200)
     }

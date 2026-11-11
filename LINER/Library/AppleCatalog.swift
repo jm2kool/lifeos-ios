@@ -16,6 +16,8 @@ enum AppleCatalog {
         let discNumber: Int
         let genre: String
         let releaseDate: Date?
+        /// Apple's "explicit", "cleaned" or "notExplicit".
+        var explicitness = ""
     }
 
     struct Release: Identifiable, Hashable, Sendable {
@@ -26,6 +28,9 @@ enum AppleCatalog {
         let releaseDate: Date?
         let trackCount: Int
         let genre: String
+        /// Apple's "explicit", "cleaned" or "notExplicit", and whose release it is (to find its explicit version).
+        var explicitness = ""
+        var artistID = 0
         var year: Int? { releaseDate.map { Calendar.current.component(.year, from: $0) } }
         /// Apple names singles and EPs "… - Single" / "… - EP".
         var isSingleOrEP: Bool { name.hasSuffix(" - Single") || name.hasSuffix(" - EP") || trackCount <= 3 }
@@ -52,10 +57,9 @@ enum AppleCatalog {
         guard let found = await artistID(name) else { return nil }
         async let songs = fetch("lookup", ["id": String(found), "entity": "song", "limit": "30"])
         async let releases = fetch("lookup", ["id": String(found), "entity": "album", "limit": "100"])
-        let tracks = results(await songs).compactMap(track)
+        let tracks = withoutCleanTwins(results(await songs).compactMap(track), key: \.twinKey, rating: \.explicitness)
         let all = results(await releases).compactMap(release).sorted { ($0.releaseDate ?? .distantPast) > ($1.releaseDate ?? .distantPast) }
-        var seen = Set<String>()
-        let unique = grouped(all.filter { seen.insert($0.title.lowercased()).inserted })
+        let unique = oneEach(all, key: { $0.title.lowercased() }, rating: \.explicitness)
         let page = ArtistPage(topSongs: Array(tracks.prefix(20)), albums: unique.filter { !$0.isSingleOrEP },
                               singles: unique.filter(\.isSingleOrEP))
         await cache.store(page, for: name)
@@ -64,11 +68,16 @@ enum AppleCatalog {
 
     /// Editions of one release ("WILD", "WILD (Deluxe)") as one, the way the library groups them: the edition
     /// with the most songs stands for all of them, under the plain name and the earliest release date.
-    static func grouped(_ releases: [Release]) -> [Release] {
-        guard AlbumEditions.isOn else { return releases }
+    /// `together` are the names in each album you grouped by hand, `apart` names you separated (all normalised);
+    /// `byName` is Settings → Group album editions.
+    static func grouped(_ releases: [Release], together: [Set<String>] = [], apart: Set<String> = [], byName: Bool = true) -> [Release] {
         var order: [String] = [], groups: [String: [Release]] = [:]
         for r in releases {
-            let key = MediaKey.normalise(AlbumEditions.baseTitle(r.title)) + (r.isSingleOrEP ? "|single" : "")
+            let full = MediaKey.normalise(r.title), base = MediaKey.normalise(AlbumEditions.baseTitle(r.title))
+            var key = full
+            if let mine = together.firstIndex(where: { $0.contains(full) || $0.contains(base) }) { key = "group|\(mine)" }
+            else if byName && !apart.contains(full) { key = base }
+            if r.isSingleOrEP { key += "|single" }
             if groups[key] == nil { order.append(key) }
             groups[key, default: []].append(r)
         }
@@ -78,13 +87,14 @@ enum AppleCatalog {
             let suffix = [" - Single", " - EP"].first { lead.name.hasSuffix($0) } ?? ""
             return Release(id: lead.id, name: AlbumEditions.baseTitle(lead.title) + suffix, artist: lead.artist, artwork: lead.artwork,
                            releaseDate: editions.compactMap(\.releaseDate).min() ?? lead.releaseDate,
-                           trackCount: lead.trackCount, genre: lead.genre)
+                           trackCount: lead.trackCount, genre: lead.genre, explicitness: lead.explicitness, artistID: lead.artistID)
         }
     }
 
     /// A release's tracks, in order. Apple's lookup sometimes returns a release with no songs (new singles,
     /// streaming-only releases), so it falls back to searching for the release's songs by name.
     static func tracks(of release: Release) async -> [Track] {
+        let release = await explicitVersion(of: release)
         func ordered(_ t: [Track]) -> [Track] {
             var seen = Set<Int>()
             return t.filter { seen.insert($0.id).inserted }.sorted { ($0.discNumber, $0.trackNumber) < ($1.discNumber, $1.trackNumber) }
@@ -112,8 +122,9 @@ enum AppleCatalog {
         let key = ids.sorted().joined(separator: ",")
         if let hit = await albumCache.album(key) { return hit }
         for id in ids.prefix(3) {
-            guard let song = results(await fetch("lookup", ["id": id])).compactMap(track).first, song.collectionID != 0 else { continue }
-            let all = results(await fetch("lookup", ["id": String(song.collectionID), "entity": "song", "limit": "200"]))
+            guard let raw = results(await fetch("lookup", ["id": id])).first, let song = track(raw), song.collectionID != 0 else { continue }
+            let collection = await explicitCollection(for: raw) ?? song.collectionID
+            let all = results(await fetch("lookup", ["id": String(collection), "entity": "song", "limit": "200"]))
                 .compactMap(track).sorted { ($0.discNumber, $0.trackNumber) < ($1.discNumber, $1.trackNumber) }
             guard !all.isEmpty else { continue }
             await albumCache.store(all, for: key)
@@ -135,7 +146,7 @@ enum AppleCatalog {
 
     static func fetch(_ path: String, _ query: [String: String]) async -> Data? {
         var parts = URLComponents(string: "https://itunes.apple.com/\(path)")!
-        parts.queryItems = (query.merging(["country": country]) { a, _ in a }).map { URLQueryItem(name: $0.key, value: $0.value) }
+        parts.queryItems = (query.merging(["country": country, "explicit": "Yes"]) { a, _ in a }).map { URLQueryItem(name: $0.key, value: $0.value) }
         guard let url = parts.url else { return nil }
         var request = URLRequest(url: url)
         request.timeoutInterval = 15
@@ -166,14 +177,15 @@ enum AppleCatalog {
                      artwork: artwork(r), duration: Double(r["trackTimeMillis"] as? Int ?? 0) / 1000,
                      trackNumber: r["trackNumber"] as? Int ?? 0, discNumber: r["discNumber"] as? Int ?? 1,
                      genre: r["primaryGenreName"] as? String ?? "",
-                     releaseDate: date(r["releaseDate"]))
+                     releaseDate: date(r["releaseDate"]), explicitness: r["trackExplicitness"] as? String ?? "")
     }
 
     static func release(_ r: [String: Any]) -> Release? {
         guard r["wrapperType"] as? String == "collection", let id = r["collectionId"] as? Int else { return nil }
         return Release(id: id, name: r["collectionName"] as? String ?? "", artist: r["artistName"] as? String ?? "",
                        artwork: artwork(r), releaseDate: date(r["releaseDate"]),
-                       trackCount: r["trackCount"] as? Int ?? 0, genre: r["primaryGenreName"] as? String ?? "")
+                       trackCount: r["trackCount"] as? Int ?? 0, genre: r["primaryGenreName"] as? String ?? "",
+                       explicitness: r["collectionExplicitness"] as? String ?? "", artistID: r["artistId"] as? Int ?? 0)
     }
 }
 

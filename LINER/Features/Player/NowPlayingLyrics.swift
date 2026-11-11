@@ -26,7 +26,7 @@ struct NowPlayingLyrics: View {
                 lines(current: "♪", next: lyrics?.plain != nil ? "Lyrics without timings — tap to read" : "No lyrics for this song", index: -4)
             }
         }
-        .task(id: item.id) {
+        .task(id: "\(item.id)|\(LyricTimings.shared.version)") {
             loading = true
             let found = await LyricsStore.lyrics(for: item)
             withAnimation(.liner) { lyrics = found; loading = false }

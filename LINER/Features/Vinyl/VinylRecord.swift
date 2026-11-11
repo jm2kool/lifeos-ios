@@ -12,6 +12,23 @@ struct VinylRecord: Identifiable, Hashable {
     let tracks: [QueueItem]
     /// What the record opens when you tap it in the crate.
     var source: Source? = nil
+    /// Where each side starts and ends in `tracks` (your own sides, from `VinylSides`); empty means halves.
+    var sides: [VinylSide] = []
+
+    /// The sides to show: yours, or the first half on Side A and the rest on Side B.
+    var sideList: [VinylSide] { sides.isEmpty ? VinylSides.halves(tracks.count) : sides }
+
+    /// The letter of the side a song is on (nil when it isn't on this record).
+    func side(of itemID: String) -> String? {
+        guard let i = tracks.firstIndex(where: { $0.id == itemID }) else { return nil }
+        return sideList.first { $0.range.contains(i) }?.name
+    }
+
+    /// The side a track is on, and its number there ("B3").
+    func sideLabel(_ index: Int) -> String {
+        guard let side = sideList.first(where: { $0.range.contains(index) }) else { return "\(index + 1)" }
+        return "\(side.name)\(index - side.range.lowerBound + 1)"
+    }
 
     enum Source: Hashable {
         case album(Album)
