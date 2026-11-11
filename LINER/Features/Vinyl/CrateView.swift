@@ -108,7 +108,7 @@ struct CrateView: View {
             .padding(.horizontal, 4)
             .glassEffect(.regular.interactive(), in: .capsule)
             // Its own presenter, so it never competes with the turntable's on the crate.
-            .fullScreenCover(isPresented: $room) { ListeningRoomView() }
+            .fullScreenCover(isPresented: $room) { ListeningRoomView { room = false } }
         }
     }
 

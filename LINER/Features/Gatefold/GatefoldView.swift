@@ -143,6 +143,11 @@ struct GatefoldView: View {
         ZStack(alignment: .topLeading) {
             GlassCircleButton(systemImage: "chevron.left", label: "Close the sleeve", size: 44) { Task { await close() } }
                 .padding(.leading, land ? 24 : 20).padding(.top, land ? 20 : 62)
+            if showsControls {
+                GatefoldControls(record: shown, onPutOn: { putOn(at: 0) }, onShuffle: { putOn(at: 0, shuffled: true) })
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.trailing, land ? 24 : 20).padding(.top, land ? 20 : 62)
+            }
             if !land {
                 HStack(spacing: 6) {
                     ForEach(0..<2) { i in
@@ -160,6 +165,11 @@ struct GatefoldView: View {
     // MARK: Actions
 
     private var album: Album? { if case .album(let a) = record.source { a } else { nil } }
+
+    /// Passport and the ••• menu, for records that have an album or mixtape behind them.
+    private var showsControls: Bool {
+        switch record.source { case .album, .mixtape: true; default: false }
+    }
 
     private var savedOnly: Bool { AlbumTracklist.savedOnly(record.id, in: savedOnlyAlbums) }
 
@@ -240,10 +250,10 @@ struct GatefoldView: View {
 
     /// The music starts at once; the record slides out of the inner sleeve and the turntable comes up, where it
     /// drops onto the plain record waiting there.
-    private func putOn(at index: Int) {
+    private func putOn(at index: Int, shuffled: Bool = false) {
         let r = shown
         guard !r.tracks.isEmpty else { return }
-        player.play(r.tracks, startAt: index, openPlayer: false)
+        player.play(r.tracks, startAt: index, shuffled: shuffled, openPlayer: false)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         withAnimation(.easeIn(duration: 0.35)) { recordOut = true }
         Task {
