@@ -154,7 +154,7 @@ struct GatefoldTracks: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     header(u)
-                    ForEach(sides) { side in sideList(side, u) }
+                    ForEach(sides, id: \.name) { side in sideList(side, u) }
                     Text("\(record.tracks.count) songs, \(Int((record.tracks.reduce(0) { $0 + $1.duration } / 60).rounded())) minutes.")
                         .font(.system(size: 3.2 * u)).foregroundStyle(Palette.faint).padding(.top, 7 * u)
                 }
