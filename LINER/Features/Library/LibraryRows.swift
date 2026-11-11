@@ -54,7 +54,7 @@ struct SongRow: View {
                 ArtworkView(albumID: song.albumID, cornerRadius: 6).frame(width: 46, height: 46)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(song.title).font(.system(size: 16)).lineLimit(1)
+                Text(song.title).font(.system(size: 16)).lineLimit(1).minimumScaleFactor(0.8)
                 Text(number == nil && library.snapshot.albumOf(song) != nil ? "\(song.artist) · \(song.albumTitle)" : song.artist)
                     .font(.system(size: 13)).foregroundStyle(Palette.secondary).lineLimit(1)
             }

@@ -7,23 +7,37 @@ enum LogoLifter {
     static func lift(_ cover: UIImage, title: String) -> Data? {
         guard let image = cover.cgImage else { return nil }
         let wanted = normalise(plainTitle(title))
-        guard wanted.count >= 2 else { return nil }
-        let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .accurate
-        request.usesLanguageCorrection = false
-        try? VNImageRequestHandler(cgImage: image).perform([request])
-        let lines: [(text: String, box: CGRect)] = (request.results ?? []).compactMap { o in
-            guard let c = o.topCandidates(1).first, c.confidence > 0.3 else { return nil }
-            let t = normalise(c.string)
-            return t.isEmpty ? nil : (t, o.boundingBox)
-        }
-        guard let box = titleBox(lines, wanted: wanted) else { return nil }
+        guard wanted.count >= 2, let box = titleBox(lines(in: image), wanted: wanted) else { return nil }
         // Vision's boxes are normalised with the origin at the bottom left.
         let w = CGFloat(image.width), h = CGFloat(image.height)
         var rect = CGRect(x: box.minX * w, y: (1 - box.maxY) * h, width: box.width * w, height: box.height * h)
         rect = rect.insetBy(dx: -rect.height * 0.25, dy: -rect.height * 0.22).intersection(CGRect(x: 0, y: 0, width: w, height: h))
         guard rect.width > 20, rect.height > 8, let crop = image.cropping(to: rect.integral) else { return nil }
         return cutOut(crop)
+    }
+
+    /// Whether the album's name is printed on its cover (on one line, across neighbouring lines, or inside a
+    /// longer line such as "ARTIST – TITLE"), however busy the background is.
+    static func coverShowsTitle(_ cover: UIImage, title: String) -> Bool {
+        guard let image = cover.cgImage else { return false }
+        let wanted = normalise(plainTitle(title))
+        guard wanted.count >= 2 else { return false }
+        let found = lines(in: image)
+        if titleBox(found, wanted: wanted) != nil { return true }
+        return wanted.count >= 4 && found.contains { $0.text.contains(wanted) }
+    }
+
+    /// The text Vision reads on the cover, each line normalised to bare letters and digits.
+    private static func lines(in image: CGImage) -> [(text: String, box: CGRect)] {
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = false
+        try? VNImageRequestHandler(cgImage: image).perform([request])
+        return (request.results ?? []).compactMap { o in
+            guard let c = o.topCandidates(1).first, c.confidence > 0.3 else { return nil }
+            let t = normalise(c.string)
+            return t.isEmpty ? nil : (t, o.boundingBox)
+        }
     }
 
     /// The box round the title: one line that reads it, or neighbouring lines that spell it out together.
@@ -36,7 +50,7 @@ enum LogoLifter {
     }
 
     /// Lifts the lettering off a plain background: pixels far from the background colour stay, the rest go.
-    private static func cutOut(_ crop: CGImage) -> Data? {
+    static func cutOut(_ crop: CGImage) -> Data? {
         let scale = min(1, 900 / CGFloat(crop.width))
         let w = max(1, Int(CGFloat(crop.width) * scale)), h = max(1, Int(CGFloat(crop.height) * scale))
         var px = [UInt8](repeating: 0, count: w * h * 4)

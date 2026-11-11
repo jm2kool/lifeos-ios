@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// Settings (SPEC §6.17): Vinyl Mode, Living Covers, Low Power, lyrics, needle sounds, recap notifications,
-/// rebuild stats, backup, test data, diagnostics and about.
+/// rebuild stats, backup, updates, test data, diagnostics and about.
 struct SettingsView: View {
     @Environment(LibraryService.self) private var library
     @Environment(PlaybackCoordinator.self) private var player
@@ -58,6 +58,7 @@ struct SettingsView: View {
                 Section {
                     Toggle("Living Covers", isOn: $livingCovers)
                     Toggle("Album title logos", isOn: $albumLogos)
+                        .onChange(of: albumLogos) { CustomAlbumLogos.shared.refresh() }
                     Picker("Style", selection: $coverStyle) {
                         ForEach(LivingCoverRenderer.Style.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
                     }
@@ -106,7 +107,7 @@ struct SettingsView: View {
                     if let exportURL { ShareLink("Save or send the backup", item: exportURL) }
                     Button("Import backup", systemImage: "square.and.arrow.down") { importing = true }
                 } header: { Text("Backup") } footer: {
-                    Text("Passports, rankings, pins, editions, mixtape details and mood playlists. Mixtape audio files stay in the Files app under \(AppBrand.name).")
+                    Text("Passports, rankings, pins, editions, your album logos, mixtape details and mood playlists. Mixtape audio files stay in the Files app under \(AppBrand.name).")
                 }
                 Section {
                     NavigationLink("Spike lab") { SpikeHomeView() }
@@ -115,6 +116,13 @@ struct SettingsView: View {
                     if let err = Store.openError { Text("Storage problem: \(err)").font(.footnote).foregroundStyle(.orange) }
                 } header: { Text("Diagnostics") } footer: {
                     Text("The spike lab re-runs the Phase 0 checks. Test plays are made-up recaps data, marked so they can be removed.")
+                }
+                Section {
+                    NavigationLink { UpdateView() } label: {
+                        LabeledContent("Update \(AppBrand.name)", value: AppUpdater.shared.isAvailable ? "New build" : "")
+                    }
+                } header: { Text("Updates") } footer: {
+                    Text("Checks GitHub for a newer build and installs it on the phone with SideStore or AltStore, so you don't need Sideloadly for every update.")
                 }
                 Section("About") {
                     HStack(spacing: 14) {

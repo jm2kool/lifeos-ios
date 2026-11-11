@@ -36,10 +36,13 @@ jobs:
           brew install xcodegen >/dev/null 2>&1 || brew install xcodegen
           xcodegen generate
 
+      # The build number is the workflow run number, so the app can tell a newer build from its own
+      # (Settings → Update).
       - name: Build (unsigned)
         run: |
           xcodebuild -project LINER.xcodeproj -target LINER -configuration Release -sdk iphoneos \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
             SYMROOT="$PWD/build" build > build.log 2>&1 || {
               grep -E "error:|fatal error" build.log | sort -u | head -60 | while IFS= read -r l; do echo "::error::${l#$PWD/}"; done; exit 1; }
           grep -E "warning:" build.log | grep -v "appintentsmetadataprocessor" | sort -u | head -40 | while IFS= read -r l; do echo "::warning::${l#$PWD/}"; done || true
@@ -57,6 +60,32 @@ jobs:
           ls Payload/LINER.app/PlugIns || true
           zip -qry LINER.ipa Payload
           ls -lh LINER.ipa
+
+      # What the app's updater reads (version.json) and a source SideStore and AltStore can follow (apps.json).
+      - name: Describe the build
+        run: |
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Payload/LINER.app/Info.plist) \
+          NOTES=$(git log -1 --pretty=%s) python3 - <<'PY'
+          import json, os, datetime
+          repo, sha = os.environ["GITHUB_REPOSITORY"], os.environ["GITHUB_SHA"]
+          base = f"https://github.com/{repo}/releases/download/liner-latest"
+          build, version, notes = int(os.environ["GITHUB_RUN_NUMBER"]), os.environ["VERSION"], os.environ["NOTES"]
+          date = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+          ipa, size = f"{base}/LINER.ipa", os.path.getsize("LINER.ipa")
+          json.dump({"build": build, "version": version, "commit": sha, "branch": os.environ["GITHUB_REF_NAME"], "date": date,
+                     "notes": notes, "ipa": ipa, "source": f"{base}/apps.json"}, open("version.json", "w"), indent=2)
+          about = "A personal, artwork-first Apple Music companion: your history with every artist, album and song."
+          json.dump({"name": "LINER.", "identifier": "com.jm2kool.liner.source", "sourceURL": f"{base}/apps.json", "news": [],
+                     "apps": [{"name": "LINER.", "bundleIdentifier": "com.jm2kool.liner", "developerName": repo.split("/")[0],
+                               "subtitle": "Your music. Your history.", "localizedDescription": about, "tintColor": "#000000",
+                               "iconURL": f"https://raw.githubusercontent.com/{repo}/{sha}/LINER/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png",
+                               "version": version, "versionDate": date, "versionDescription": notes, "downloadURL": ipa, "size": size,
+                               "versions": [{"version": version, "buildVersion": str(build), "date": date, "localizedDescription": notes,
+                                             "downloadURL": ipa, "size": size, "minOSVersion": "26.0"}],
+                               "appPermissions": {"entitlements": [], "privacy": {}}}]},
+                    open("apps.json", "w"), indent=2)
+          PY
+          cat version.json
 
       - name: Upload build log
         if: always()
@@ -78,8 +107,8 @@ jobs:
         run: |
           TAG=liner-latest
           gh release delete $TAG --yes --cleanup-tag 2>/dev/null || true
-          gh release create $TAG LINER.ipa --title "LINER. (latest build)" --target $GITHUB_SHA --prerelease \
-            --notes "Unsigned build of ${GITHUB_SHA::7} from ${GITHUB_REF_NAME}. Install with Sideloadly using your Apple ID."
+          gh release create $TAG LINER.ipa version.json apps.json --title "LINER. (latest build)" --target $GITHUB_SHA --prerelease \
+            --notes "Unsigned build ${GITHUB_RUN_NUMBER} of ${GITHUB_SHA::7} from ${GITHUB_REF_NAME}. Install with Sideloadly using your Apple ID, or update from the app (Settings → Update) with SideStore or AltStore."
 
       # Simulator recordings in demo mode (made-up library and stats), for previews and the promo video.
       - continue-on-error: true

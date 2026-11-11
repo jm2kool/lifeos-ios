@@ -23,7 +23,7 @@ struct CatalogReleaseView: View {
                     .shadow(color: .black.opacity(0.6), radius: 24, y: 12)
                     .padding(.top, 12)
                 VStack(spacing: 4) {
-                    Text(release.title).font(.serif(26)).multilineTextAlignment(.center).lineLimit(3)
+                    Text(release.title).font(.serif(26)).lineLimit(1).minimumScaleFactor(0.45)
                     Text(release.artist).linerLabel(size: 12)
                     Text([release.isSingleOrEP ? (release.trackCount <= 3 ? "SINGLE" : "EP") : "ALBUM",
                           release.genre.uppercased(), release.year.map(String.init)].compactMap { $0 }.filter { !$0.isEmpty }
@@ -40,9 +40,15 @@ struct CatalogReleaseView: View {
                         .font(.footnote).foregroundStyle(Palette.secondary).multilineTextAlignment(.center).padding(24)
                 }
                 VStack(spacing: 0) {
-                    ForEach(Array(list.enumerated()), id: \.offset) { i, song in
-                        row(song, number: tracks[i].trackNumber > 0 ? tracks[i].trackNumber : i + 1) { player.play(songs: list, startAt: i) }
-                        Divider().overlay(Palette.stroke)
+                    ForEach(RecordSide.split(list.count)) { side in
+                        if list.count > 3 {
+                            SideHeader(side: side, duration: list[side.range].reduce(0) { $0 + $1.duration })
+                                .padding(.top, side.name == "A" ? 6 : 22).padding(.bottom, 2)
+                        }
+                        ForEach(Array(side.range), id: \.self) { i in
+                            row(list[i], number: tracks[i].trackNumber > 0 ? tracks[i].trackNumber : i + 1) { player.play(songs: list, startAt: i) }
+                            Divider().overlay(Palette.stroke)
+                        }
                     }
                 }
                 .padding(.horizontal, 16)
@@ -75,7 +81,7 @@ struct CatalogReleaseView: View {
         Button(action: play) {
             HStack(spacing: 12) {
                 Text("\(number)").font(.serif(17)).monospacedDigit().foregroundStyle(Palette.label).frame(width: 26)
-                Text(song.title).font(.system(size: 16)).lineLimit(1)
+                Text(song.title).font(.system(size: 16)).lineLimit(1).minimumScaleFactor(0.75)
                 Spacer(minLength: 8)
                 if player.current?.song?.storeID == song.storeID {
                     Image(systemName: "waveform").symbolEffect(.variableColor.iterative, isActive: player.isPlaying).font(.caption)

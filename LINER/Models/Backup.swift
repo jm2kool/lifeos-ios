@@ -4,7 +4,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// Export / import of everything you wrote in LINER. (SPEC §6.17) as one JSON file: passports, rankings, pins,
-/// editions, mixtape details (not the audio files) and mood playlists.
+/// editions, your album logos, mixtape details (not the audio files) and mood playlists.
 struct BackupFile: Codable {
     struct Song: Codable { var itemID: String; var key: Data; var rating: Int?; var moods: [String]; var notes: String; var connection: String; var moments: Data; var lyricLines: [String] }
     struct Album: Codable { var albumID: String; var key: Data; var rating: Int?; var ranking: [String]; var pinned: Bool; var appearance: String; var cover: Data?; var activeEdition: UUID? }
@@ -21,6 +21,8 @@ struct BackupFile: Codable {
     var mixtapes: [MixtapeItem] = []
     var moods: [Mood] = []
     var pinnedPlaylists: [Int64] = []
+    /// Album logos you added yourself, as PNGs by album ID (missing in backups from before 1.5).
+    var albumLogos: [String: Data]?
 }
 
 @MainActor
@@ -46,6 +48,8 @@ enum BackupService {
             .init(id: $0.id, name: $0.name, summary: $0.summary, prompt: $0.prompt, recipe: $0.recipeData, tracks: $0.trackIDs, autoRefresh: $0.autoRefresh)
         }
         b.pinnedPlaylists = ((try? c.fetch(FetchDescriptor<PinnedPlaylist>())) ?? []).map(\.playlistID)
+        let logos = CustomAlbumLogos.shared
+        b.albumLogos = Dictionary(uniqueKeysWithValues: logos.albumIDs.compactMap { id in logos.data(id).map { (String(id), $0) } })
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         enc.dateEncodingStrategy = .iso8601
@@ -101,6 +105,7 @@ enum BackupService {
         for id in b.pinnedPlaylists where Store.shared.pinnedPlaylist(UInt64(bitPattern: id)) == nil {
             c.insert(PinnedPlaylist(playlistID: UInt64(bitPattern: id)))
         }
+        for (id, png) in b.albumLogos ?? [:] { if let album = UInt64(id) { CustomAlbumLogos.shared.store(png, for: album) } }
         Store.shared.save()
         var summary = "Restored \(b.songs.count) song passports, \(b.albums.count) albums, \(b.editions.count) editions, \(b.mixtapes.count) mixtapes and \(b.moods.count) mood playlists."
         if missingAudio > 0 { summary += " \(missingAudio) mixtape tracks need their audio files imported again." }

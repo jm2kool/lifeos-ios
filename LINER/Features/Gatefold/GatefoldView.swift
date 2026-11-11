@@ -25,6 +25,8 @@ struct GatefoldView: View {
     /// album page.
     @AppStorage(AlbumTracklist.storageKey) private var savedOnlyAlbums = ""
     @State private var catalog: [AppleCatalog.Track]?
+    /// The album's name is printed on the cover already (found with on-device text recognition).
+    @State private var titleOnCover = false
 
     enum Stage { case closed, lifted, opening, flat, inside }
 
@@ -128,7 +130,8 @@ struct GatefoldView: View {
     }
 
     private func coverPanel(_ size: CGSize, inside: Bool) -> some View {
-        GatefoldCover(record: shown, album: album, cover: cover, tint: tint, width: size.width, showsHint: size.width < size.height)
+        GatefoldCover(record: shown, album: album, cover: cover, tint: tint, width: size.width, showsHint: size.width < size.height,
+                      titleOnCover: titleOnCover, logo: record.albumID.flatMap { CustomAlbumLogos.shared.image($0) })
             .environment(\.gatefoldMetaVisible, inside)
     }
 
@@ -190,6 +193,11 @@ struct GatefoldView: View {
         else if let id = record.albumID {
             cover = CoverOverrides.shared.image(id)
             if cover == nil { cover = await ArtworkCache.shared.image(album: id, pixels: 1400) }
+        }
+        if let cover {
+            let key = record.id + (record.albumID.map(CoverVersions.suffix) ?? "") + "-\(record.coverData?.count ?? 0)"
+            let printed = await CoverTitles.printed(on: cover, title: record.title, key: key)
+            withAnimation(.easeOut(duration: 0.3)) { titleOnCover = printed }
         }
         if let album {
             let ids = library.snapshot.songs(album.songIDs).filter(\.hasStoreID).map(\.storeID)

@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// The left side of the open sleeve: the cover, full bleed, with the title, the numbers and the credits.
+/// The left side of the open sleeve: the cover, full bleed, with the title, the numbers and the credits. The
+/// title is left off when the cover already has it printed on it; a logo you added yourself always shows.
 /// Sizes follow the panel's width so it reads the same as a full screen or as a landscape square.
 struct GatefoldCover: View {
     let record: VinylRecord
@@ -10,6 +11,10 @@ struct GatefoldCover: View {
     let width: CGFloat
     /// Portrait only: a quiet "Tracks ›" on the right edge.
     var showsHint = true
+    /// The album's name is printed on the cover, so it isn't printed again.
+    var titleOnCover = false
+    /// Your own logo for the album, shown in place of the title.
+    var logo: UIImage? = nil
     @Environment(\.gatefoldMetaVisible) private var visible
     @Environment(LibraryService.self) private var library
 
@@ -47,12 +52,22 @@ struct GatefoldCover: View {
     private func meta(_ u: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(kicker).font(.system(size: 2.6 * u, weight: .semibold)).tracking(0.6 * u).textCase(.uppercase).foregroundStyle(tint)
-            Text(record.title).font(.serif(17 * u)).lineLimit(2).minimumScaleFactor(0.45).padding(.top, 2 * u)
-            Text(record.artist).font(.system(size: 3 * u, weight: .semibold)).tracking(0.75 * u).textCase(.uppercase).padding(.top, 2.4 * u)
+                .lineLimit(1).minimumScaleFactor(0.6)
+            if let logo {
+                Image(uiImage: logo).resizable().scaledToFit()
+                    .frame(maxWidth: 70 * u, maxHeight: 24 * u, alignment: .leading)
+                    .shadow(color: .black.opacity(0.5), radius: 2 * u)
+                    .padding(.top, 3 * u)
+                    .accessibilityLabel(record.title)
+            } else if !titleOnCover {
+                Text(record.title).font(.serif(17 * u)).lineLimit(1).minimumScaleFactor(0.3).padding(.top, 2 * u)
+            }
+            Text(record.artist).font(.system(size: 3 * u, weight: .semibold)).tracking(0.75 * u).textCase(.uppercase)
+                .lineLimit(1).minimumScaleFactor(0.6).padding(.top, 2.4 * u)
             facts(u).padding(.top, 5.5 * u)
             if !writers.isEmpty {
                 Text("Written by \(Text(writers).foregroundStyle(Color.white))").foregroundStyle(Palette.label)
-                    .font(.system(size: 3.3 * u)).lineLimit(2).padding(.top, 4 * u)
+                    .font(.system(size: 3.3 * u)).lineLimit(1).minimumScaleFactor(0.55).padding(.top, 4 * u)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -133,7 +148,7 @@ struct GatefoldTracks: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     header(u)
-                    ForEach(sides, id: \.name) { side in sideList(side, u) }
+                    ForEach(sides) { side in sideList(side, u) }
                     Text("\(record.tracks.count) songs, \(Int((record.tracks.reduce(0) { $0 + $1.duration } / 60).rounded())) minutes.")
                         .font(.system(size: 3.2 * u)).foregroundStyle(Palette.faint).padding(.top, 7 * u)
                 }
@@ -161,21 +176,16 @@ struct GatefoldTracks: View {
         .clipped()
     }
 
-    private struct Side { let name: String; let range: Range<Int> }
-
-    private var sides: [Side] {
-        let n = record.tracks.count, half = (n + 1) / 2
-        return n > 1 ? [Side(name: "A", range: 0..<half), Side(name: "B", range: half..<n)] : [Side(name: "A", range: 0..<n)]
-    }
+    private var sides: [RecordSide] { RecordSide.split(record.tracks.count) }
 
     private func header(_ u: CGFloat) -> some View {
         HStack(spacing: 4 * u) {
             Group { if let cover { FillImage(image: cover) } else { ArtworkView(albumID: record.albumID, cornerRadius: 0) } }
                 .frame(width: 15 * u, height: 15 * u).clipShape(RoundedRectangle(cornerRadius: 0.8 * u))
             VStack(alignment: .leading, spacing: 1.6 * u) {
-                Text(record.title).font(.serif(7.4 * u)).lineLimit(1).minimumScaleFactor(0.6)
+                Text(record.title).font(.serif(7.4 * u)).lineLimit(1).minimumScaleFactor(0.4)
                 Text(record.artist).font(.system(size: 2.6 * u, weight: .semibold)).tracking(0.65 * u).textCase(.uppercase)
-                    .foregroundStyle(Palette.label).lineLimit(1)
+                    .foregroundStyle(Palette.label).lineLimit(1).minimumScaleFactor(0.6)
                 if let t = tracklist { switcher(t, u) }
             }
         }
@@ -202,7 +212,7 @@ struct GatefoldTracks: View {
         .accessibilityLabel("Tracklist: \(t.savedOnly ? "Saved Album" : "Full Album")")
     }
 
-    private func sideList(_ side: Side, _ u: CGFloat) -> some View {
+    private func sideList(_ side: RecordSide, _ u: CGFloat) -> some View {
         let minutes = Int((record.tracks[side.range].reduce(0) { $0 + $1.duration } / 60).rounded())
         return VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 3 * u) {
@@ -225,7 +235,7 @@ struct GatefoldTracks: View {
                 }
                 .font(.system(size: 2.8 * u, weight: .semibold)).monospacedDigit()
                 .frame(width: 9 * u, alignment: .leading)
-                Text(item.title).font(.serif(4.6 * u)).foregroundStyle(playing ? tint : .white).lineLimit(1)
+                Text(item.title).font(.serif(4.6 * u)).foregroundStyle(playing ? tint : .white).lineLimit(1).minimumScaleFactor(0.6)
                 Spacer(minLength: 3 * u)
                 Text(item.duration.trackTime).font(.system(size: 3.2 * u)).foregroundStyle(Palette.label).monospacedDigit()
             }

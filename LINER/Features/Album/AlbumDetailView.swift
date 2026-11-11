@@ -69,9 +69,9 @@ struct AlbumDetailView: View {
                 }
                 VStack(alignment: .leading, spacing: 8) {
                     if let edition = activeEdition {
-                        Text(edition.title).font(.itemTitle).lineLimit(3)
+                        Text(edition.title).font(.itemTitle).lineLimit(1).minimumScaleFactor(0.4)
                     } else {
-                        AlbumTitle(albumID: album.id, title: album.title)
+                        AlbumTitle(albumID: album.id, title: album.title).contextMenu { AlbumLogoMenu(album: album) }
                     }
                     if let artist = library.snapshot.artist(named: album.artist) {
                         NavigationLink(value: artist) { Text(album.artist).linerLabel(size: 12) }.buttonStyle(.plain)
@@ -79,25 +79,19 @@ struct AlbumDetailView: View {
                         Text(album.artist).linerLabel(size: 12)
                     }
                     actions(list).padding(.top, 10)
-                    Text(facts).linerLabel(size: 10).padding(.top, 8)
+                    Text(facts).linerLabel(size: 10).lineLimit(1).minimumScaleFactor(0.5).padding(.top, 8)
                     editionSwitcher.padding(.top, 4)
                 }
                 .padding(.horizontal, 16).padding(.top, -24)
 
-                VStack(spacing: 0) {
-                    ForEach(Array(list.enumerated()), id: \.offset) { i, item in
-                        PlayableQueueRow(item: item, list: list, number: trackNumbersLookRight(list) ? (item.song?.trackNumber ?? i + 1) : i + 1)
-                            .padding(.vertical, 10)
-                        Divider().overlay(Palette.stroke)
-                    }
-                }
-                .padding(.horizontal, 16).padding(.top, 18)
+                tracklist(list).padding(.horizontal, 16).padding(.top, 18)
 
                 if let date = library.snapshot.songs(album.songIDs).compactMap(\.releaseDate).first {
                     Text("Released \(date.formatted(date: .long, time: .omitted))")
                         .font(.footnote).foregroundStyle(Palette.label).padding(16)
                 }
                 AlbumHistory(album: album, songs: library.snapshot.songs(album.songIDs)).padding(.horizontal, 16).padding(.top, 8)
+                AlbumArtistLogos(album: album, songs: list.compactMap(\.song)).padding(.horizontal, 16).padding(.top, 36)
             }
             .padding(.bottom, 32)
         }
@@ -116,6 +110,24 @@ struct AlbumDetailView: View {
                     AlbumActionsMenu(album: album)
                     Button("Download in Music", systemImage: "arrow.down.circle") { openInMusic() }
                 } label: { Label("More", systemImage: "ellipsis") }
+            }
+        }
+    }
+
+    /// The songs under "Side A" and "Side B", split where the gatefold sleeve splits them.
+    private func tracklist(_ list: [QueueItem]) -> some View {
+        let ownNumbers = trackNumbersLookRight(list)
+        return VStack(spacing: 0) {
+            ForEach(RecordSide.split(list.count)) { side in
+                if list.count > 1 {
+                    SideHeader(side: side, duration: list[side.range].reduce(0) { $0 + $1.duration })
+                        .padding(.top, side.name == "A" ? 0 : 22).padding(.bottom, 4)
+                }
+                ForEach(Array(side.range), id: \.self) { i in
+                    PlayableQueueRow(item: list[i], list: list, number: ownNumbers ? (list[i].song?.trackNumber ?? i + 1) : i + 1)
+                        .padding(.vertical, 10)
+                    Divider().overlay(Palette.stroke)
+                }
             }
         }
     }

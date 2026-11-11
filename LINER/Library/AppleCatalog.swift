@@ -55,11 +55,31 @@ enum AppleCatalog {
         let tracks = results(await songs).compactMap(track)
         let all = results(await releases).compactMap(release).sorted { ($0.releaseDate ?? .distantPast) > ($1.releaseDate ?? .distantPast) }
         var seen = Set<String>()
-        let unique = all.filter { seen.insert($0.title.lowercased()).inserted }
+        let unique = grouped(all.filter { seen.insert($0.title.lowercased()).inserted })
         let page = ArtistPage(topSongs: Array(tracks.prefix(20)), albums: unique.filter { !$0.isSingleOrEP },
                               singles: unique.filter(\.isSingleOrEP))
         await cache.store(page, for: name)
         return page
+    }
+
+    /// Editions of one release ("WILD", "WILD (Deluxe)") as one, the way the library groups them: the edition
+    /// with the most songs stands for all of them, under the plain name and the earliest release date.
+    static func grouped(_ releases: [Release]) -> [Release] {
+        guard AlbumEditions.isOn else { return releases }
+        var order: [String] = [], groups: [String: [Release]] = [:]
+        for r in releases {
+            let key = MediaKey.normalise(AlbumEditions.baseTitle(r.title)) + (r.isSingleOrEP ? "|single" : "")
+            if groups[key] == nil { order.append(key) }
+            groups[key, default: []].append(r)
+        }
+        return order.compactMap { key -> Release? in
+            guard let editions = groups[key], let lead = editions.max(by: { $0.trackCount < $1.trackCount }) else { return nil }
+            guard editions.count > 1 else { return lead }
+            let suffix = [" - Single", " - EP"].first { lead.name.hasSuffix($0) } ?? ""
+            return Release(id: lead.id, name: AlbumEditions.baseTitle(lead.title) + suffix, artist: lead.artist, artwork: lead.artwork,
+                           releaseDate: editions.compactMap(\.releaseDate).min() ?? lead.releaseDate,
+                           trackCount: lead.trackCount, genre: lead.genre)
+        }
     }
 
     /// A release's tracks, in order. Apple's lookup sometimes returns a release with no songs (new singles,

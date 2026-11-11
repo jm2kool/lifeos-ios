@@ -61,6 +61,7 @@ struct AlbumActionsMenu: View {
                 Button("Use Original Artwork", systemImage: "arrow.uturn.backward", role: .destructive) { CoverSaver.reset(album) }
             }
         }
+        AlbumLogoMenu(album: album)
         Button("Manage Editions", systemImage: "square.stack.3d.up") { passports.editions = .library(album, snapshot: library.snapshot) }
     }
 }

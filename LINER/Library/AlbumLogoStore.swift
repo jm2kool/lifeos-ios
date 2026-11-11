@@ -5,7 +5,7 @@ import UIKit
 /// from the cover: on-device text recognition finds where the album's name is printed, and that lettering is cut
 /// away from its background. Only clean results are kept (the name found, on a plain enough background); every
 /// other album keeps its title in text. Dark lettering is turned white so it reads on LINER.'s black.
-/// Setting: Settings → Covers → Album title logos.
+/// A logo you add yourself (`CustomAlbumLogos`) comes first. Setting: Settings → Covers → Album title logos.
 @MainActor
 final class AlbumLogoStore {
     static let shared = AlbumLogoStore()
@@ -22,6 +22,7 @@ final class AlbumLogoStore {
 
     /// The album's title logo, or nil when the cover doesn't have a clean one.
     func logo(albumID: UInt64, title: String) async -> UIImage? {
+        if let mine = CustomAlbumLogos.shared.image(albumID) { return mine }
         guard Self.enabled else { return nil }
         let key = "\(albumID)\(CoverVersions.suffix(albumID))"
         if let hit = memory.object(forKey: key as NSString) { return hit }
@@ -45,7 +46,8 @@ final class AlbumLogoStore {
     }
 }
 
-/// An album's title: its logo when the cover has a clean one, otherwise the title in text.
+/// An album's title: your own logo, or the one lifted from the cover when it has a clean one, otherwise the
+/// title in text on one line (shrunk to fit when it's long). Press and hold to add or change the logo.
 struct AlbumTitle: View {
     let albumID: UInt64
     let title: String
@@ -61,10 +63,10 @@ struct AlbumTitle: View {
                     .accessibilityLabel(title)
                     .transition(.opacity)
             } else {
-                Text(title).font(font).lineLimit(3)
+                Text(title).font(font).lineLimit(1).minimumScaleFactor(0.4)
             }
         }
-        .task(id: albumID) {
+        .task(id: "\(albumID)-\(CustomAlbumLogos.shared.revision)") {
             let found = await AlbumLogoStore.shared.logo(albumID: albumID, title: title)
             withAnimation(.easeIn(duration: 0.3)) { logo = found }
         }

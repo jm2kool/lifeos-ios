@@ -1,2 +1,6 @@
 LINER.xcodeproj/
 build.log
+version.json
+apps.json
+LINER.ipa
+Payload/

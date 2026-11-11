@@ -38,8 +38,12 @@ struct RootView: View {
         .sheet(item: $passports.album) { AlbumPassportSheet(subject: $0) }
         .sheet(item: $passports.editions) { EditionsSheet(subject: $0) }
         .modifier(CoverPickerHost())
+        .modifier(AlbumLogoPickerHost())
         .sheet(item: $prompts.current, onDismiss: { NewAlbumPrompts.shared.showNext(library.snapshot) }) { AlbumRatingPrompt(album: $0) }
         .task { if library.isAuthorized && connected && !library.hasLoaded { await library.refresh() } }
+        .task {
+            if !Demo.isOn, await AppUpdater.shared.checkQuietly() { player.notice = "A new build of \(AppBrand.name) is ready. Settings → Update." }
+        }
         .onOpenURL { url in Task { await openFile(url) } }
         .onChange(of: phase) { _, now in
             if now == .active && library.hasLoaded { library.recheckAccess(); Task { await library.refresh() } }
