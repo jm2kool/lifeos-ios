@@ -227,10 +227,7 @@ struct CrateView: View {
         case .all: return library.albums(.alphabetical).map { VinylRecord.album($0, snap) }
         case .mostPlayed: return library.stats.albums.prefix(30).map { VinylRecord.album($0, snap) }
         case .mixtapes:
-            return mixtapes.map { m in
-                VinylRecord(id: "mixtape-\(m.id)", title: m.title, artist: m.artist, year: m.year, albumID: nil, coverData: m.coverImage,
-                            tracks: m.orderedTracks.map { .local(TrackResolver.local($0)) }, source: .mixtape(m))
-            }
+            return mixtapes.map(VinylRecord.mixtape)
         case .moods:
             return moods.map { p in
                 let songs = MoodPlaylistService.songs(p, library: library)
@@ -249,8 +246,9 @@ final class SleeveFrames {
 }
 
 extension VinylRecord {
-    static func album(_ a: Album, _ snap: LibrarySnapshot) -> VinylRecord {
+    /// An album as a record, with your sides applied.
+    @MainActor static func album(_ a: Album, _ snap: LibrarySnapshot) -> VinylRecord {
         VinylRecord(id: "album-\(a.id)", title: a.title, artist: a.artist, year: a.year, albumID: a.id, coverData: nil,
-                    tracks: snap.songs(a.songIDs).map(QueueItem.library), source: .album(a))
+                    tracks: snap.songs(a.songIDs).map(QueueItem.library), source: .album(a)).sided()
     }
 }

@@ -1,17 +1,17 @@
+import SwiftData
 import SwiftUI
 
-/// The Listening Room (the sofa button in the crate): a black turntable and a shelf of your most played
-/// records, spines out. Tap a spine and the record comes off the shelf, cover first; tap the cover and it opens
-/// like the gatefold, the record slipping out of the bottom of the tracklist; drag the record onto the
-/// turntable and it drops on and plays, and the sleeve goes back on the shelf, sticking out a little.
+/// The Listening Room (the sofa button in the crate): a black turntable and a shelf of records, spines out; your
+/// most played until you fill it yourself. Tap a spine and the record comes off the shelf; tap the cover and it
+/// opens like the gatefold; drag the record onto the turntable and it plays. Tap the playing label to pick a song.
 struct ListeningRoomView: View {
     @Environment(LibraryService.self) private var library
     @Environment(PlaybackCoordinator.self) private var player
     /// Closes the room. The presenter sets this (a plain flag it owns) rather than relying on `dismiss`.
     var onClose: () -> Void = {}
     @Environment(\.dismiss) private var dismiss
-    @State private var held: Album?
-    @State private var heldIndex = 0
+    @Query(sort: \Mixtape.createdAt, order: .reverse) private var mixtapes: [Mixtape]
+    @State private var held: VinylRecord?
     @State private var phase = Phase.shelf
     @State private var recordOut = false
     @State private var drag = CGSize.zero
@@ -21,18 +21,30 @@ struct ListeningRoomView: View {
     @State private var dropKey: UUID?
     /// The sleeve is going back to the shelf; a record tapped meanwhile comes out once it's in.
     @State private var stowing = false
-    @State private var pending: Int?
+    @State private var pending: VinylRecord?
     @State private var tint = Color.white
     /// The held record's cover, loaded once (the sleeve changes size as it moves, so it isn't reloaded per frame).
     @State private var cover: UIImage?
+    /// Where each spine is on screen, so a record comes off the shelf from its own place.
+    @State private var frames = SleeveFrames()
+    /// The record you put on, for the setlist.
+    @State private var onDeck: VinylRecord?
+    @State private var picking = false
+    @State private var editingShelf = false
+    @State private var arranging: VinylRecord?
 
     enum Phase { case shelf, out, open }
 
-    private var albums: [Album] {
-        let played = library.stats.albums
-        return Array((played.isEmpty ? library.recentlyAdded : played).prefix(14))
+    private var records: [VinylRecord] { RoomShelf.shared.records(library, mixtapes: mixtapes) }
+    private var playingID: String? { player.current?.artworkKey }
+
+    /// What's on the turntable: the record you put on, or the album of the song playing.
+    private var deckRecord: VinylRecord? {
+        guard let id = player.current?.id else { return nil }
+        if let onDeck, onDeck.tracks.contains(where: { $0.id == id }) { return onDeck.sided() }
+        if let song = player.current?.song, let album = library.snapshot.albumOf(song) { return .album(album, library.snapshot) }
+        return nil
     }
-    private var playingAlbumID: UInt64? { player.current?.song.flatMap { library.snapshot.albumOf($0)?.id } }
 
     var body: some View {
         GeometryReader { geo in
@@ -43,16 +55,20 @@ struct ListeningRoomView: View {
                 shelf(L)
                 deck(L)
                 status(L)
-                if let album = held { sleeve(album, L) }
+                if let record = held { sleeve(record, L) }
+                RoomSetlist(layout: L, record: deckRecord, tint: tint, picking: $picking)
             }
             .frame(width: geo.size.width, height: geo.size.height)
+            .coordinateSpace(.named(RoomLayout.space))
         }
         .background { background.ignoresSafeArea() }
         .statusBarHidden()
         .keepsScreenAwake()
         .sensoryFeedback(.impact(weight: .light), trigger: phase)
         .sensoryFeedback(.selection, trigger: near)
-        .task { await Demo.roomShown(pull: { pull($0) }, openSleeve: { openSleeve() }, stow: { stow() }) }
+        .task { await Demo.roomShown(pull: { i in if records.indices.contains(i) { pull(records[i]) } }, openSleeve: { openSleeve() }, stow: { stow() }) }
+        .sheet(isPresented: $editingShelf) { ShelfPicker(current: records) }
+        .sheet(item: $arranging) { SidesEditor(record: $0) }
     }
 
     // MARK: The room
@@ -74,6 +90,8 @@ struct ListeningRoomView: View {
                 Text("Listening Room").font(.serif(28))
             }
             Spacer()
+            GlassCircleButton(systemImage: "books.vertical", label: "Fill the shelf", size: 42) { editingShelf = true }
+                .padding(.trailing, 4)
             GlassCircleButton(systemImage: "xmark", label: "Leave the Listening Room", size: 42) { onClose(); dismiss() }
         }
         .frame(width: L.headerWidth, height: 60)
@@ -88,42 +106,29 @@ struct ListeningRoomView: View {
         }
     }
 
-    /// Laid out for real (not shifted into place), so every spine can be tapped wherever the shelf is.
     private func shelf(_ L: RoomLayout) -> some View {
-        let first = L.spine(0, of: albums.count)
+        let list = records
         return ZStack(alignment: .bottomLeading) {
             RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.black)
                 .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(.white.opacity(0.06)))
                 .shadow(color: .white.opacity(0.05), radius: 0, y: 8)
-            HStack(alignment: .bottom, spacing: 2) {
-                ForEach(Array(albums.enumerated()), id: \.element.id) { i, a in
-                    let playing = a.id == playingAlbumID
-                    RoomSpine(album: a, rect: first)
-                        .contentShape(Rectangle())
-                        .onTapGesture { pull(i) }
-                        .opacity(held?.id == a.id ? 0 : 1)
-                        .offset(y: playing ? -first.height * 0.07 : 0)
-                        .shadow(color: playing ? tint.opacity(0.4) : .clear, radius: 8)
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityAddTraits(.isButton)
-                        .accessibilityLabel("\(a.title) by \(a.artist)\(playing ? ", playing" : "")")
-                        .accessibilityHint("Takes the record off the shelf")
-                        .accessibilityAction { pull(i) }
-                }
-            }
-            .padding(.leading, 8)
-            .brightness(held == nil ? 0 : -0.45)
-            .animation(.easeInOut(duration: 0.4), value: held?.id)
-            .animation(.liner, value: playingAlbumID)
+                .frame(height: L.shelf.height)
+            RoomShelfStrip(records: list, spine: L.spineSize, raise: L.raise + 4, heldID: held?.id, playingID: playingID, tint: tint,
+                           frames: frames, pull: pull, edit: { editingShelf = true },
+                           remove: { r in RoomShelf.shared.remove(r.id, from: list.map(\.id)) },
+                           arrange: { arranging = $0 })
+                .frame(height: L.spineSize.height + L.raise + 8)
         }
-        .frame(width: L.shelf.width, height: L.shelf.height)
-        .position(x: L.shelf.midX, y: L.shelf.midY)
+        .frame(width: L.shelf.width, height: L.shelf.height + L.raise + 8, alignment: .bottom)
+        .position(x: L.shelf.midX, y: L.shelf.maxY - (L.shelf.height + L.raise + 8) / 2)
     }
 
     @ViewBuilder private func deck(_ L: RoomLayout) -> some View {
         Group {
             if let item = player.current {
-                PlayerVinyl(item: item, dropIn: dropKey != nil, dropDelay: 0.08).id(dropKey)
+                PlayerVinyl(item: item, side: deckRecord?.side(of: item.id) ?? "A", dropIn: dropKey != nil, dropDelay: 0.08,
+                            onLabelTap: { if deckRecord != nil { picking = true } else { player.togglePlayPause() } })
+                    .id(dropKey)
             } else {
                 IdleDeck()
             }
@@ -142,8 +147,11 @@ struct ListeningRoomView: View {
         VStack(alignment: L.land ? .leading : .center, spacing: 6) {
             if let item = player.current {
                 Text("Now playing").font(.system(size: 10, weight: .semibold)).tracking(2.5).textCase(.uppercase).foregroundStyle(tint)
-                Text([item.title, item.song.flatMap { library.snapshot.albumOf($0)?.title }].compactMap { $0 }.joined(separator: " · "))
+                Text([item.title, deckRecord?.title ?? item.song.flatMap { library.snapshot.albumOf($0)?.title }].compactMap { $0 }.joined(separator: " · "))
                     .font(.serif(19)).lineLimit(1)
+                if deckRecord != nil {
+                    Text("Tap the label to pick a song").font(.system(size: 12)).foregroundStyle(Palette.label)
+                }
             } else {
                 Text("Tap a record on the shelf").font(.system(size: 14)).foregroundStyle(Palette.label)
             }
@@ -157,9 +165,8 @@ struct ListeningRoomView: View {
 
     // MARK: The record you're holding
 
-    @ViewBuilder private func sleeve(_ album: Album, _ L: RoomLayout) -> some View {
-        let record = VinylRecord.album(album, library.snapshot)
-        let rect = phase == .shelf ? L.spine(heldIndex, of: albums.count) : phase == .out ? L.closed : L.open
+    @ViewBuilder private func sleeve(_ record: VinylRecord, _ L: RoomLayout) -> some View {
+        let rect = phase == .shelf ? (frames.rects[record.id] ?? L.firstSpine) : phase == .out ? L.closed : L.open
         let discAt = flying ? L.deckCenter : (recordOut ? L.discOut : L.discIn)
         // The record, behind the tracklist until it slips out of the bottom.
         RecordDisc(record: record, side: "A")
@@ -171,7 +178,7 @@ struct ListeningRoomView: View {
             .gesture(recordDrag(L))
             .allowsHitTesting(phase == .open && !recordGone && !flying)
             .accessibilityLabel("The record").accessibilityHint("Drag it onto the turntable, or double-tap to put it on")
-            .accessibilityAction { putOn(album) }
+            .accessibilityAction { putOn(record) }
             .position(x: discAt.x + (flying ? 0 : drag.width), y: discAt.y + (flying ? 0 : drag.height))
             .opacity(phase == .open && (recordOut || flying) && !recordGone ? 1 : 0)
             .zIndex(drag == .zero && !flying ? 0 : 3)
@@ -194,16 +201,19 @@ struct ListeningRoomView: View {
             .rotation3DEffect(.degrees(phase == .shelf ? -70 : 0), axis: (x: 0, y: 1, z: 0), perspective: 0.6)
             .contentShape(Rectangle())
             .onTapGesture { openSleeve() }
-            .accessibilityLabel(album.title).accessibilityHint(phase == .out ? "Opens the sleeve" : "")
+            .accessibilityLabel(record.title).accessibilityHint(phase == .out ? "Opens the sleeve" : "")
             .position(x: rect.midX, y: rect.midY)
             .zIndex(1)
-            .task(id: album.id) {
-                // Comes off the shelf as soon as it's there, and again when one record is swapped for another.
+            .task(id: record.id) {
+                // Off the shelf as soon as it's there, and again when records are swapped (no second "appeared").
                 if phase == .shelf { withAnimation(.timingCurve(0.65, 0, 0.25, 1, duration: 0.7)) { phase = .out } }
-                cover = CoverOverrides.shared.image(album.id)
-                if cover == nil { cover = await ArtworkCache.shared.image(album: album.id, pixels: 640) }
+                if let data = record.coverData { cover = UIImage(data: data) }
+                else if let id = record.albumID {
+                    cover = CoverOverrides.shared.image(id)
+                    if cover == nil { cover = await ArtworkCache.shared.image(album: id, pixels: 640) }
+                }
                 guard let img = cover else { return }
-                tint = await ArtworkAnalysis.look(for: img, key: "room-\(album.id)").dominant.mix(with: .white, by: 0.35)
+                tint = await ArtworkAnalysis.look(for: img, key: "room-\(record.id)").dominant.mix(with: .white, by: 0.35)
             }
     }
 
@@ -215,44 +225,46 @@ struct ListeningRoomView: View {
                 near = hypot(L.discOut.x + v.translation.width - L.deckCenter.x, L.discOut.y + v.translation.height - L.deckCenter.y) < L.deckRecord * 0.4
             }
             .onEnded { v in
-                guard phase == .open, recordOut, !flying, !stowing, let album = held else { return }
+                guard phase == .open, recordOut, !flying, !stowing, let record = held else { return }
                 let tapped = hypot(v.translation.width, v.translation.height) < 6
-                if near || tapped { putOn(album) } else { withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { drag = .zero } }
+                if near || tapped { putOn(record) } else { withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { drag = .zero } }
                 near = false
             }
     }
 
     // MARK: Actions
 
-    /// Takes a record off the shelf (it comes out from its slot as it appears); whatever you were holding goes
-    /// back first.
-    private func pull(_ i: Int) {
-        guard albums.indices.contains(i), !flying else { return }
+    /// Takes a record off the shelf; whatever you were holding goes back first.
+    private func pull(_ record: VinylRecord) {
+        guard !flying else { return }
+        picking = false
         if let h = held {
-            guard h.id != albums[i].id else { return }
-            pending = i
+            guard h.id != record.id else { return }
+            pending = record
             stow()
             return
         }
-        heldIndex = i; phase = .shelf; recordOut = false; drag = .zero; recordGone = false
-        cover = CoverOverrides.shared.image(albums[i].id) ?? ArtworkCache.shared.cached(album: albums[i].id, pixels: 640)
-        held = albums[i]
+        phase = .shelf; recordOut = false; drag = .zero; recordGone = false
+        if let data = record.coverData { cover = UIImage(data: data) }
+        else { cover = record.albumID.flatMap { CoverOverrides.shared.image($0) ?? ArtworkCache.shared.cached(album: $0, pixels: 640) } }
+        held = record
     }
 
     /// Opens it like the gatefold, then the record slips out of the bottom of the tracklist.
     private func openSleeve() {
         guard held != nil, phase == .out, !stowing else { return }
-        step(0.8, .timingCurve(0.65, 0, 0.25, 1, duration: 0.8)) { phase = .open } then: {
+        RoomStep.run(0.8, .timingCurve(0.65, 0, 0.25, 1, duration: 0.8)) { phase = .open } then: {
             guard phase == .open, !stowing else { return }
             withAnimation(.timingCurve(0.3, 0, 0.3, 1, duration: 0.55)) { recordOut = true }
         }
     }
 
     /// Carries the record over the turntable; the deck takes over from there and drops it onto the plain record.
-    private func putOn(_ album: Album) {
+    private func putOn(_ record: VinylRecord) {
         guard !flying else { return }
-        step(0.4, .easeInOut(duration: 0.4)) { flying = true; drag = .zero } then: {
-            player.play(library.snapshot.songs(album.songIDs).map(QueueItem.library), openPlayer: false)
+        RoomStep.run(0.4, .easeInOut(duration: 0.4)) { flying = true; drag = .zero } then: {
+            player.play(record.tracks, openPlayer: false)
+            onDeck = record
             dropKey = UUID()
             recordGone = true
             stow(playing: true)
@@ -264,9 +276,9 @@ struct ListeningRoomView: View {
         guard held != nil, !stowing else { return }
         stowing = true
         if phase == .open {
-            step(0.3, .easeInOut(duration: 0.3)) { if !playing { recordOut = false }; drag = .zero } then: {
+            RoomStep.run(0.3, .easeInOut(duration: 0.3)) { if !playing { recordOut = false }; drag = .zero } then: {
                 recordGone = true
-                step(0.5, .timingCurve(0.65, 0, 0.25, 1, duration: 0.5)) { phase = .out } then: { toShelf() }
+                RoomStep.run(0.5, .timingCurve(0.65, 0, 0.25, 1, duration: 0.5)) { phase = .out } then: { toShelf() }
             }
         } else {
             toShelf()
@@ -274,26 +286,11 @@ struct ListeningRoomView: View {
     }
 
     private func toShelf() {
-        step(0.55, .timingCurve(0.65, 0, 0.25, 1, duration: 0.55)) { phase = .shelf } then: {
+        RoomStep.run(0.55, .timingCurve(0.65, 0, 0.25, 1, duration: 0.55)) { phase = .shelf } then: {
             held = nil; cover = nil; flying = false; recordGone = false; recordOut = false; drag = .zero; stowing = false
             if let next = pending { pending = nil; pull(next) }
         }
     }
-
-    /// One move, then `next` once it's done; a timer backs up SwiftUI's own "finished", which never comes when
-    /// nothing on screen changed (putting a record on), and used to leave the room stuck.
-    private func step(_ seconds: Double, _ animation: Animation, _ changes: () -> Void, then next: @escaping () -> Void) {
-        let once = Once(next)
-        withAnimation(animation, changes) { once.run() }
-        Task { try? await Task.sleep(for: .seconds(seconds + 0.1)); once.run() }
-    }
-}
-
-/// Runs its closure the first time it's asked, and never again.
-@MainActor private final class Once {
-    private var action: (() -> Void)?
-    init(_ action: @escaping () -> Void) { self.action = action }
-    func run() { let a = action; action = nil; a?() }
 }
 
 #Preview {

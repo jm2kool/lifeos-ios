@@ -42,6 +42,8 @@ struct DeckGeometry {
     }
 
     func isOnRecord(_ p: CGPoint) -> Bool { hypot(p.x - center.x, p.y - center.y) <= radius }
+    /// The centre label (the cover printed in the middle of the record).
+    func isOnLabel(_ p: CGPoint) -> Bool { hypot(p.x - center.x, p.y - center.y) <= radius * 0.38 }
 }
 
 /// The arm's movement between frames: it glides to where the song is (so a seek or a skip never jumps), and
