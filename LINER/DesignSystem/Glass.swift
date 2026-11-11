@@ -12,8 +12,11 @@ struct GlassCircleButton: View {
             Image(systemName: systemImage)
                 .font(.system(size: size * 0.38, weight: .semibold))
                 .frame(width: size, height: size)
+                // The whole circle takes the tap, not just the glyph's strokes (a plain button only hit-tests what's drawn).
+                .contentShape(.circle)
         }
         .buttonStyle(.plain)
+        .contentShape(.circle)
         .glassEffect(.regular.interactive(), in: .circle)
         .accessibilityLabel(label)
     }
