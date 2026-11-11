@@ -14,6 +14,9 @@ struct ArcText: View {
     var lit: Double? = nil
     /// The arc's longest sweep, as a share of a half circle.
     var sweep: Double = 0.92
+    /// Where the line is on its way across its half, -1 (just arrived) … 1 (about to leave). It only travels as far
+    /// as its own length leaves room for, so no letter ever crosses into the other half.
+    var drift: Double = 0
 
     var body: some View {
         Canvas { ctx, canvas in
@@ -36,7 +39,9 @@ struct ArcText: View {
                 }
             }
             let sweep = Double(total / radius)
-            var a = bottom ? .pi / 2 + sweep / 2 : -.pi / 2 - sweep / 2
+            let room = max(0, min(Self.maxTravel, (.pi * 0.97 - sweep) / 2))
+            let travel = min(1, max(-1, drift)) * room
+            var a = (bottom ? .pi / 2 + sweep / 2 : -.pi / 2 - sweep / 2) + (bottom ? -travel : travel)
             for (k, g) in glyphs.enumerated() {
                 let half = Double(g.width / radius) / 2
                 a += bottom ? -half : half
@@ -52,6 +57,9 @@ struct ArcText: View {
         .accessibilityLabel(text)
     }
 
+    /// The furthest a short line travels either side of the top (radians): about a third of the half circle.
+    static let maxTravel = 0.62
+
     private struct Glyph { let text: GraphicsContext.ResolvedText; let width: CGFloat }
 
     private func resolve(_ ctx: GraphicsContext, _ chars: [Character], _ size: CGFloat) -> [Glyph] {
@@ -63,30 +71,29 @@ struct ArcText: View {
 }
 
 /// The line being sung, printed round the record's grooves (and the next one, fainter, underneath). The words
-/// light up as they're sung, and travel round with the record as it turns — slower than the record itself, so they
-/// can still be read. A long line goes onto two rings on the top half; the next line keeps to the bottom half, so
-/// they never overlap. Each new line arrives just after the old one has faded.
+/// light up as they're sung, and the line travels round the way the record turns — but only ever across the top
+/// half: it comes in on the left, is over the top halfway through, and leaves on the right as the next one
+/// arrives, so a short, quick line goes round faster than a long, slow one. A long line goes onto two rings on
+/// the top half; the next line keeps to the bottom half, so they never overlap.
 struct RecordLyrics: View {
     let current: String
     let next: String
     let index: Int
     let radius: CGFloat
-    /// The record's angle (radians); the lyrics turn with it, scaled by `orbit`.
-    var spin: Double = 0
+    /// How far through the line the song is, 0…1; it carries the line across the top half.
+    var progress: Double = 0.5
     /// Characters of `current` sung so far; nil when there are no timings to follow.
     var lit: Double? = nil
-
-    /// How fast the lyrics go round compared with the record (33⅓ rpm is too fast to read).
-    static let orbit = 0.12
 
     var body: some View {
         let parts = Self.split(current.isEmpty ? "♪" : current)
         let outer = parts.0, inner = parts.1
+        let drift = min(1, max(0, progress)) * 2 - 1
         ZStack {
             Group {
-                ArcText(text: outer, radius: radius * (inner == nil ? 0.7 : 0.78), size: radius * (inner == nil ? 0.1 : 0.088), lit: lit)
+                ArcText(text: outer, radius: radius * (inner == nil ? 0.7 : 0.78), size: radius * (inner == nil ? 0.1 : 0.088), lit: lit, drift: drift)
                 if let inner {
-                    ArcText(text: inner, radius: radius * 0.62, size: radius * 0.088, lit: lit.map { $0 - Double(outer.count + 1) })
+                    ArcText(text: inner, radius: radius * 0.62, size: radius * 0.088, lit: lit.map { $0 - Double(outer.count + 1) }, drift: drift)
                 }
             }
             .shadow(color: .black.opacity(0.9), radius: 3)
@@ -101,7 +108,6 @@ struct RecordLyrics: View {
         }
         .frame(width: radius * 2, height: radius * 2)
         .animation(.smooth(duration: 0.6), value: index)
-        .rotationEffect(.radians(spin * Self.orbit))
     }
 
     /// Long lines are split between two rings at the space nearest the middle.
@@ -142,7 +148,7 @@ extension AnyTransition {
 #Preview {
     ZStack {
         Circle().fill(Color(white: 0.06)).frame(width: 320, height: 320)
-        RecordLyrics(current: "And I'm still standing in the doorway of the house", next: "Waiting for you", index: 3, radius: 160, spin: 2, lit: 14)
+        RecordLyrics(current: "And I'm still standing in the doorway of the house", next: "Waiting for you", index: 3, radius: 160, progress: 0.3, lit: 14)
     }
     .padding().background(.black).preferredColorScheme(.dark)
 }

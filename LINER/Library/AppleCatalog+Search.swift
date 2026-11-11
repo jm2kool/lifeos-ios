@@ -27,9 +27,9 @@ extension AppleCatalog {
             guard let id = r["artistId"] as? Int, let name = r["artistName"] as? String else { return nil }
             return CatalogArtist(id: id, name: name, genre: r["primaryGenreName"] as? String ?? "")
         }
-        var seen = Set<String>()
-        let albums = results(await b).compactMap(release).filter { seen.insert("\($0.title.lowercased())|\($0.artist.lowercased())").inserted }
-        return SearchResults(artists: artists, albums: albums, songs: results(await s).compactMap(track))
+        let albums = oneEach(results(await b).compactMap(release), key: { "\($0.title.lowercased())|\($0.artist.lowercased())" }, rating: \.explicitness)
+        let songs = withoutCleanTwins(results(await s).compactMap(track), key: \.twinKey, rating: \.explicitness)
+        return SearchResults(artists: artists, albums: albums, songs: songs)
     }
 
     /// Adds a song or album to your Apple Music library by its Apple Music ID (needs a subscription).

@@ -4,7 +4,13 @@ import SwiftData
 /// Finds lyrics for a queue item: a mixtape's own LRC, the cache, or LRCLIB (then cached).
 @MainActor
 enum LyricsStore {
-    static func lyrics(for item: QueueItem, refresh: Bool = false) async -> Lyrics? {
+    /// `raw`: as the file has them, without your own timing corrections (for recalibrating).
+    static func lyrics(for item: QueueItem, refresh: Bool = false, raw: Bool = false) async -> Lyrics? {
+        let found = await fileLyrics(for: item, refresh: refresh)
+        return raw ? found : found?.retimed(LyricTimings.shared.timing(for: item.id))
+    }
+
+    private static func fileLyrics(for item: QueueItem, refresh: Bool) async -> Lyrics? {
         if case .local(let t) = item {
             let lrc = TrackResolver.mixtapeTrack(t.id)?.lyricsLRC ?? t.lyricsLRC
             guard let lrc, !lrc.isEmpty else { return nil }

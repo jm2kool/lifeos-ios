@@ -15,6 +15,8 @@ struct LyricsView: View {
     /// Choosing lines to share, and the lines chosen (always one unbroken run).
     @State private var selecting = false
     @State private var picked: ClosedRange<Int>?
+    /// Recalibrating the timings: the lyrics as the file has them, while it's open.
+    @State private var calibrating: Lyrics?
 
     /// Story cards hold a few lines, like Apple Music's.
     private static let maxLines = 6, maxCharacters = 220
@@ -30,6 +32,7 @@ struct LyricsView: View {
         .task(id: player.current?.id) {
             loading = true
             lyrics = nil
+            calibrating = nil
             await art.load(player.current)
             if let item = player.current { lyrics = await LyricsStore.lyrics(for: item) }
             loading = false
@@ -68,7 +71,12 @@ struct LyricsView: View {
             Spacer()
             if selecting {
                 Button("Cancel") { stopSelecting() }.font(.system(size: 15, weight: .semibold)).buttonStyle(.plain)
+            } else if calibrating != nil {
+                Button("Done") { finishCalibrating() }.font(.system(size: 15, weight: .semibold)).buttonStyle(.plain)
             } else {
+                if lyrics?.isSynced == true {
+                    GlassCircleButton(systemImage: "metronome", label: "Recalibrate lyrics", size: 40) { startCalibrating() }
+                }
                 if !allLines.isEmpty {
                     GlassCircleButton(systemImage: "square.and.arrow.up", label: "Share lyrics", size: 40) { startSelecting(at: nil) }
                 }
@@ -157,6 +165,8 @@ struct LyricsView: View {
     @ViewBuilder private var content: some View {
         if loading {
             Spacer(); ProgressView(); Spacer()
+        } else if let calibrating, let item = player.current {
+            LyricsCalibrator(item: item, lyrics: calibrating, onDone: finishCalibrating)
         } else if selecting, !allLines.isEmpty {
             choosingLines(size: lyrics?.isSynced == true ? 28 : 24)
         } else if let lyrics, lyrics.isSynced {
@@ -188,6 +198,18 @@ struct LyricsView: View {
                 proxy.scrollTo(start, anchor: UnitPoint(x: 0.5, y: 0.35))
             }
         }
+    }
+
+    private func startCalibrating() {
+        guard let item = player.current else { return }
+        Task { calibrating = await LyricsStore.lyrics(for: item, raw: true) }
+    }
+
+    /// Back to the sing-along, with the new timings.
+    private func finishCalibrating() {
+        calibrating = nil
+        guard let item = player.current else { return }
+        Task { lyrics = await LyricsStore.lyrics(for: item) }
     }
 
     private func save(line: Lyrics.Line) {

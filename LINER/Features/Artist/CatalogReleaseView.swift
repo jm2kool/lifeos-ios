@@ -8,6 +8,8 @@ struct CatalogReleaseView: View {
     @Environment(PlaybackCoordinator.self) private var player
     @State private var tracks: [AppleCatalog.Track] = []
     @State private var loading = true
+    /// The explicit version, when the release you opened was the clean one.
+    @State private var explicit: AppleCatalog.Release?
 
     private var songs: [Song] {
         let mine = library.snapshot.songsByStoreID
@@ -59,14 +61,16 @@ struct CatalogReleaseView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Add to Library", systemImage: "plus") {
-                    AppleCatalog.addToLibrary(String(release.id)) { ok in
+                    AppleCatalog.addToLibrary(String((explicit ?? release).id)) { ok in
                         player.notice = ok ? "Added “\(release.title)” to your library." : "Couldn't add “\(release.title)” to your library."
                     }
                 }
             }
         }
         .task(id: release.id) {
-            tracks = await AppleCatalog.tracks(of: release)
+            let version = await AppleCatalog.explicitVersion(of: release)
+            explicit = version
+            tracks = await AppleCatalog.tracks(of: version)
             loading = false
         }
     }
