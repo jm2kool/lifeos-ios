@@ -45,6 +45,7 @@ struct SettingsView: View {
                     Toggle("Live lyrics on the Lock Screen", isOn: $liveLyrics)
                         .onChange(of: liveLyrics) { _, on in if !on { LyricsLiveActivityController.shared.stop() } }
                     NavigationLink("Live lyrics log") { LiveLyricsLogView() }
+                    NavigationLink("Automix, sleep timer and equaliser") { SoundSettingsView() }
                     Picker("Lyrics", selection: $lyricsSource) {
                         Text("LRCLIB").tag("lrclib")
                         Text("Off").tag("off")

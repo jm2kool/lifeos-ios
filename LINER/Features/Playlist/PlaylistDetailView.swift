@@ -4,6 +4,9 @@ import SwiftUI
 struct PlaylistDetailView: View {
     let playlist: Playlist
     @Environment(LibraryService.self) private var library
+    @State private var djMix = false
+
+    private var mixKey: String { "playlist-\(playlist.id)" }
 
     var body: some View {
         let songs = library.snapshot.songs(playlist.songIDs)
@@ -24,12 +27,19 @@ struct PlaylistDetailView: View {
             }
             .padding(16)
         }
+        .environment(\.mixContext, mixKey)
         .background(Palette.background)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Menu { PlaylistActionsMenu(playlist: playlist) } label: { Label("More", systemImage: "ellipsis") }
+                Menu {
+                    PlaylistActionsMenu(playlist: playlist)
+                    Button(MixStore.shared.hasMix(mixKey) ? "Edit DJ Mix" : "DJ Mix", systemImage: "dial.medium") { djMix = true }
+                } label: { Label("More", systemImage: "ellipsis") }
             }
+        }
+        .sheet(isPresented: $djMix) {
+            MixEditorView(context: mixKey, title: playlist.name, items: songs.map(QueueItem.library))
         }
     }
 }

@@ -10,6 +10,7 @@ struct MixtapeDetailView: View {
     @State private var adding = false
     @State private var busy = false
     @State private var confirmDelete = false
+    @State private var djMix = false
 
     private var items: [QueueItem] { mixtape.orderedTracks.map { .local(TrackResolver.local($0)) } }
 
@@ -48,6 +49,8 @@ struct MixtapeDetailView: View {
             }
             .padding(.bottom, 32)
         }
+        .environment(\.mixContext, "mixtape-\(mixtape.id.uuidString)")
+        .sheet(isPresented: $djMix) { MixEditorView(context: "mixtape-\(mixtape.id.uuidString)", title: mixtape.title, items: list) }
         .background(Palette.background)
         .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
@@ -55,6 +58,7 @@ struct MixtapeDetailView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button("Edit", systemImage: "pencil") { editing = true }
+                    Button("DJ Mix", systemImage: "dial.medium") { djMix = true }
                     Toggle("Show on Home", isOn: $mixtape.showInHome)
                     Button("Delete Mixtape", systemImage: "trash", role: .destructive) { confirmDelete = true }
                 } label: { Label("More", systemImage: "ellipsis") }

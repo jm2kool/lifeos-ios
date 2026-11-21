@@ -29,10 +29,11 @@ enum PlayerExtras {
     }
 
     @ViewBuilder static func moreMenu(item: QueueItem?, dismiss: @escaping () -> Void, share: @escaping () -> Void,
-                                      lyrics: @escaping () -> Void) -> some View {
+                                      lyrics: @escaping () -> Void, equalizer: @escaping () -> Void) -> some View {
         Menu {
             Button("Share Now Playing", systemImage: "square.and.arrow.up", action: share)
             Button("Lyrics", systemImage: "quote.bubble", action: lyrics)
+            Section { PlayerSoundMenu(equalizer: equalizer) }
             PlayerMenuExtras(item: item)
         } label: {
             Image(systemName: "ellipsis").font(.system(size: 16, weight: .semibold)).frame(width: 42, height: 42)

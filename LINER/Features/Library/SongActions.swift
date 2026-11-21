@@ -29,13 +29,14 @@ struct PlayableSongRow: View {
     var number: Int?
     var showArtwork = true
     @Environment(PlaybackCoordinator.self) private var player
+    @Environment(\.mixContext) private var mixContext
 
     var body: some View {
         Button {
             // Keep queues to a sensible size: this song and what follows it.
             let start = list.firstIndex(of: song) ?? 0
             let slice = Array(list[start..<min(list.count, start + 300)])
-            player.play(songs: slice)
+            player.play(songs: slice, mix: mixContext)
         } label: {
             SongRow(song: song, number: number, showArtwork: showArtwork)
                 .overlay(alignment: .leading) {
@@ -55,9 +56,10 @@ struct PlayableSongRow: View {
 struct PlayShuffleRow: View {
     let songs: [Song]
     @Environment(PlaybackCoordinator.self) private var player
+    @Environment(\.mixContext) private var mixContext
 
     var body: some View {
-        PlayShuffleIcons(play: { player.play(songs: songs) }, shuffle: { player.play(songs: songs, shuffled: true) })
+        PlayShuffleIcons(play: { player.play(songs: songs, mix: mixContext) }, shuffle: { player.play(songs: songs, shuffled: true, mix: mixContext) })
             .disabled(songs.isEmpty)
     }
 }

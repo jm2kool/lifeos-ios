@@ -24,6 +24,10 @@ Install it with Sideloadly using your Apple ID.
 | Covers | Full-screen or square cover per album and release (••• → Style); Apple Music releases open full screen like your albums; Other Editions of an album at the bottom of its page |
 | Pins | Albums pin as their cover with their logo; Choose Pin Cover picks from the album's cover, your editions' covers or any edition Apple lists |
 | Opening | A record with your most played cover spins up, the tonearm drops the needle, and the record shrinks into the full stop of LINER. |
+| Sleep timer | ••• in the player: 15–90 minutes, the end of this song or the end of the queue; the music fades out slowly (Settings → Listening → Sound sets how long), then the volume goes back where it was. A moon with the time left sits on the player |
+| Automix | Crossfades of 2–12 s. Your mixtapes and files really overlap (two decks on LINER.'s own audio engine); Apple Music songs fade out and in, since iOS never gives apps their sound |
+| DJ Mix | ••• → DJ Mix on a playlist, album or mixtape: per song, trim the start and end, set its level, loop a section any number of times and set the handover into the next song. Seamless on your own files; Apple Music songs jump for trims and loops and can only be made quieter |
+| Equaliser | Ten bands and twelve presets for what LINER. plays itself; for Apple Music it points to the Music app's EQ in iPhone Settings |
 | Recaps | In My LINER.: week / month / year from the day you install, story mode, Monday notification |
 | Share | 9:16 still and animated cards to Instagram Stories, Photos or anywhere; share lyrics like Apple Music (tap Share in the lyrics, pick up to six lines in a row, and they go on the story card over the cover) |
 | Mood playlists | On-device Apple Intelligence recipe + local scoring; Mood Mix without AI; save to Apple Music |

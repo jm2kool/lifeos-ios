@@ -7,12 +7,13 @@ struct PlayableQueueRow: View {
     var number: Int?
     @Environment(PlaybackCoordinator.self) private var player
     @Environment(\.editionCover) private var edition
+    @Environment(\.mixContext) private var mixContext
 
     var body: some View {
         if case .library(let song) = item {
             PlayableSongRowItems(song: song, list: list, number: number)
         } else {
-            Button { player.play(list, startAt: list.firstIndex(of: item) ?? 0, edition: edition) } label: {
+            Button { player.play(list, startAt: list.firstIndex(of: item) ?? 0, edition: edition, mix: mixContext) } label: {
                 HStack(spacing: 12) {
                     if let number {
                         Text("\(number)").albumFace(17, fallback: .serif(17)).monospacedDigit().foregroundStyle(Palette.label).frame(width: 26)
@@ -40,9 +41,10 @@ private struct PlayableSongRowItems: View {
     var number: Int?
     @Environment(PlaybackCoordinator.self) private var player
     @Environment(\.editionCover) private var edition
+    @Environment(\.mixContext) private var mixContext
 
     var body: some View {
-        Button { player.play(list, startAt: list.firstIndex(of: .library(song)) ?? 0, edition: edition) } label: {
+        Button { player.play(list, startAt: list.firstIndex(of: .library(song)) ?? 0, edition: edition, mix: mixContext) } label: {
             SongRow(song: song, number: number, showArtwork: number == nil)
         }
         .buttonStyle(.plain)
@@ -56,9 +58,10 @@ struct PlayShuffleItemsRow<Trailing: View>: View {
     @ViewBuilder var trailing: Trailing
     @Environment(PlaybackCoordinator.self) private var player
     @Environment(\.editionCover) private var edition
+    @Environment(\.mixContext) private var mixContext
 
     var body: some View {
-        PlayShuffleIcons(play: { player.play(items, edition: edition) }, shuffle: { player.play(items, shuffled: true, edition: edition) }) { trailing }
+        PlayShuffleIcons(play: { player.play(items, edition: edition, mix: mixContext) }, shuffle: { player.play(items, shuffled: true, edition: edition, mix: mixContext) }) { trailing }
             .disabled(items.isEmpty)
     }
 }

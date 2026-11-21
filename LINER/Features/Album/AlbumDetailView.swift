@@ -16,6 +16,7 @@ struct AlbumDetailView: View {
     @State private var headerHeight: CGFloat = 400
     @State private var scrolled = 0.0
     @State private var coverColor = Color.white
+    @State private var djMix = false
 
     init(album: Album) {
         self.album = album
@@ -106,6 +107,8 @@ struct AlbumDetailView: View {
         }
         .headerScrollProgress(headerHeight: headerHeight, progress: $scrolled)
         .environment(\.albumFace, LookStore.shared.look(lookKey).face)
+        .environment(\.mixContext, lookKey)
+        .sheet(isPresented: $djMix) { MixEditorView(context: lookKey, title: album.title, items: list) }
         .environment(\.editionCover, activeEdition.map { EditionCover(editionID: $0.id, itemIDs: Set(list.map(\.id))) })
         .background(Palette.background)
         .ignoresSafeArea(edges: .top)
@@ -124,6 +127,7 @@ struct AlbumDetailView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     AlbumActionsMenu(album: album)
+                    Button(MixStore.shared.hasMix(lookKey) ? "Edit DJ Mix" : "DJ Mix", systemImage: "dial.medium") { djMix = true }
                     Button("Download in Music", systemImage: "arrow.down.circle") { openInMusic() }
                 } label: { Label("More", systemImage: "ellipsis") }
             }

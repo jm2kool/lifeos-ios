@@ -34,6 +34,8 @@ struct RootView: View {
             }
         }
         .overlay(alignment: .top) { ErrorBanner() }
+        // Lets the sleep timer and Automix fade Apple Music songs without the volume overlay.
+        .background { HiddenVolumeView().frame(width: 1, height: 1).allowsHitTesting(false) }
         .sheet(item: $passports.song) { SongPassportSheet(item: $0) }
         .sheet(item: $passports.album) { AlbumPassportSheet(subject: $0) }
         .sheet(item: $passports.editions) { EditionsSheet(subject: $0) }

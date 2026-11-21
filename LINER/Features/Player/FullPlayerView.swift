@@ -11,7 +11,7 @@ struct FullPlayerView: View {
     @State private var sheet: PlayerSheet?
     @AppStorage("playerVinyl") private var vinyl = false
 
-    enum PlayerSheet: String, Identifiable { case queue, lyrics, songPassport, share; var id: String { rawValue } }
+    enum PlayerSheet: String, Identifiable { case queue, lyrics, songPassport, share, equalizer; var id: String { rawValue } }
 
     var body: some View {
         ZStack {
@@ -42,6 +42,7 @@ struct FullPlayerView: View {
             case .lyrics: PlayerExtras.lyrics()
             case .songPassport: PlayerExtras.songPassport(for: player.current)
             case .share: if let item = player.current { ShareCardSheet(content: .nowPlaying(item)) }
+            case .equalizer: EqualizerView().presentationDetents([.medium, .large])
             }
         }
     }
@@ -86,7 +87,12 @@ struct FullPlayerView: View {
         HStack {
             GlassCircleButton(systemImage: "chevron.down", label: "Close player", size: 42) { dismiss() }
             Spacer()
-            Text(albumLine).linerLabel(size: 10).lineLimit(1).padding(.horizontal, 8)
+            VStack(spacing: 6) {
+                Text(albumLine).linerLabel(size: 10).lineLimit(1)
+                SleepBadge()
+            }
+            .padding(.horizontal, 8)
+            .animation(.liner, value: SleepTimer.shared.isOn)
             Spacer()
             // Always in reach: flips between the full cover and the spinning record.
             GlassCircleButton(systemImage: vinyl ? "photo" : "record.circle", label: vinyl ? "Show the cover" : "Show as a record", size: 42) {
@@ -94,7 +100,8 @@ struct FullPlayerView: View {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
             .padding(.trailing, 6)
-            PlayerExtras.moreMenu(item: player.current, dismiss: { dismiss() }, share: { sheet = .share }, lyrics: { sheet = .lyrics })
+            PlayerExtras.moreMenu(item: player.current, dismiss: { dismiss() }, share: { sheet = .share }, lyrics: { sheet = .lyrics },
+                                   equalizer: { sheet = .equalizer })
         }
         .padding(.top, 8)
     }
