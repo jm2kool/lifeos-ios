@@ -47,7 +47,7 @@ struct LookBackdrop: View {
         switch backdrop {
         case .album(let id): ArtworkView(albumID: id, cornerRadius: 0)
         case .remote(let url): RemoteFill(url: url)
-        case .artist(let name, let fallback): ArtistPortraitView(name: name, fallbackAlbumID: fallback)
+        case .artist(let name, let fallback): ArtistPortraitView(name: name, fallbackAlbumID: fallback, colour: true)
         }
     }
 }
@@ -76,7 +76,7 @@ enum CoverColor {
         case .remote(let url):
             if let url, let loaded = try? await URLSession.shared.data(from: url) { image = UIImage(data: loaded.0) }
         case .artist(let name, _):
-            image = await ArtistImageStore.shared.portrait(for: name)
+            image = await ArtistImageStore.shared.portrait(for: name, colour: true)
         }
         guard let image else { return .white }
         return await ArtworkAnalysis.look(for: image, key: "colour-\(key(backdrop))").dominant.mix(with: .white, by: 0.2)

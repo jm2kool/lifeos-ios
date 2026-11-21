@@ -36,7 +36,7 @@ enum ArtPalette {
     @concurrent
     static func tint(of image: UIImage, key: String) async -> [RGB] {
         if let hit = cached(key) { return hit }
-        guard let cg = image.cgImage, let lead = swatches(cg).first else { return [] }
+        guard let cg = image.cgImage, let lead = mainColour(cg) else { return [] }
         let (h, s0, v0) = hsv(lead)
         let neutral = s0 < 0.15
         let s = neutral ? s0 : min(1, max(s0, 0.6))
@@ -73,8 +73,41 @@ enum ArtPalette {
 
     // MARK: - Extraction
 
+    /// A bright version of the page's leading colour, for things drawn in the accent: buttons, logos tinted
+    /// "Cover", the selected tab.
+    static func accent(_ colours: [RGB]) -> Color? {
+        guard let first = colours.first else { return nil }
+        let (h, s, v) = hsv(first)
+        let c = s < 0.15 ? rgb(h, s, 0.88) : rgb(h, min(s, 0.75), max(v, 0.9))
+        return Color(red: Double(c.x), green: Double(c.y), blue: Double(c.z))
+    }
+
+    /// The colour covering most of a photo (a little more weight to colourful pixels), so a red backdrop wins over
+    /// a small bright detail. Greys win only when the photo is mostly grey.
+    private static func mainColour(_ image: CGImage) -> RGB? {
+        let (sum, count, _) = bins(image)
+        let total = count.reduce(0, +)
+        guard total > 0 else { return nil }
+        let colourful = (0..<12).filter { count[$0] >= 12 }.max { area($0, sum, count) < area($1, sum, count) }
+        if let c = colourful, count[12] < total * 0.55 || count[c] > total * 0.2 { return sum[c] / count[c] }
+        return count[12] > 0 ? sum[12] / count[12] : nil
+    }
+
+    private static func area(_ bin: Int, _ sum: [RGB], _ count: [Float]) -> Float {
+        count[bin] * (0.6 + hsv(sum[bin] / count[bin]).1)
+    }
+
     /// Downsample, bucket pixels by hue, and rank the buckets by how much — and how vividly — they appear.
     private static func swatches(_ image: CGImage) -> [RGB] {
+        let (sum, count, score) = bins(image)
+        return (0..<13).filter { count[$0] >= 12 }
+            .sorted { score[$0] > score[$1] }
+            .prefix(5)
+            .map { sum[$0] / count[$0] }
+    }
+
+    /// Pixels bucketed into 12 hues and one neutral bucket: their summed colour, count and vividness score.
+    private static func bins(_ image: CGImage) -> ([RGB], [Float], [Float]) {
         let w = 40, h = 40
         var px = [UInt8](repeating: 0, count: w * h * 4)
         let drawn: Bool = px.withUnsafeMutableBytes { buf in
@@ -84,7 +117,7 @@ enum ArtPalette {
             ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
             return true
         }
-        guard drawn else { return [] }
+        guard drawn else { return ([RGB](repeating: .zero, count: 13), [Float](repeating: 0, count: 13), [Float](repeating: 0, count: 13)) }
         let bins = 13   // 12 hues + 1 neutral
         var sum = [RGB](repeating: .zero, count: bins)
         var count = [Float](repeating: 0, count: bins)
@@ -98,10 +131,7 @@ enum ArtPalette {
             sum[bin] += c; count[bin] += 1
             score[bin] += 0.35 + s * 1.6 + v * 0.4
         }
-        return (0..<bins).filter { count[$0] >= 12 }
-            .sorted { score[$0] > score[$1] }
-            .prefix(5)
-            .map { sum[$0] / count[$0] }
+        return (sum, count, score)
     }
 
     /// Tones colours for a page background: vivid but never so bright that white text stops reading,

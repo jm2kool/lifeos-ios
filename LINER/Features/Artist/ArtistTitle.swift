@@ -55,6 +55,8 @@ struct ArtistTitleView: View {
     var style: ArtistTitleStyle
     /// Leaves your own logo out when you placed it on the photo (the photo already shows it).
     var skipPlaced = false
+    /// The artist photo's colour, for a logo of yours tinted "Cover".
+    var coverColor: Color = .white
     @State private var logo: UIImage?
     @State private var checked = false
 
@@ -75,7 +77,7 @@ struct ArtistTitleView: View {
             if mine != nil, skipPlaced, look.placement != nil {
                 Color.clear.frame(height: 1)
             } else if let mine {
-                TintedLogo(image: mine, tint: look.tint)
+                TintedLogo(image: mine, tint: look.tint, coverColor: coverColor)
                     .frame(maxWidth: 300, maxHeight: size * 1.7, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
             } else if resolved == .logo, let logo {

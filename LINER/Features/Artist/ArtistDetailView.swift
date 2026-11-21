@@ -58,6 +58,8 @@ struct ArtistDetailView: View {
         }
         .headerScrollProgress(headerHeight: heroHeight, progress: $scrolled)
         .artCanvas(colours)
+        // The artist's colour is the accent on their page: buttons, the selected tab, tinted logos.
+        .tint(accent ?? .white)
         .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { titleStyle = ArtistTitleStyle.saved(for: artist.id) }
@@ -76,7 +78,7 @@ struct ArtistDetailView: View {
                 Button("Back", systemImage: "chevron.left") { dismiss() }
             }
             ToolbarItem(placement: .principal) {
-                ArtistTitleView(name: artist.name, artistID: artist.id, genre: "", size: 17, style: titleStyle)
+                ArtistTitleView(name: artist.name, artistID: artist.id, genre: "", size: 17, style: titleStyle, coverColor: accent ?? .white)
                     .frame(maxHeight: 30).opacity(scrolled).allowsHitTesting(false)
             }
             ToolbarItem(placement: .topBarTrailing) {
@@ -118,7 +120,8 @@ struct ArtistDetailView: View {
                                    .init(color: .black.opacity(0.15 * titleBackdrop), location: 1)],
                            startPoint: .top, endPoint: .bottom)
             VStack(alignment: .leading, spacing: 8) {
-                ArtistTitleView(name: artist.name, artistID: artist.id, genre: genre, style: titleStyle, skipPlaced: true).id(titleStyle)
+                ArtistTitleView(name: artist.name, artistID: artist.id, genre: genre, style: titleStyle, skipPlaced: true,
+                                coverColor: accent ?? .white).id(titleStyle)
                 Text("Artist · \(releases) release\(releases == 1 ? "" : "s")").linerLabel(size: 12)
             }
             .padding(.horizontal, 20).padding(.bottom, 8)
@@ -129,7 +132,7 @@ struct ArtistDetailView: View {
         .overlay {
             let key = LookKey.artist(artist.name), look = LookStore.shared.look(key)
             if let logo = LookStore.shared.logo(key), let placement = look.placement {
-                PlacedLogo(image: logo, look: look, placement: placement).opacity(1 - scrolled)
+                PlacedLogo(image: logo, look: look, placement: placement, coverColor: accent ?? .white).opacity(1 - scrolled)
             }
         }
     }
@@ -153,9 +156,12 @@ struct ArtistDetailView: View {
         if !found.isEmpty { colours = found }
     }
 
-    /// Play and Shuffle side by side as wide glass pills, tinted with the page's colour.
+    /// The artist's colour, bright enough to draw with (nil until the photo or covers have loaded).
+    private var accent: Color? { ArtPalette.accent(colours) }
+
+    /// Play and Shuffle side by side as wide glass pills, tinted with the artist's colour.
     private func transport(_ playable: [Song]) -> some View {
-        let tint = colours.first.map { Color(red: Double($0.x), green: Double($0.y), blue: Double($0.z)) } ?? .clear
+        let tint = accent ?? .clear
         return GlassEffectContainer(spacing: 14) {
             HStack(spacing: 14) {
                 pill("Play", symbol: "play.fill", tint: tint) { player.play(songs: playable) }
@@ -175,7 +181,7 @@ struct ArtistDetailView: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .glassEffect(.regular.tint(tint.opacity(0.45)).interactive(), in: .capsule)
+        .glassEffect(.regular.tint(tint.opacity(0.35)).interactive(), in: .capsule)
     }
 
     private var totals: some View {
