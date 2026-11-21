@@ -13,6 +13,9 @@ struct AlbumDetailView: View {
     @AppStorage(AlbumTracklist.storageKey) private var savedOnlyAlbums = ""
     /// The album as Apple Music lists it (nil until fetched, or when Apple doesn't know it).
     @State private var catalog: [AppleCatalog.Track]?
+    @State private var headerHeight: CGFloat = 400
+    @State private var scrolled = 0.0
+    @State private var coverColor = Color.white
 
     init(album: Album) {
         self.album = album
@@ -27,6 +30,7 @@ struct AlbumDetailView: View {
     }
 
     private var subjectID: String { "album-\(album.id)" }
+    private var lookKey: String { LookKey.album(album.id) }
     private var savedOnly: Bool { AlbumTracklist.savedOnly(subjectID, in: savedOnlyAlbums) }
     private var saved: [QueueItem] { library.snapshot.songs(album.songIDs).map(QueueItem.library) }
 
@@ -62,16 +66,14 @@ struct AlbumDetailView: View {
         let list = tracks
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                ZStack(alignment: .bottom) {
+                CoverHeader(lookKey: lookKey, backdrop: .album(album.id), coverColor: coverColor, scrolled: scrolled, height: $headerHeight) {
                     AlbumHeaderArt(albumID: album.id, note: notes.first, edition: activeEdition)
-                        .aspectRatio(1, contentMode: .fit).clipped()
-                    LinearGradient(colors: [.clear, .black], startPoint: UnitPoint(x: 0.5, y: 0.55), endPoint: .bottom)
                 }
                 VStack(alignment: .leading, spacing: 8) {
                     if let edition = activeEdition {
-                        Text(edition.title).font(.itemTitle).lineLimit(3)
+                        Text(edition.title).albumFace(30, fallback: .itemTitle).lineLimit(3)
                     } else {
-                        AlbumTitle(albumID: album.id, title: album.title)
+                        AlbumLogoTitle(lookKey: lookKey, albumID: album.id, title: album.title, coverColor: coverColor, skipPlaced: true)
                     }
                     if let artist = library.snapshot.artist(named: album.artist) {
                         NavigationLink(value: artist) { Text(album.artist).linerLabel(size: 12) }.buttonStyle(.plain)
@@ -98,12 +100,16 @@ struct AlbumDetailView: View {
                         .font(.footnote).foregroundStyle(Palette.label).padding(16)
                 }
                 AlbumHistory(album: album, songs: library.snapshot.songs(album.songIDs)).padding(.horizontal, 16).padding(.top, 8)
+                OtherEditionsShelf(title: album.title, artist: album.artist, excludingName: album.title).padding(.top, 28)
             }
             .padding(.bottom, 32)
         }
+        .headerScrollProgress(headerHeight: headerHeight, progress: $scrolled)
+        .environment(\.albumFace, LookStore.shared.look(lookKey).face)
         .environment(\.editionCover, activeEdition.map { EditionCover(editionID: $0.id, itemIDs: Set(list.map(\.id))) })
         .background(Palette.background)
         .ignoresSafeArea(edges: .top)
+        .task(id: album.id) { coverColor = await CoverColor.dominant(.album(album.id)) }
         .task(id: album.id) {
             let ids = library.snapshot.songs(album.songIDs).filter(\.hasStoreID).map(\.storeID)
             guard !ids.isEmpty else { return }
@@ -111,6 +117,10 @@ struct AlbumDetailView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                NavBarLogo(lookKey: lookKey, albumID: album.id, title: activeEdition?.title ?? album.title, visible: scrolled)
+                    .environment(\.albumFace, LookStore.shared.look(lookKey).face)
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     AlbumActionsMenu(album: album)
@@ -179,41 +189,6 @@ struct AlbumDetailView: View {
             openURL(url)
         } else if let url = URL(string: "music://") {
             openURL(url)
-        }
-    }
-}
-
-/// The album header: a motion cover if you attached one; otherwise the cover (edition cover, your own cover,
-/// or the album artwork) as a moving Living Cover while you're on the page.
-struct AlbumHeaderArt: View {
-    let albumID: UInt64
-    let note: AlbumNote?
-    let edition: Edition?
-    @State private var image: UIImage?
-    @State private var look = ArtworkLook.neutral
-
-    private var stillKey: String {
-        "album-\(albumID)\(CoverVersions.suffix(albumID))-\(edition?.id.uuidString ?? "")-\(edition?.coverImage?.count ?? 0)"
-    }
-
-    var body: some View {
-        let motion = edition?.motionCoverFile ?? note?.motionCoverFile
-        ZStack {
-            ArtworkView(albumID: albumID, cornerRadius: 0)
-            if let motion {
-                LoopingVideo(url: MotionCoverFiles.url(motion))
-            } else if let image, MotionSettings.livingCoversOn {
-                LivingCoverView(image: image, look: look, key: stillKey).transition(.opacity)
-            }
-        }
-        .task(id: stillKey) {
-            var img: UIImage?
-            if let data = edition?.coverImage { img = UIImage(data: data) }
-            if img == nil { img = CoverOverrides.shared.image(albumID) }
-            if img == nil { img = await ArtworkCache.shared.image(album: albumID, pixels: 1400) }
-            guard let img else { return }
-            look = await ArtworkAnalysis.look(for: img, key: stillKey)
-            withAnimation(.easeIn(duration: 0.4)) { image = img }
         }
     }
 }

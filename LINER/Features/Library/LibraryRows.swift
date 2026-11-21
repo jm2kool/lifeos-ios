@@ -49,12 +49,12 @@ struct SongRow: View {
     var body: some View {
         HStack(spacing: 12) {
             if let number {
-                Text("\(number)").font(.serif(17)).monospacedDigit().foregroundStyle(Palette.label).frame(width: 26)
+                Text("\(number)").albumFace(17, fallback: .serif(17)).monospacedDigit().foregroundStyle(Palette.label).frame(width: 26)
             } else if showArtwork {
                 ArtworkView(albumID: song.albumID, cornerRadius: 6).frame(width: 46, height: 46)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(song.title).font(.system(size: 16)).lineLimit(1)
+                Text(song.title).albumFace(16, fallback: .system(size: 16)).lineLimit(1)
                 Text(number == nil && library.snapshot.albumOf(song) != nil ? "\(song.artist) · \(song.albumTitle)" : song.artist)
                     .font(.system(size: 13)).foregroundStyle(Palette.secondary).lineLimit(1)
             }

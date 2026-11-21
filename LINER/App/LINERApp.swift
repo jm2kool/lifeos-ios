@@ -9,6 +9,7 @@ struct LINERApp: App {
 
     init() {
         Demo.prepare()
+        FontLibrary.registerImported()
         let service = Demo.isOn ? LibraryService(preview: DemoLibrary.snapshot) : LibraryService()
         LibraryService.current = service
         _library = State(initialValue: service)

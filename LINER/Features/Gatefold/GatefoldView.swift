@@ -60,6 +60,7 @@ struct GatefoldView: View {
             .frame(width: size.width, height: size.height)
         }
         .ignoresSafeArea()
+        .environment(\.albumFace, LookStore.shared.look(record.lookKey).face)
         .statusBarHidden(stage == .inside)
         .task { await load() }
         .task { await open() }

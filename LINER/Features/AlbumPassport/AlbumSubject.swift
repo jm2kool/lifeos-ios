@@ -23,4 +23,6 @@ final class PassportPresenter {
     var album: AlbumSubject?
     var editions: AlbumSubject?
     var cover: CoverRequest?
+    /// A logo, font or pin cover to change.
+    var look: LookRequest?
 }

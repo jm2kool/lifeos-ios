@@ -15,12 +15,12 @@ struct PlayableQueueRow: View {
             Button { player.play(list, startAt: list.firstIndex(of: item) ?? 0, edition: edition) } label: {
                 HStack(spacing: 12) {
                     if let number {
-                        Text("\(number)").font(.serif(17)).monospacedDigit().foregroundStyle(Palette.label).frame(width: 26)
+                        Text("\(number)").albumFace(17, fallback: .serif(17)).monospacedDigit().foregroundStyle(Palette.label).frame(width: 26)
                     } else {
                         QueueItemArtwork(item: item).frame(width: 46, height: 46)
                     }
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(item.title).font(.system(size: 16)).lineLimit(1)
+                        Text(item.title).albumFace(16, fallback: .system(size: 16)).lineLimit(1)
                         Text(item.artist).font(.system(size: 13)).foregroundStyle(Palette.secondary).lineLimit(1)
                     }
                     Spacer()

@@ -8,6 +8,8 @@ extension Store {
         let note = albumNoteOrNew(albumID, key: key)
         note.pinned.toggle()
         note.pinnedAt = note.pinned ? .now : nil
+        // Albums pin as their cover with their logo; the artist portrait is a choice in the menu.
+        if note.pinned { note.pinnedAppearance = .albumArtwork }
         save()
     }
 
@@ -51,8 +53,13 @@ struct AlbumActionsMenu: View {
                 ForEach(PinAppearance.allCases, id: \.self) { a in
                     Button(a.label) { Store.shared.setAppearance(a, albumID: id, key: album.key) }
                 }
+                Button("Choose Pin Cover…", systemImage: "photo.stack") {
+                    Store.shared.setAppearance(.albumArtwork, albumID: id, key: album.key)
+                    passports.look = .album(.pinCover, album, snapshot: library.snapshot)
+                }
             }
         }
+        LookMenuItems(key: LookKey.album(album.id)) { .album($0, album, snapshot: library.snapshot) }
         Button("Album Passport", systemImage: "text.book.closed") { passports.album = .library(album, snapshot: library.snapshot) }
         Menu("Cover", systemImage: "photo.on.rectangle") {
             Button("Choose Cover Photo", systemImage: "photo") { passports.cover = CoverRequest(album: album, motion: false) }

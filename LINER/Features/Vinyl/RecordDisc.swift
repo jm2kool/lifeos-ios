@@ -48,18 +48,27 @@ struct RecordDisc: View {
         .accessibilityHidden(true)
     }
 
-    /// The centre label: the cover, with the printing kept to the bottom of the label (album, side and year,
-    /// then a tiny "LINER. — curated by Jash"), always inside its edge.
+    /// The centre label: a soft blur of the cover's colours with the album's logo (yours, the one lifted from the
+    /// cover, or its title) in the middle, and the printing kept to the bottom (side and year, then a tiny
+    /// "LINER. — curated by Jash"), always inside its edge.
     private func label(_ size: CGFloat) -> some View {
         ZStack {
-            RecordCover(record: record).frame(width: size, height: size).clipShape(Circle())
+            RecordCover(record: record).frame(width: size, height: size)
+                .blur(radius: size * 0.09, opaque: true).saturation(1.35)
+                .clipShape(Circle())
+            Circle().fill(.black.opacity(0.22)).frame(width: size, height: size)
             Circle()
-                .fill(LinearGradient(stops: [.init(color: .clear, location: 0.5), .init(color: .black.opacity(0.78), location: 0.92)],
-                                     startPoint: .top, endPoint: .bottom))
+                .fill(RadialGradient(colors: [.white.opacity(0.12), .clear], center: UnitPoint(x: 0.35, y: 0.3), startRadius: 0, endRadius: size * 0.5))
                 .frame(width: size, height: size)
             Circle().stroke(Color.black.opacity(0.6), lineWidth: 2).frame(width: size, height: size)
+            AlbumLogoTitle(lookKey: record.lookKey, albumID: record.albumID, title: record.title, maxWidth: size * 0.62, maxHeight: size * 0.26,
+                           font: .system(size: size * 0.09, weight: .semibold, design: .serif), fontSize: size * 0.09, lineLimit: 2,
+                           alignment: .center)
+                .multilineTextAlignment(.center)
+                .frame(width: size * 0.62)
+                .shadow(color: .black.opacity(0.35), radius: size * 0.02)
+                .offset(y: -size * 0.16)
             VStack(spacing: size * 0.012) {
-                Text(record.title).font(.system(size: size * 0.058, weight: .semibold, design: .serif))
                 Text((["SIDE \(side)"] + [record.year.map(String.init)].compactMap { $0 }).joined(separator: " · "))
                     .font(.system(size: size * 0.036, weight: .bold)).tracking(size * 0.008)
                 Text("\(AppBrand.name) — curated by Jash").font(.system(size: size * 0.03, weight: .medium)).opacity(0.7)
@@ -67,7 +76,7 @@ struct RecordDisc: View {
             .lineLimit(1).minimumScaleFactor(0.4)
             .foregroundStyle(.white.opacity(0.92))
             .frame(width: size * 0.56)
-            .offset(y: size * 0.28)
+            .offset(y: size * 0.3)
         }
         .frame(width: size, height: size)
     }

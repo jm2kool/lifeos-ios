@@ -11,6 +11,8 @@ struct BackupFile: Codable {
     struct EditionItem: Codable { var id: UUID; var base: String?; var title: String; var tracks: Data; var cover: Data?; var isActive: Bool; var createdAt: Date }
     struct Track: Codable { var id: UUID; var title: String; var artist: String; var fileName: String; var duration: Double; var number: Int; var lrc: String? }
     struct MixtapeItem: Codable { var id: UUID; var title: String; var artist: String; var label: String?; var year: Int?; var cover: Data?; var showInHome: Bool; var tracks: [Track] }
+    /// A logo, font, layout and pin cover (`SubjectLook` as JSON) with the logo image.
+    struct LookItem: Codable { var look: Data; var logo: Data? }
     struct Mood: Codable { var id: UUID; var name: String; var summary: String; var prompt: String; var recipe: Data; var tracks: [String]; var autoRefresh: Bool }
 
     var version = 1
@@ -21,6 +23,9 @@ struct BackupFile: Codable {
     var mixtapes: [MixtapeItem] = []
     var moods: [Mood] = []
     var pinnedPlaylists: [Int64] = []
+    /// Logos, fonts and layouts by look key, and imported font files (added in 1.5; missing from older backups).
+    var looks: [String: LookItem]?
+    var fonts: [String: Data]?
 }
 
 @MainActor
@@ -46,6 +51,8 @@ enum BackupService {
             .init(id: $0.id, name: $0.name, summary: $0.summary, prompt: $0.prompt, recipe: $0.recipeData, tracks: $0.trackIDs, autoRefresh: $0.autoRefresh)
         }
         b.pinnedPlaylists = ((try? c.fetch(FetchDescriptor<PinnedPlaylist>())) ?? []).map(\.playlistID)
+        b.looks = LookStore.shared.exported()
+        b.fonts = FontLibrary.exported()
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         enc.dateEncodingStrategy = .iso8601
@@ -102,6 +109,8 @@ enum BackupService {
             c.insert(PinnedPlaylist(playlistID: UInt64(bitPattern: id)))
         }
         Store.shared.save()
+        if let fonts = b.fonts { FontLibrary.restore(fonts) }
+        if let looks = b.looks { LookStore.shared.restore(looks) }
         var summary = "Restored \(b.songs.count) song passports, \(b.albums.count) albums, \(b.editions.count) editions, \(b.mixtapes.count) mixtapes and \(b.moods.count) mood playlists."
         if missingAudio > 0 { summary += " \(missingAudio) mixtape tracks need their audio files imported again." }
         return summary

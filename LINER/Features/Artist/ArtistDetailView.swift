@@ -11,6 +11,8 @@ struct ArtistDetailView: View {
     @Environment(LibraryService.self) private var library
     @Environment(PlaybackCoordinator.self) private var player
     @Environment(\.dismiss) private var dismiss
+    @Environment(PassportPresenter.self) private var passports
+    @State private var scrolled = 0.0
     @State private var titleStyle: ArtistTitleStyle = .auto
     /// How bright the photo is where the title sits (0 dark … 1 bright).
     @State private var titleBackdrop = 0.0
@@ -60,6 +62,7 @@ struct ArtistDetailView: View {
             }
             .padding(.bottom, 32)
         }
+        .headerScrollProgress(headerHeight: 480, progress: $scrolled)
         .background(Palette.background)
         .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
@@ -75,6 +78,15 @@ struct ArtistDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button("Back", systemImage: "chevron.left") { dismiss() }
+            }
+            ToolbarItem(placement: .principal) {
+                ArtistTitleView(name: artist.name, artistID: artist.id, genre: "", size: 17, style: titleStyle)
+                    .frame(maxHeight: 30).opacity(scrolled).allowsHitTesting(false)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(LookStore.shared.logo(LookKey.artist(artist.name)) == nil ? "Add Logo" : "Edit Logo", systemImage: "signature") {
+                    passports.look = .artist(artist)
+                }
             }
         }
     }
@@ -101,12 +113,18 @@ struct ArtistDetailView: View {
                                    .init(color: .black, location: 1)],
                            startPoint: .top, endPoint: .bottom)
             VStack(alignment: .leading, spacing: 6) {
-                ArtistTitleView(name: artist.name, artistID: artist.id, genre: genre, style: titleStyle).id(titleStyle)
+                ArtistTitleView(name: artist.name, artistID: artist.id, genre: genre, style: titleStyle, skipPlaced: true).id(titleStyle)
                 Text("Artist · \(releases) release\(releases == 1 ? "" : "s")").linerLabel()
             }
             .padding(16)
         }
         .frame(height: 480)
+        .overlay {
+            let key = LookKey.artist(artist.name), look = LookStore.shared.look(key)
+            if let logo = LookStore.shared.logo(key), let placement = look.placement {
+                PlacedLogo(image: logo, look: look, placement: placement).opacity(1 - scrolled)
+            }
+        }
     }
 
     private var totals: some View {

@@ -34,18 +34,30 @@ struct PinnedGrid: View {
 
     var body: some View {
         let list = entries
-        if !list.isEmpty {
-            // An odd count leads with one wide card; the rest go two to a row.
-            let wide = list.count % 2 == 1 ? list.first : nil
-            let pairs = Array(list.dropFirst(wide == nil ? 0 : 1))
-            VStack(spacing: 12) {
-                if let wide {
-                    card(wide, size: list.count == 1 ? .single : .wide)
-                }
-                if !pairs.isEmpty {
-                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-                        ForEach(pairs) { card($0, size: .half) }
-                    }
+        Group { if !list.isEmpty { grid(list) } }
+            .task { movePinsToCovers() }
+    }
+
+    /// Album pins show their cover and logo by default; pins made before that switch over once.
+    private func movePinsToCovers() {
+        let flag = "pins.coversByDefault"
+        guard !UserDefaults.standard.bool(forKey: flag) else { return }
+        UserDefaults.standard.set(true, forKey: flag)
+        for n in albumPins { n.pinnedAppearance = .albumArtwork }
+        Store.shared.save()
+    }
+
+    private func grid(_ list: [Entry]) -> some View {
+        // An odd count leads with one wide card; the rest go two to a row.
+        let wide = list.count % 2 == 1 ? list.first : nil
+        let pairs = Array(list.dropFirst(wide == nil ? 0 : 1))
+        return VStack(spacing: 12) {
+            if let wide {
+                card(wide, size: list.count == 1 ? .single : .wide)
+            }
+            if !pairs.isEmpty {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+                    ForEach(pairs) { card($0, size: .half) }
                 }
             }
         }
@@ -55,7 +67,8 @@ struct PinnedGrid: View {
         switch entry {
         case .album(let album, let look):
             NavigationLink(value: album) {
-                PinCard(title: album.title, subtitle: album.artist, portraitName: look == .artistPortrait ? album.artist : nil, albumID: album.id, size: size)
+                PinCard(title: album.title, subtitle: album.artist, portraitName: look == .artistPortrait ? album.artist : nil, albumID: album.id,
+                        size: size, lookKey: LookKey.album(album.id))
             }
             .buttonStyle(.plain)
             .contextMenu { AlbumActionsMenu(album: album) }
@@ -80,6 +93,8 @@ struct PinCard: View {
     let portraitName: String?
     let albumID: UInt64?
     var size: Size = .single
+    /// An album's look: its pin cover and logo.
+    var lookKey: String? = nil
 
     private var half: Bool { size == .half }
     private var aspect: CGFloat { switch size { case .single: 4 / 5; case .wide: 16 / 10; case .half: 4 / 5 } }
@@ -90,13 +105,19 @@ struct PinCard: View {
                 if let portraitName {
                     ArtistPortraitView(name: portraitName, fallbackAlbumID: albumID)
                 } else {
-                    ArtworkView(albumID: albumID, cornerRadius: 0)
+                    PinCoverImage(albumID: albumID, cover: lookKey.flatMap { LookStore.shared.look($0).pinCover })
                 }
             }
             LinearGradient(colors: [.clear, .black.opacity(0.85)], startPoint: UnitPoint(x: 0.5, y: 0.5), endPoint: .bottom)
             HStack(alignment: .bottom) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(title).font(.serif(half ? 19 : 30)).lineLimit(2).minimumScaleFactor(0.8)
+                    if let lookKey, portraitName == nil {
+                        AlbumLogoTitle(lookKey: lookKey, albumID: albumID, title: title, maxWidth: half ? 130 : 240, maxHeight: half ? 54 : 90,
+                                       font: .serif(half ? 19 : 30), fontSize: half ? 19 : 30, lineLimit: 2)
+                            .environment(\.albumFace, LookStore.shared.look(lookKey).face)
+                    } else {
+                        Text(title).font(.serif(half ? 19 : 30)).lineLimit(2).minimumScaleFactor(0.8)
+                    }
                     Text(subtitle).linerLabel(size: half ? 9 : 10).lineLimit(1)
                 }
                 Spacer()
@@ -116,6 +137,26 @@ struct PinCard: View {
         .overlay(RoundedRectangle(cornerRadius: Palette.cornerRadius, style: .continuous).stroke(Palette.stroke))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Pinned: \(title), \(subtitle)")
+    }
+}
+
+/// The picture behind a pinned album: the cover you picked for the pin, or the album's own.
+struct PinCoverImage: View {
+    let albumID: UInt64?
+    let cover: PinCover?
+    @Query private var editions: [Edition]
+
+    var body: some View {
+        switch cover {
+        case .edition(let id):
+            if let data = editions.first(where: { $0.id == id })?.coverImage, let img = UIImage(data: data) {
+                FillImage(image: img)
+            } else {
+                ArtworkView(albumID: albumID, cornerRadius: 0)
+            }
+        case .remote(let url): RemoteFill(url: url)
+        case .album, nil: ArtworkView(albumID: albumID, cornerRadius: 0)
+        }
     }
 }
 

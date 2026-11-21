@@ -53,6 +53,8 @@ struct ArtistTitleView: View {
     let genre: String
     var size: CGFloat = 48
     var style: ArtistTitleStyle
+    /// Leaves your own logo out when you placed it on the photo (the photo already shows it).
+    var skipPlaced = false
     @State private var logo: UIImage?
     @State private var checked = false
 
@@ -66,8 +68,17 @@ struct ArtistTitleView: View {
     }
 
     var body: some View {
+        let key = LookKey.artist(name)
+        let look = LookStore.shared.look(key)
+        let mine = LookStore.shared.logo(key)
         Group {
-            if resolved == .logo, let logo {
+            if mine != nil, skipPlaced, look.placement != nil {
+                Color.clear.frame(height: 1)
+            } else if let mine {
+                TintedLogo(image: mine, tint: look.tint)
+                    .frame(maxWidth: 300, maxHeight: size * 1.7, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if resolved == .logo, let logo {
                 Image(uiImage: logo).renderingMode(.template).resizable().scaledToFit()
                     .frame(maxWidth: 300, maxHeight: size * 1.7, alignment: .leading)
                     .transition(.opacity.combined(with: .scale(scale: 0.96)))
