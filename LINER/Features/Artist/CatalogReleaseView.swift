@@ -9,6 +9,8 @@ struct CatalogReleaseView: View {
     @State private var tracks: [AppleCatalog.Track] = []
     @State private var loading = true
     @State private var colours: [ArtPalette.RGB] = []
+    @AppStorage(AlbumText.tracklistKey) private var scale = 1.0
+    @AppStorage(AlbumText.titleKey) private var titleScale = 1.0
 
     private var songs: [Song] {
         let mine = library.snapshot.songsByStoreID
@@ -24,7 +26,7 @@ struct CatalogReleaseView: View {
                     .shadow(color: .black.opacity(0.6), radius: 24, y: 12)
                     .padding(.top, 12)
                 VStack(spacing: 4) {
-                    Text(release.title).font(.serif(26)).multilineTextAlignment(.center).lineLimit(3)
+                    Text(release.title).font(.serif(26 * titleScale)).multilineTextAlignment(.center).lineLimit(3)
                     Text(release.artist).linerLabel(size: 12)
                     Text([release.isSingleOrEP ? (release.trackCount <= 3 ? "SINGLE" : "EP") : "ALBUM",
                           release.genre.uppercased(), release.year.map(String.init)].compactMap { $0 }.filter { !$0.isEmpty }
@@ -79,17 +81,17 @@ struct CatalogReleaseView: View {
     private func row(_ song: Song, number: Int, play: @escaping () -> Void) -> some View {
         Button(action: play) {
             HStack(spacing: 12) {
-                Text("\(number)").font(.serif(17)).monospacedDigit().foregroundStyle(Palette.label).frame(width: 26)
-                Text(song.title).font(.system(size: 16)).lineLimit(1)
+                Text("\(number)").font(.serif(17 * scale)).monospacedDigit().foregroundStyle(Palette.label).frame(width: 26 * scale)
+                Text(song.title).font(.system(size: 16 * scale)).lineLimit(1)
                 Spacer(minLength: 8)
                 if player.current?.song?.storeID == song.storeID {
                     Image(systemName: "waveform").symbolEffect(.variableColor.iterative, isActive: player.isPlaying).font(.caption)
                 } else if !song.isCatalog {
                     Image(systemName: "checkmark.circle.fill").font(.caption).foregroundStyle(Palette.faint).accessibilityLabel("In your library")
                 }
-                Text(song.duration.trackTime).font(.system(size: 13)).monospacedDigit().foregroundStyle(Palette.secondary)
+                Text(song.duration.trackTime).font(.system(size: 13 * scale)).monospacedDigit().foregroundStyle(Palette.secondary)
             }
-            .padding(.vertical, 11)
+            .padding(.vertical, 11 * scale)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

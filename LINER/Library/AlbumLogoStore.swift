@@ -49,19 +49,23 @@ final class AlbumLogoStore {
 struct AlbumTitle: View {
     let albumID: UInt64
     let title: String
-    var font: Font = .itemTitle
+    /// The chosen title size (Customise Album → Text size), 1 for standard.
+    var scale: CGFloat = 1
+    @AppStorage(AlbumText.plainTitlesKey) private var plainTitles = ""
     @State private var logo: UIImage?
+
+    private var plain: Bool { AlbumTracklist.savedOnly("album-\(albumID)", in: plainTitles) }
 
     var body: some View {
         Group {
-            if let logo {
+            if let logo, !plain {
                 Image(uiImage: logo).resizable().scaledToFit()
-                    .frame(maxWidth: 300, maxHeight: 110, alignment: .leading)
+                    .frame(maxWidth: 300 * scale, maxHeight: 110 * scale, alignment: .leading)
                     .shadow(color: .black.opacity(0.5), radius: 8)
                     .accessibilityLabel(title)
                     .transition(.opacity)
             } else {
-                Text(title).font(font).lineLimit(3)
+                Text(title).font(.serif(30 * scale)).lineLimit(3)
             }
         }
         .task(id: albumID) {

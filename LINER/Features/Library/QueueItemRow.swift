@@ -7,6 +7,7 @@ struct PlayableQueueRow: View {
     var number: Int?
     @Environment(PlaybackCoordinator.self) private var player
     @Environment(\.editionCover) private var edition
+    @Environment(\.tracklistScale) private var scale
 
     var body: some View {
         if case .library(let song) = item {
@@ -15,13 +16,13 @@ struct PlayableQueueRow: View {
             Button { player.play(list, startAt: list.firstIndex(of: item) ?? 0, edition: edition) } label: {
                 HStack(spacing: 12) {
                     if let number {
-                        Text("\(number)").font(.serif(17)).monospacedDigit().foregroundStyle(Palette.label).frame(width: 26)
+                        Text("\(number)").font(.serif(17 * scale)).monospacedDigit().foregroundStyle(Palette.label).frame(width: 26 * scale)
                     } else {
-                        QueueItemArtwork(item: item).frame(width: 46, height: 46)
+                        QueueItemArtwork(item: item).frame(width: 46 * scale, height: 46 * scale)
                     }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(item.title).font(.system(size: 16)).lineLimit(1)
-                        Text(item.artist).font(.system(size: 13)).foregroundStyle(Palette.secondary).lineLimit(1)
+                    VStack(alignment: .leading, spacing: 2 * scale) {
+                        Text(item.title).font(.system(size: 16 * scale)).lineLimit(1)
+                        Text(item.artist).font(.system(size: 13 * scale)).foregroundStyle(Palette.secondary).lineLimit(1)
                     }
                     Spacer()
                     Image(systemName: "recordingtape").font(.caption).foregroundStyle(Palette.faint)

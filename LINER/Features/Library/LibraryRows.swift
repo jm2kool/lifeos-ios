@@ -45,22 +45,23 @@ struct SongRow: View {
     var number: Int?
     var showArtwork = true
     @Environment(LibraryService.self) private var library
+    @Environment(\.tracklistScale) private var scale
 
     var body: some View {
         HStack(spacing: 12) {
             if let number {
-                Text("\(number)").font(.serif(17)).monospacedDigit().foregroundStyle(Palette.label).frame(width: 26)
+                Text("\(number)").font(.serif(17 * scale)).monospacedDigit().foregroundStyle(Palette.label).frame(width: 26 * scale)
             } else if showArtwork {
-                ArtworkView(albumID: song.albumID, cornerRadius: 6).frame(width: 46, height: 46)
+                ArtworkView(albumID: song.albumID, cornerRadius: 6).frame(width: 46 * scale, height: 46 * scale)
             }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(song.title).font(.system(size: 16)).lineLimit(1)
+            VStack(alignment: .leading, spacing: 2 * scale) {
+                Text(song.title).font(.system(size: 16 * scale)).lineLimit(1)
                 Text(number == nil && library.snapshot.albumOf(song) != nil ? "\(song.artist) · \(song.albumTitle)" : song.artist)
-                    .font(.system(size: 13)).foregroundStyle(Palette.secondary).lineLimit(1)
+                    .font(.system(size: 13 * scale)).foregroundStyle(Palette.secondary).lineLimit(1)
             }
             Spacer(minLength: 8)
             if song.isCloudOnly { Image(systemName: "icloud").font(.caption).foregroundStyle(Palette.faint) }
-            Text(song.playCount.grouped).font(.serif(16)).monospacedDigit().foregroundStyle(Palette.secondary)
+            Text(song.playCount.grouped).font(.serif(16 * scale)).monospacedDigit().foregroundStyle(Palette.secondary)
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)

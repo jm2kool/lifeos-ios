@@ -1,34 +1,11 @@
 import PhotosUI
 import SwiftUI
 
-/// A request to change an album's cover, from any album menu.
+/// A request to change an album's cover (from Customise Album).
 struct CoverRequest: Identifiable {
     let album: Album
     let motion: Bool
     var id: String { "\(album.id)-\(motion)" }
-}
-
-/// Presents the Photos picker for cover requests and saves the result.
-struct CoverPickerHost: ViewModifier {
-    @Environment(PassportPresenter.self) private var passports
-    @Environment(PlaybackCoordinator.self) private var player
-    @State private var picked: PhotosPickerItem?
-
-    func body(content: Content) -> some View {
-        content
-            .photosPicker(isPresented: Binding(get: { passports.cover != nil }, set: { if !$0 && picked == nil { passports.cover = nil } }),
-                          selection: $picked,
-                          matching: passports.cover?.motion == true ? .any(of: [.videos, .images]) : .images)
-            .onChange(of: picked) { _, item in
-                guard let item, let request = passports.cover else { return }
-                Task {
-                    await CoverSaver.save(item, for: request)
-                    picked = nil
-                    passports.cover = nil
-                    player.notice = request.motion ? "Motion cover set for “\(request.album.title)”." : "Cover set for “\(request.album.title)”."
-                }
-            }
-    }
 }
 
 /// Saves a picked photo or video as an album's cover.

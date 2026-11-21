@@ -46,22 +46,9 @@ struct AlbumActionsMenu: View {
         Button(pinned ? "Unpin" : "Pin to Home", systemImage: pinned ? "pin.slash" : "pin") {
             Store.shared.togglePin(albumID: id, key: album.key)
         }
-        if pinned {
-            Menu("Pinned Album Appearance", systemImage: "rectangle.portrait.on.rectangle.portrait") {
-                ForEach(PinAppearance.allCases, id: \.self) { a in
-                    Button(a.label) { Store.shared.setAppearance(a, albumID: id, key: album.key) }
-                }
-            }
-        }
         Button("Album Passport", systemImage: "text.book.closed") { passports.album = .library(album, snapshot: library.snapshot) }
-        Menu("Cover", systemImage: "photo.on.rectangle") {
-            Button("Choose Cover Photo", systemImage: "photo") { passports.cover = CoverRequest(album: album, motion: false) }
-            Button("Choose Motion Cover", systemImage: "play.rectangle") { passports.cover = CoverRequest(album: album, motion: true) }
-            if CoverOverrides.shared.image(album.id) != nil || Store.shared.albumNote(id)?.motionCoverFile != nil {
-                Button("Use Original Artwork", systemImage: "arrow.uturn.backward", role: .destructive) { CoverSaver.reset(album) }
-            }
-        }
-        Button("Manage Editions", systemImage: "square.stack.3d.up") { passports.editions = .library(album, snapshot: library.snapshot) }
+        // Cover, editions, text size, title and the Home pin's look all live in Customise Album.
+        Button("Customise Album", systemImage: "slider.horizontal.3") { passports.customise = album }
     }
 }
 

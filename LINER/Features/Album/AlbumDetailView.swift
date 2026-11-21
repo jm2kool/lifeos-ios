@@ -8,6 +8,7 @@ struct AlbumDetailView: View {
     let album: Album
     @Environment(LibraryService.self) private var library
     @Environment(PassportPresenter.self) private var passports
+    @AppStorage(AlbumText.titleKey) private var titleScale = 1.0
     @Environment(\.openURL) private var openURL
     @Query private var notes: [AlbumNote]
     @Query private var editions: [Edition]
@@ -77,17 +78,17 @@ struct AlbumDetailView: View {
                                                  .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
                 VStack(alignment: .leading, spacing: 8) {
                     if let edition = activeEdition {
-                        Text(edition.title).font(.itemTitle).lineLimit(3)
+                        Text(edition.title).font(.serif(30 * titleScale)).lineLimit(3)
                     } else {
-                        AlbumTitle(albumID: album.id, title: album.title)
+                        AlbumTitle(albumID: album.id, title: album.title, scale: titleScale)
                     }
                     if let artist = library.snapshot.artist(named: album.artist) {
-                        NavigationLink(value: artist) { Text(album.artist).linerLabel(size: 12) }.buttonStyle(.plain)
+                        NavigationLink(value: artist) { Text(album.artist).linerLabel(size: 12 * titleScale) }.buttonStyle(.plain)
                     } else {
-                        Text(album.artist).linerLabel(size: 12)
+                        Text(album.artist).linerLabel(size: 12 * titleScale)
                     }
                     actions(list).padding(.top, 10)
-                    Text(facts).linerLabel(size: 10).padding(.top, 8)
+                    Text(facts).linerLabel(size: 10 * titleScale).padding(.top, 8)
                     editionSwitcher.padding(.top, 4)
                 }
                 .padding(.horizontal, 16).padding(.top, -24)
@@ -100,6 +101,7 @@ struct AlbumDetailView: View {
                     }
                 }
                 .padding(.horizontal, 16).padding(.top, 18)
+                .albumTextSizes()
 
                 if let date = library.snapshot.songs(album.songIDs).compactMap(\.releaseDate).first {
                     Text("Released \(date.formatted(date: .long, time: .omitted))")
@@ -119,6 +121,9 @@ struct AlbumDetailView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Customise", systemImage: "slider.horizontal.3") { passports.customise = album }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     AlbumActionsMenu(album: album)
@@ -148,7 +153,7 @@ struct AlbumDetailView: View {
                 Button { setEdition(e) } label: { checked(e.title, activeEdition?.id == e.id) }
             }
             Divider()
-            Button("Manage Editions", systemImage: "square.stack.3d.up") { passports.editions = .library(album, snapshot: library.snapshot) }
+            Button("Customise Album", systemImage: "slider.horizontal.3") { passports.customise = album }
         } label: {
             HStack(spacing: 4) {
                 Text(tracklistName).linerLabel(size: 10)

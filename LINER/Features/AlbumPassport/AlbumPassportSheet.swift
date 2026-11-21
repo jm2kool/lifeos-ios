@@ -43,10 +43,15 @@ struct AlbumPassportSheet: View {
                     row("Personal Album Ranking", "Your order, not your play counts", symbol: "list.number")
                 }
                 Divider().overlay(Palette.stroke)
-                PassportEditionsLink(subject: subject)
+                if let album = subject.album {
+                    NavigationLink { AlbumCustomiseForm(album: album) } label: {
+                        row("Customise Album", "Text size, tracklist, editions, cover, title and pin", symbol: "slider.horizontal.3")
+                    }
+                } else {
+                    PassportEditionsLink(subject: subject)
+                }
             }
             .buttonStyle(.plain)
-            if subject.album != nil { CoverPickerSection(note: note) }
             if let album = subject.album { history(album) }
             fullRanking
         }

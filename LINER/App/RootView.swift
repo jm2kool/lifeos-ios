@@ -37,7 +37,7 @@ struct RootView: View {
         .sheet(item: $passports.song) { SongPassportSheet(item: $0) }
         .sheet(item: $passports.album) { AlbumPassportSheet(subject: $0) }
         .sheet(item: $passports.editions) { EditionsSheet(subject: $0) }
-        .modifier(CoverPickerHost())
+        .sheet(item: $passports.customise) { AlbumCustomiseSheet(album: $0) }
         .sheet(item: $prompts.current, onDismiss: { NewAlbumPrompts.shared.showNext(library.snapshot) }) { AlbumRatingPrompt(album: $0) }
         .task { if library.isAuthorized && connected && !library.hasLoaded { await library.refresh() } }
         .onOpenURL { url in Task { await openFile(url) } }

@@ -12,6 +12,7 @@ struct MixtapeDetailView: View {
     @State private var busy = false
     @State private var confirmDelete = false
     @State private var colours: [ArtPalette.RGB] = []
+    @AppStorage(AlbumText.titleKey) private var titleScale = 1.0
 
     private var items: [QueueItem] { mixtape.orderedTracks.map { .local(TrackResolver.local($0)) } }
 
@@ -27,8 +28,8 @@ struct MixtapeDetailView: View {
                 .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.6),
                                                  .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(mixtape.title).font(.itemTitle).lineLimit(3)
-                    Text(mixtape.artist).linerLabel(size: 12)
+                    Text(mixtape.title).font(.serif(30 * titleScale)).lineLimit(3)
+                    Text(mixtape.artist).linerLabel(size: 12 * titleScale)
                     PlayShuffleItemsRow(items: list) {
                         GlassCircleButton(systemImage: "text.book.closed", label: "Passport", size: 56) { passports.album = .mixtape(mixtape) }
                     }
@@ -46,6 +47,7 @@ struct MixtapeDetailView: View {
                         .buttonStyle(.linerGlass).padding(.top, 16).disabled(busy)
                 }
                 .padding(.horizontal, 16).padding(.top, 18)
+                .albumTextSizes()
             }
             .padding(.bottom, 32)
         }

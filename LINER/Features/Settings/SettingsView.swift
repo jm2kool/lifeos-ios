@@ -56,6 +56,11 @@ struct SettingsView: View {
                     NavigationLink("Artist titles") { ArtistTitlesSettings() }
                 }
                 Section {
+                    AlbumTextSizeRows()
+                } header: { Text("Album pages") } footer: {
+                    Text("Text sizes for album, release, playlist and mixtape pages. Everything else about an album is under Customise on its page.")
+                }
+                Section {
                     Toggle("Living Covers", isOn: $livingCovers)
                     Toggle("Album title logos", isOn: $albumLogos)
                     Picker("Style", selection: $coverStyle) {

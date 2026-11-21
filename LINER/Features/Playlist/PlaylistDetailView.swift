@@ -5,6 +5,7 @@ struct PlaylistDetailView: View {
     let playlist: Playlist
     @Environment(LibraryService.self) private var library
     @State private var colours: [ArtPalette.RGB] = []
+    @AppStorage(AlbumText.titleKey) private var titleScale = 1.0
 
     var body: some View {
         let songs = library.snapshot.songs(playlist.songIDs)
@@ -12,7 +13,7 @@ struct PlaylistDetailView: View {
             VStack(alignment: .leading, spacing: 16) {
                 PlaylistCover(playlist: playlist).frame(maxWidth: 280).frame(maxWidth: .infinity)
                     .shadow(color: .black.opacity(0.45), radius: 24, y: 12)
-                Text(playlist.name).font(.itemTitle)
+                Text(playlist.name).font(.serif(30 * titleScale))
                 Text("Playlist · \(songs.count) songs · \(songs.reduce(0) { $0 + $1.duration }.minutesLabel)").linerLabel(size: 10)
                 PlayShuffleRow(songs: songs)
                 LazyVStack(spacing: 0) {
@@ -20,6 +21,7 @@ struct PlaylistDetailView: View {
                         PlayableSongRow(song: song, list: songs).padding(.vertical, 6)
                     }
                 }
+                .albumTextSizes()
                 if songs.isEmpty {
                     EmptyStateView(symbol: "music.note.list", title: "Empty playlist", message: "Add songs to it in the Music app.")
                 }

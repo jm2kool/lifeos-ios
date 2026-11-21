@@ -22,5 +22,6 @@ final class PassportPresenter {
     var song: QueueItem?
     var album: AlbumSubject?
     var editions: AlbumSubject?
-    var cover: CoverRequest?
+    /// Customise Album, for this album.
+    var customise: Album?
 }
