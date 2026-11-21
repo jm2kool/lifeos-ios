@@ -106,17 +106,22 @@ struct NavBarLogo: View {
     }
 }
 
-/// How far a page has scrolled past its header, as 0…1, for fading the navigation bar title in.
+/// How far a page has scrolled past its header, as 0…1, for fading the navigation bar title in. While the
+/// cover or photo is on screen the bar is fully clear (no blur over the artwork); the blur comes back only once
+/// the header has scrolled away, so the title stays readable over the tracklist.
 struct HeaderScrollProgress: ViewModifier {
     let headerHeight: CGFloat
     @Binding var progress: Double
 
     func body(content: Content) -> some View {
-        content.onScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.y + $0.contentInsets.top }) { _, y in
-            let start = headerHeight - 140
-            let p = Double(min(1, max(0, (y - start) / 60)))
-            if abs(p - progress) > 0.01 || (p == 0) != (progress == 0) || (p == 1) != (progress == 1) { progress = p }
-        }
+        content
+            .onScrollGeometryChange(for: CGFloat.self, of: { $0.contentOffset.y + $0.contentInsets.top }) { _, y in
+                let start = headerHeight - 140
+                let p = Double(min(1, max(0, (y - start) / 60)))
+                if abs(p - progress) > 0.01 || (p == 0) != (progress == 0) || (p == 1) != (progress == 1) { progress = p }
+            }
+            .scrollEdgeEffectHidden(progress < 1, for: .top)
+            .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
     }
 }
 
