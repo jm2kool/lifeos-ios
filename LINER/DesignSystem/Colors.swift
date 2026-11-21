@@ -13,6 +13,12 @@ enum Palette {
 
     static let cardFill = LinearGradient(colors: [cardTop, cardBottom], startPoint: .top, endPoint: .bottom)
     static let cornerRadius: CGFloat = 22
+
+    /// Cards on a page painted with artwork colours: see-through, so the colour runs underneath.
+    static let artCardFill = Color.black.opacity(0.24)
+    static let artStroke = Color.white.opacity(0.12)
+
+    static func cardFill(onArt: Bool) -> AnyShapeStyle { onArt ? AnyShapeStyle(artCardFill) : AnyShapeStyle(cardFill) }
 }
 
 extension Animation {

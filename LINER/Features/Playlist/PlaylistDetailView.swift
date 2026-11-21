@@ -1,15 +1,17 @@
 import SwiftUI
 
-/// A Music app playlist: cover mosaic, name and its songs.
+/// A Music app playlist: cover mosaic, name and its songs, on a page painted with the colours of its covers.
 struct PlaylistDetailView: View {
     let playlist: Playlist
     @Environment(LibraryService.self) private var library
+    @State private var colours: [ArtPalette.RGB] = []
 
     var body: some View {
         let songs = library.snapshot.songs(playlist.songIDs)
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 PlaylistCover(playlist: playlist).frame(maxWidth: 280).frame(maxWidth: .infinity)
+                    .shadow(color: .black.opacity(0.45), radius: 24, y: 12)
                 Text(playlist.name).font(.itemTitle)
                 Text("Playlist · \(songs.count) songs · \(songs.reduce(0) { $0 + $1.duration }.minutesLabel)").linerLabel(size: 10)
                 PlayShuffleRow(songs: songs)
@@ -24,7 +26,10 @@ struct PlaylistDetailView: View {
             }
             .padding(16)
         }
-        .background(Palette.background)
+        .artCanvas(colours)
+        .task(id: playlist.coverAlbumIDs) {
+            colours = await ArtPalette.albums(Array(playlist.coverAlbumIDs.prefix(4)))
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

@@ -2,7 +2,8 @@ import SwiftData
 import SwiftUI
 
 /// An album (SPEC §6.4): full-bleed cover (motion cover if attached), serif title, glass actions, facts,
-/// edition switcher, tracklist, listening history and your top 3 songs.
+/// edition switcher, tracklist, listening history and your top 3 songs. The cover's colours paint the whole page
+/// and drift about behind it, like the Apple Card.
 struct AlbumDetailView: View {
     let album: Album
     @Environment(LibraryService.self) private var library
@@ -13,6 +14,8 @@ struct AlbumDetailView: View {
     @AppStorage(AlbumTracklist.storageKey) private var savedOnlyAlbums = ""
     /// The album as Apple Music lists it (nil until fetched, or when Apple doesn't know it).
     @State private var catalog: [AppleCatalog.Track]?
+    /// Colours from the cover on show, for the page behind it.
+    @State private var colours: [ArtPalette.RGB] = []
 
     init(album: Album) {
         self.album = album
@@ -62,11 +65,16 @@ struct AlbumDetailView: View {
         let list = tracks
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                ZStack(alignment: .bottom) {
-                    AlbumHeaderArt(albumID: album.id, note: notes.first, edition: activeEdition)
-                        .aspectRatio(1, contentMode: .fit).clipped()
-                    LinearGradient(colors: [.clear, .black], startPoint: UnitPoint(x: 0.5, y: 0.55), endPoint: .bottom)
+                AlbumHeaderArt(albumID: album.id, note: notes.first, edition: activeEdition) { img, key in
+                    Task {
+                        let found = await ArtPalette.colours(of: [img], key: key)
+                        if !found.isEmpty { colours = found }
+                    }
                 }
+                .aspectRatio(1, contentMode: .fit).clipped()
+                // The cover melts into its own colours below.
+                .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.6),
+                                                 .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
                 VStack(alignment: .leading, spacing: 8) {
                     if let edition = activeEdition {
                         Text(edition.title).font(.itemTitle).lineLimit(3)
@@ -102,7 +110,7 @@ struct AlbumDetailView: View {
             .padding(.bottom, 32)
         }
         .environment(\.editionCover, activeEdition.map { EditionCover(editionID: $0.id, itemIDs: Set(list.map(\.id))) })
-        .background(Palette.background)
+        .artCanvas(colours)
         .ignoresSafeArea(edges: .top)
         .task(id: album.id) {
             let ids = library.snapshot.songs(album.songIDs).filter(\.hasStoreID).map(\.storeID)
@@ -189,6 +197,8 @@ struct AlbumHeaderArt: View {
     let albumID: UInt64
     let note: AlbumNote?
     let edition: Edition?
+    /// Told about the still cover once it's loaded, with a key for it (the page takes its colours).
+    var onImage: ((UIImage, String) -> Void)?
     @State private var image: UIImage?
     @State private var look = ArtworkLook.neutral
 
@@ -212,6 +222,7 @@ struct AlbumHeaderArt: View {
             if img == nil { img = CoverOverrides.shared.image(albumID) }
             if img == nil { img = await ArtworkCache.shared.image(album: albumID, pixels: 1400) }
             guard let img else { return }
+            onImage?(img, stillKey)
             look = await ArtworkAnalysis.look(for: img, key: stillKey)
             withAnimation(.easeIn(duration: 0.4)) { image = img }
         }

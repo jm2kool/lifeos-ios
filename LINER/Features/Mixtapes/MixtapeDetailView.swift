@@ -1,7 +1,8 @@
 import SwiftData
 import SwiftUI
 
-/// A mixtape's page, like an album: cover (or motion cover), title, Play/Shuffle, tracks, passport.
+/// A mixtape's page, like an album: cover (or motion cover), title, Play/Shuffle, tracks, passport, on a page
+/// painted with the cover's colours.
 struct MixtapeDetailView: View {
     @Bindable var mixtape: Mixtape
     @Environment(PassportPresenter.self) private var passports
@@ -10,6 +11,7 @@ struct MixtapeDetailView: View {
     @State private var adding = false
     @State private var busy = false
     @State private var confirmDelete = false
+    @State private var colours: [ArtPalette.RGB] = []
 
     private var items: [QueueItem] { mixtape.orderedTracks.map { .local(TrackResolver.local($0)) } }
 
@@ -17,14 +19,13 @@ struct MixtapeDetailView: View {
         let list = items
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                ZStack(alignment: .bottom) {
-                    ZStack {
-                        MixtapeCover(mixtape: mixtape, cornerRadius: 0)
-                        if let f = mixtape.motionCoverFile { LoopingVideo(url: MotionCoverFiles.url(f)) }
-                    }
-                    .aspectRatio(1, contentMode: .fit).clipped()
-                    LinearGradient(colors: [.clear, .black], startPoint: UnitPoint(x: 0.5, y: 0.55), endPoint: .bottom)
+                ZStack {
+                    MixtapeCover(mixtape: mixtape, cornerRadius: 0)
+                    if let f = mixtape.motionCoverFile { LoopingVideo(url: MotionCoverFiles.url(f)) }
                 }
+                .aspectRatio(1, contentMode: .fit).clipped()
+                .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.6),
+                                                 .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
                 VStack(alignment: .leading, spacing: 8) {
                     Text(mixtape.title).font(.itemTitle).lineLimit(3)
                     Text(mixtape.artist).linerLabel(size: 12)
@@ -48,8 +49,12 @@ struct MixtapeDetailView: View {
             }
             .padding(.bottom, 32)
         }
-        .background(Palette.background)
+        .artCanvas(colours)
         .ignoresSafeArea(edges: .top)
+        .task(id: mixtape.coverImage?.count ?? 0) {
+            guard let data = mixtape.coverImage, let img = UIImage(data: data) else { colours = []; return }
+            colours = await ArtPalette.colours(of: [img], key: "mixtape-\(mixtape.id)-\(data.count)")
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {

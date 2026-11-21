@@ -1,13 +1,14 @@
 import SwiftUI
 
 /// An Apple Music album, single or EP from an artist's Page: cover, title, Play and Shuffle, and the tracklist.
-/// Songs you own play from your library; the rest stream from Apple Music.
+/// Songs you own play from your library; the rest stream from Apple Music. The cover's colours paint the page.
 struct CatalogReleaseView: View {
     let release: AppleCatalog.Release
     @Environment(LibraryService.self) private var library
     @Environment(PlaybackCoordinator.self) private var player
     @State private var tracks: [AppleCatalog.Track] = []
     @State private var loading = true
+    @State private var colours: [ArtPalette.RGB] = []
 
     private var songs: [Song] {
         let mine = library.snapshot.songsByStoreID
@@ -54,7 +55,7 @@ struct CatalogReleaseView: View {
             }
             .padding(.bottom, 32)
         }
-        .background(Palette.background)
+        .artCanvas(colours)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -68,6 +69,10 @@ struct CatalogReleaseView: View {
         .task(id: release.id) {
             tracks = await AppleCatalog.tracks(of: release)
             loading = false
+        }
+        .task(id: release.id) {
+            guard let url = release.artwork else { return }
+            colours = await ArtPalette.web([url], key: "release-\(release.id)")
         }
     }
 

@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// An artist (SPEC §6.3): black-and-white portrait, serif name, Play/Shuffle, then a switch between their Page
+/// An artist (SPEC §6.3): black-and-white portrait washed in colour from their covers, the page painted with
+/// the same colours moving like the Apple Card, serif name, Play/Shuffle, then a switch between their Page
 /// (Apple Music's catalogue: top songs, albums, singles) and LINER. stats (your history with them, My Top
 /// Songs, totals, your albums and songs). The title style is picked in Settings → Artist titles.
 struct ArtistDetailView: View {
@@ -17,6 +18,8 @@ struct ArtistDetailView: View {
     @AppStorage("artist.tab") private var tab: Tab = .page
     @State private var page: AppleCatalog.ArtistPage?
     @State private var loadingPage = true
+    /// Colours from the artist's covers, for the page and the wash over the portrait.
+    @State private var colours: [ArtPalette.RGB] = []
 
     var body: some View {
         let albums = library.snapshot.albums(of: artist).sorted { $0.playCount > $1.playCount }
@@ -60,13 +63,24 @@ struct ArtistDetailView: View {
             }
             .padding(.bottom, 32)
         }
-        .background(Palette.background)
+        .artCanvas(colours)
         .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { titleStyle = ArtistTitleStyle.saved(for: artist.id) }
         .task(id: artist.id) {
             page = await AppleCatalog.artistPage(name: artist.name)
             loadingPage = false
+            // No covers of theirs in your library: take the colours from Apple Music's.
+            if colours.isEmpty, let page {
+                let urls = ([page.latest].compactMap { $0 } + page.albums.prefix(3)).compactMap(\.artwork)
+                let found = await ArtPalette.web(urls, key: "artist-web-\(artist.id)")
+                if colours.isEmpty { colours = found }
+            }
+        }
+        .task(id: artist.id) {
+            let ids = library.snapshot.albums(of: artist).sorted { $0.playCount > $1.playCount }.prefix(4).map(\.id)
+            let found = await ArtPalette.albums(Array(ids))
+            if !found.isEmpty { colours = found }
         }
         // One back button of our own: the system one could show twice over the full-bleed photo after a zoom
         // transition. Swipe-back still works. Title styles live in Settings → Artist titles.
@@ -87,18 +101,25 @@ struct ArtistDetailView: View {
 
     private func hero(releases: Int, genre: String) -> some View {
         ZStack(alignment: .bottomLeading) {
-            ArtistPortraitView(name: artist.name, fallbackAlbumID: artist.albumIDs.first) { img in
-                Task {
-                    let look = await ArtworkAnalysis.look(for: img, key: "artist-\(artist.id)")
-                    withAnimation(.easeOut(duration: 0.3)) { titleBackdrop = look.secondaryBrightness }
+            ZStack {
+                ArtistPortraitView(name: artist.name, fallbackAlbumID: artist.albumIDs.first) { img in
+                    Task {
+                        let look = await ArtworkAnalysis.look(for: img, key: "artist-\(artist.id)")
+                        withAnimation(.easeOut(duration: 0.3)) { titleBackdrop = look.secondaryBrightness }
+                    }
                 }
+                // The black-and-white photo takes the moving colours, like a print washed in ink.
+                ArtMesh(colours: colours).blendMode(.color).opacity(0.85)
+                    .animation(.easeInOut(duration: 0.9), value: colours)
             }
             .frame(height: 480).frame(maxWidth: .infinity).clipped()
+            // The photo melts into the painted page below it.
+            .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.55),
+                                         .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
             // Darker behind the title when the photo is bright there, so the name always reads.
-            LinearGradient(stops: [.init(color: .clear, location: 0.2),
-                                   .init(color: .black.opacity(0.35 + 0.3 * titleBackdrop), location: 0.5),
-                                   .init(color: .black.opacity(0.8 + 0.15 * titleBackdrop), location: 0.78),
-                                   .init(color: .black, location: 1)],
+            LinearGradient(stops: [.init(color: .clear, location: 0.3),
+                                   .init(color: .black.opacity(0.2 + 0.25 * titleBackdrop), location: 0.65),
+                                   .init(color: .black.opacity(0.3 + 0.25 * titleBackdrop), location: 1)],
                            startPoint: .top, endPoint: .bottom)
             VStack(alignment: .leading, spacing: 6) {
                 ArtistTitleView(name: artist.name, artistID: artist.id, genre: genre, style: titleStyle).id(titleStyle)

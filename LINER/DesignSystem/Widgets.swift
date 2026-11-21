@@ -6,6 +6,7 @@ struct StatTile: View {
     let label: String
     let value: String
     var footnote: String?
+    @Environment(\.onArt) private var onArt
 
     init(_ label: String, value: Int, footnote: String? = nil) { self.label = label; self.value = value.grouped; self.footnote = footnote }
     init(_ label: String, text: String, footnote: String? = nil) { self.label = label; self.value = text; self.footnote = footnote }
@@ -19,8 +20,8 @@ struct StatTile: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Palette.cardFill, in: RoundedRectangle(cornerRadius: Palette.cornerRadius, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Palette.cornerRadius, style: .continuous).stroke(Palette.stroke, lineWidth: 1))
+        .background(Palette.cardFill(onArt: onArt), in: RoundedRectangle(cornerRadius: Palette.cornerRadius, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Palette.cornerRadius, style: .continuous).stroke(onArt ? Palette.artStroke : Palette.stroke, lineWidth: 1))
         .accessibilityElement(children: .combine)
     }
 }
