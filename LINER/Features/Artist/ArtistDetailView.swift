@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// An artist (SPEC §6.3): black-and-white portrait washed in colour from their covers, the page painted with
-/// the same colours moving like the Apple Card, serif name, Play/Shuffle, then a switch between their Page
+/// An artist (SPEC §6.3): their photo in full colour down most of the screen, melting into a page painted in the
+/// photo's own colour (gently moving, like the Apple Card), stylised name, wide Play and Shuffle, Play/Shuffle, then a switch between their Page
 /// (Apple Music's catalogue: top songs, albums, singles) and LINER. stats (your history with them, My Top
 /// Songs, totals, your albums and songs). The title style is picked in Settings → Artist titles.
 struct ArtistDetailView: View {
@@ -18,8 +18,9 @@ struct ArtistDetailView: View {
     @AppStorage("artist.tab") private var tab: Tab = .page
     @State private var page: AppleCatalog.ArtistPage?
     @State private var loadingPage = true
-    /// Colours from the artist's covers, for the page and the wash over the portrait.
+    /// The page's colour: shades of the photo's main colour (or their covers' colours when there's no photo).
     @State private var colours: [ArtPalette.RGB] = []
+    @State private var hasPhoto = true
 
     var body: some View {
         let albums = library.snapshot.albums(of: artist).sorted { $0.playCount > $1.playCount }
@@ -29,19 +30,7 @@ struct ArtistDetailView: View {
             VStack(alignment: .leading, spacing: 26) {
                 hero(releases: albums.count, genre: genre)
                 let playable = tab == .page && !(page?.topSongs.isEmpty ?? true) ? catalogSongs : songs
-                ArtistTransport(play: { player.play(songs: playable) }) {
-                    GlassCircleButton(systemImage: "shuffle", label: "Shuffle", size: 56) { player.play(songs: playable, shuffled: true) }
-                } trailing: {
-                    ShareCardButton(make: {
-                        .artist(artist, rank: library.stats.rank(of: artist), minutes: library.stats.minutes(of: artist), topSong: songs.first)
-                    }, label: "Share")
-                    .labelStyle(.iconOnly)
-                    .font(.system(size: 20, weight: .semibold))
-                    .frame(width: 56, height: 56)
-                    .buttonStyle(.plain)
-                    .glassEffect(.regular.interactive(), in: .circle)
-                }
-                .disabled(playable.isEmpty)
+                transport(playable)
                 Picker("Show", selection: $tab.animation(.liner)) {
                     ForEach(Tab.allCases) { t in Text(t == .stats ? "\(AppBrand.name) stats" : t.rawValue).tag(t) }
                 }
@@ -70,17 +59,8 @@ struct ArtistDetailView: View {
         .task(id: artist.id) {
             page = await AppleCatalog.artistPage(name: artist.name)
             loadingPage = false
-            // No covers of theirs in your library: take the colours from Apple Music's.
-            if colours.isEmpty, let page {
-                let urls = ([page.latest].compactMap { $0 } + page.albums.prefix(3)).compactMap(\.artwork)
-                let found = await ArtPalette.web(urls, key: "artist-web-\(artist.id)")
-                if colours.isEmpty { colours = found }
-            }
-        }
-        .task(id: artist.id) {
-            let ids = library.snapshot.albums(of: artist).sorted { $0.playCount > $1.playCount }.prefix(4).map(\.id)
-            let found = await ArtPalette.albums(Array(ids))
-            if !found.isEmpty { colours = found }
+            // No photo and none of their covers in your library: Apple Music's covers will do.
+            if !hasPhoto && colours.isEmpty { await coverColours() }
         }
         // One back button of our own: the system one could show twice over the full-bleed photo after a zoom
         // transition. Swipe-back still works. Title styles live in Settings → Artist titles.
@@ -90,7 +70,16 @@ struct ArtistDetailView: View {
             ToolbarItem(placement: .topBarLeading) {
                 Button("Back", systemImage: "chevron.left") { dismiss() }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                ShareCardButton(make: {
+                    .artist(artist, rank: library.stats.rank(of: artist), minutes: library.stats.minutes(of: artist), topSong: songsForShare.first)
+                }, label: "Share")
+            }
         }
+    }
+
+    private var songsForShare: [Song] {
+        library.snapshot.songs(of: artist).sorted { $0.playCount > $1.playCount }
     }
 
     /// The Page's top songs, ready to queue (your copies where you have them).
@@ -99,35 +88,72 @@ struct ArtistDetailView: View {
         return (page?.topSongs ?? []).map { $0.song(in: library.snapshot, byStoreID: mine) }
     }
 
+    /// The artist's photo in full colour, nearly the height of the screen, melting into the page painted in its
+    /// own colour, with the name and release count over its foot.
     private func hero(releases: Int, genre: String) -> some View {
         ZStack(alignment: .bottomLeading) {
-            ZStack {
-                ArtistPortraitView(name: artist.name, fallbackAlbumID: artist.albumIDs.first) { img in
-                    Task {
-                        let look = await ArtworkAnalysis.look(for: img, key: "artist-\(artist.id)")
-                        withAnimation(.easeOut(duration: 0.3)) { titleBackdrop = look.secondaryBrightness }
-                    }
-                }
-                // The black-and-white photo takes the moving colours, like a print washed in ink.
-                ArtMesh(colours: colours).blendMode(.color).opacity(0.85)
-                    .animation(.easeInOut(duration: 0.9), value: colours)
+            ArtistPortraitView(name: artist.name, fallbackAlbumID: artist.albumIDs.first, colour: true) { img in
+                Task { await photoLoaded(img) }
             }
-            .frame(height: 480).frame(maxWidth: .infinity).clipped()
-            // The photo melts into the painted page below it.
-            .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.55),
+            .frame(maxWidth: .infinity, maxHeight: .infinity).clipped()
+            .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.68),
                                          .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
-            // Darker behind the title when the photo is bright there, so the name always reads.
-            LinearGradient(stops: [.init(color: .clear, location: 0.3),
-                                   .init(color: .black.opacity(0.2 + 0.25 * titleBackdrop), location: 0.65),
-                                   .init(color: .black.opacity(0.3 + 0.25 * titleBackdrop), location: 1)],
+            // A little shade behind the title when the photo is bright there, so the name always reads.
+            LinearGradient(stops: [.init(color: .clear, location: 0.55),
+                                   .init(color: .black.opacity(0.25 * titleBackdrop), location: 0.8),
+                                   .init(color: .black.opacity(0.15 * titleBackdrop), location: 1)],
                            startPoint: .top, endPoint: .bottom)
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
                 ArtistTitleView(name: artist.name, artistID: artist.id, genre: genre, style: titleStyle).id(titleStyle)
-                Text("Artist · \(releases) release\(releases == 1 ? "" : "s")").linerLabel()
+                Text("Artist · \(releases) release\(releases == 1 ? "" : "s")").linerLabel(size: 12)
             }
-            .padding(16)
+            .padding(.horizontal, 20).padding(.bottom, 8)
         }
-        .frame(height: 480)
+        .containerRelativeFrame(.vertical) { h, _ in h * 0.78 }
+    }
+
+    /// Paints the page in the photo's colour; with no photo, in the colours of their covers instead.
+    private func photoLoaded(_ img: UIImage?) async {
+        guard let img else { hasPhoto = false; await coverColours(); return }
+        let look = await ArtworkAnalysis.look(for: img, key: "artist-\(artist.id)")
+        withAnimation(.easeOut(duration: 0.3)) { titleBackdrop = look.secondaryBrightness }
+        let tint = await ArtPalette.tint(of: img, key: "artist-photo-\(artist.id)")
+        if !tint.isEmpty { colours = tint }
+    }
+
+    private func coverColours() async {
+        let ids = library.snapshot.albums(of: artist).sorted { $0.playCount > $1.playCount }.prefix(4).map(\.id)
+        var found = await ArtPalette.albums(Array(ids))
+        if found.isEmpty, let page {
+            let urls = ([page.latest].compactMap { $0 } + page.albums.prefix(3)).compactMap(\.artwork)
+            found = await ArtPalette.web(urls, key: "artist-web-\(artist.id)")
+        }
+        if !found.isEmpty { colours = found }
+    }
+
+    /// Play and Shuffle side by side as wide glass pills, tinted with the page's colour.
+    private func transport(_ playable: [Song]) -> some View {
+        let tint = colours.first.map { Color(red: Double($0.x), green: Double($0.y), blue: Double($0.z)) } ?? .clear
+        return GlassEffectContainer(spacing: 14) {
+            HStack(spacing: 14) {
+                pill("Play", symbol: "play.fill", tint: tint) { player.play(songs: playable) }
+                pill("Shuffle", symbol: "shuffle", tint: tint) { player.play(songs: playable, shuffled: true) }
+            }
+        }
+        .padding(.horizontal, 20)
+        .disabled(playable.isEmpty)
+    }
+
+    private func pill(_ title: String, symbol: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: symbol)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity).frame(height: 54)
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .glassEffect(.regular.tint(tint.opacity(0.45)).interactive(), in: .capsule)
     }
 
     private var totals: some View {

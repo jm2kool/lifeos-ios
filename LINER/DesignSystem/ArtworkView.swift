@@ -41,12 +41,14 @@ struct ArtworkView: View {
     }
 }
 
-/// A black-and-white artist photo, falling back to their top album's cover (also in black and white).
+/// A black-and-white artist photo (or in colour, for the artist page), falling back to their top album's cover.
 struct ArtistPortraitView: View {
     let name: String
     var fallbackAlbumID: UInt64?
-    /// Told about the photo once it's loaded (the artist page uses it to keep the title readable).
-    var onLoad: ((UIImage) -> Void)?
+    var colour = false
+    /// Told about the photo once it's loaded, or nil when there isn't one (the artist page takes its colours
+    /// and keeps the title readable from it).
+    var onLoad: ((UIImage?) -> Void)?
     @State private var portrait: UIImage?
     @State private var tried = false
 
@@ -55,17 +57,17 @@ struct ArtistPortraitView: View {
             if let portrait {
                 FillImage(image: portrait).transition(.opacity)
             } else if tried {
-                ArtworkView(albumID: fallbackAlbumID, cornerRadius: 0).grayscale(1)
+                ArtworkView(albumID: fallbackAlbumID, cornerRadius: 0).grayscale(colour ? 0 : 1)
             } else {
                 Palette.placeholder
             }
         }
         .clipped()
         .task(id: name) {
-            if let hit = ArtistImageStore.shared.cached(name) { portrait = hit; tried = true; onLoad?(hit); return }
-            let loaded = await ArtistImageStore.shared.portrait(for: name)
+            if let hit = ArtistImageStore.shared.cached(name, colour: colour) { portrait = hit; tried = true; onLoad?(hit); return }
+            let loaded = await ArtistImageStore.shared.portrait(for: name, colour: colour)
             withAnimation(.easeOut(duration: 0.25)) { portrait = loaded; tried = true }
-            if let loaded { onLoad?(loaded) }
+            onLoad?(loaded)
         }
         .accessibilityHidden(true)
     }

@@ -31,6 +31,22 @@ enum ArtPalette {
         return toned
     }
 
+    /// One colour from a photo, in a few close shades: the page reads as a single colour that gently breathes
+    /// (the artist page, painted from the artist's photo).
+    @concurrent
+    static func tint(of image: UIImage, key: String) async -> [RGB] {
+        if let hit = cached(key) { return hit }
+        guard let cg = image.cgImage, let lead = swatches(cg).first else { return [] }
+        let (h, s0, v0) = hsv(lead)
+        let neutral = s0 < 0.15
+        let s = neutral ? s0 : min(1, max(s0, 0.6))
+        let v = neutral ? min(max(v0, 0.18), 0.32) : min(max(v0, 0.34), 0.52)
+        let near = { (shift: Float) in (h + shift + 1).truncatingRemainder(dividingBy: 1) }
+        let out = [rgb(h, s, v), rgb(near(0.015), s, v * 0.8), rgb(near(-0.015), s * 0.92, min(1, v * 1.15)), rgb(h, s, v * 0.62)]
+        lock.withLock { cache[key] = out }
+        return out
+    }
+
     /// Colours from library album covers (your own cover where you set one).
     @MainActor
     static func albums(_ ids: [UInt64]) async -> [RGB] {
