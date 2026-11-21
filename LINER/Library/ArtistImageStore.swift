@@ -1,4 +1,6 @@
 import CoreImage
+import PhotosUI
+import SwiftUI
 import CoreImage.CIFilterBuiltins
 import UIKit
 
@@ -35,6 +37,12 @@ final class ArtistImageStore: @unchecked Sendable {
         guard !key.isEmpty else { return nil }
         let mkey = Self.memoryKey(key, colour: colour)
         if let hit = memory.object(forKey: mkey as NSString) { return hit }
+        // Your own photo wins over the catalogue's.
+        if let own = ownImage(key) {
+            let img = colour ? own : (Self.noir(own) ?? own)
+            memory.setObject(img, forKey: mkey as NSString)
+            return img
+        }
         if let data = try? Data(contentsOf: folder.appending(path: "\(mkey).jpg")), let img = UIImage(data: data) {
             memory.setObject(img, forKey: mkey as NSString)
             return img
@@ -45,6 +53,32 @@ final class ArtistImageStore: @unchecked Sendable {
         let noir = Self.noir(original)
         if let noir { store(noir, as: key) }
         return colour ? original : noir
+    }
+
+    // MARK: - Your own photo
+
+    private func ownFile(_ key: String) -> URL { folder.appending(path: "own-\(key).jpg") }
+
+    private func ownImage(_ key: String) -> UIImage? {
+        (try? Data(contentsOf: ownFile(key))).flatMap(UIImage.init(data:))
+    }
+
+    func hasOwn(_ name: String) -> Bool { FileManager.default.fileExists(atPath: ownFile(MediaKey.normalise(name)).path) }
+
+    /// Saves your own photo for an artist (nil goes back to the catalogue's). Large photos are scaled down.
+    @concurrent
+    func setOwn(_ data: Data?, for name: String) async {
+        let key = MediaKey.normalise(name)
+        guard !key.isEmpty else { return }
+        if let data, let img = UIImage(data: data) {
+            let side = max(img.size.width, img.size.height), limit: CGFloat = 1800
+            let out = side > limit ? img.preparingThumbnail(of: CGSize(width: img.size.width * limit / side, height: img.size.height * limit / side)) ?? img : img
+            if let jpeg = out.jpegData(compressionQuality: 0.88) { try? jpeg.write(to: ownFile(key), options: .atomic) }
+        } else {
+            try? FileManager.default.removeItem(at: ownFile(key))
+        }
+        memory.removeObject(forKey: key as NSString)
+        memory.removeObject(forKey: Self.memoryKey(key, colour: true) as NSString)
     }
 
     private func store(_ image: UIImage, as name: String) {
@@ -82,5 +116,31 @@ final class ArtistImageStore: @unchecked Sendable {
         contrast.contrast = 1.1
         guard let out = contrast.outputImage, let cg = context.createCGImage(out, from: input.extent) else { return nil }
         return UIImage(cgImage: cg)
+    }
+}
+
+/// Your own artist photos: picks them from Photos and tells every photo on screen to reload.
+@MainActor @Observable
+final class ArtistPhotos {
+    static let shared = ArtistPhotos()
+    private var versions: [String: Int] = [:]
+
+    /// Changes each time the artist's photo is changed, so views and colours taken from it refresh.
+    func version(_ name: String) -> Int { versions[MediaKey.normalise(name)] ?? 0 }
+
+    func hasOwn(_ name: String) -> Bool {
+        _ = version(name)
+        return ArtistImageStore.shared.hasOwn(name)
+    }
+
+    func choose(_ item: PhotosPickerItem, for name: String) async {
+        guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+        await ArtistImageStore.shared.setOwn(data, for: name)
+        versions[MediaKey.normalise(name), default: 0] += 1
+    }
+
+    func reset(_ name: String) async {
+        await ArtistImageStore.shared.setOwn(nil, for: name)
+        versions[MediaKey.normalise(name), default: 0] += 1
     }
 }

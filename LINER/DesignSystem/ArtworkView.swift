@@ -63,7 +63,7 @@ struct ArtistPortraitView: View {
             }
         }
         .clipped()
-        .task(id: name) {
+        .task(id: "\(name)-\(ArtistPhotos.shared.version(name))") {
             if let hit = ArtistImageStore.shared.cached(name, colour: colour) { portrait = hit; tried = true; onLoad?(hit); return }
             let loaded = await ArtistImageStore.shared.portrait(for: name, colour: colour)
             withAnimation(.easeOut(duration: 0.25)) { portrait = loaded; tried = true }

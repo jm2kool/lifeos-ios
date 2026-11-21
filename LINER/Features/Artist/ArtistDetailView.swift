@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 /// An artist (SPEC §6.3): their photo in full colour down most of the screen, melting into a page painted in the
@@ -25,6 +26,8 @@ struct ArtistDetailView: View {
     /// The page's colour: shades of the photo's main colour (or their covers' colours when there's no photo).
     @State private var colours: [ArtPalette.RGB] = []
     @State private var hasPhoto = true
+    @State private var choosingPhoto = false
+    @State private var photoItem: PhotosPickerItem?
 
     var body: some View {
         let albums = library.snapshot.albums(of: artist).sorted { $0.playCount > $1.playCount }
@@ -77,6 +80,15 @@ struct ArtistDetailView: View {
         }
         // One back button of our own: the system one could show twice over the full-bleed photo after a zoom
         // transition. Swipe-back still works. Title styles live in Settings → Artist titles.
+        .photosPicker(isPresented: $choosingPhoto, selection: $photoItem, matching: .images)
+        .onChange(of: photoItem) { _, item in
+            guard let item else { return }
+            Task {
+                await ArtistPhotos.shared.choose(item, for: artist.name)
+                photoItem = nil
+                player.notice = "Photo set for \(artist.name)."
+            }
+        }
         .navigationBarBackButtonHidden(true)
         .keepsSwipeBack()
         .toolbar {
@@ -88,9 +100,17 @@ struct ArtistDetailView: View {
                     .frame(maxHeight: 30).opacity(scrolled).allowsHitTesting(false)
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button(LookStore.shared.logo(LookKey.artist(artist.name)) == nil ? "Add Logo" : "Edit Logo", systemImage: "signature") {
-                    passports.look = .artist(artist)
-                }
+                Menu {
+                    Button("Choose Photo…", systemImage: "photo") { choosingPhoto = true }
+                    if ArtistPhotos.shared.hasOwn(artist.name) {
+                        Button("Use Original Photo", systemImage: "arrow.uturn.backward", role: .destructive) {
+                            Task { await ArtistPhotos.shared.reset(artist.name) }
+                        }
+                    }
+                    Button(LookStore.shared.logo(LookKey.artist(artist.name)) == nil ? "Add Logo…" : "Edit Logo…", systemImage: "signature") {
+                        passports.look = .artist(artist)
+                    }
+                } label: { Label("Edit", systemImage: "paintbrush") }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 ShareCardButton(make: {
@@ -146,9 +166,10 @@ struct ArtistDetailView: View {
     /// Paints the page in the photo's colour; with no photo, in the colours of their covers instead.
     private func photoLoaded(_ img: UIImage?) async {
         guard let img else { hasPhoto = false; await coverColours(); return }
-        let look = await ArtworkAnalysis.look(for: img, key: "artist-\(artist.id)")
+        let version = ArtistPhotos.shared.version(artist.name)
+        let look = await ArtworkAnalysis.look(for: img, key: "artist-\(artist.id)-\(version)")
         withAnimation(.easeOut(duration: 0.3)) { titleBackdrop = look.secondaryBrightness }
-        let tint = await ArtPalette.tint(of: img, key: "artist-photo-\(artist.id)")
+        let tint = await ArtPalette.tint(of: img, key: "artist-photo-\(artist.id)-\(version)")
         if !tint.isEmpty { withAnimation(.easeInOut(duration: 0.9)) { colours = tint } }
     }
 
