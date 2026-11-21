@@ -12,6 +12,10 @@ struct ArtistDetailView: View {
     @Environment(LibraryService.self) private var library
     @Environment(PlaybackCoordinator.self) private var player
     @Environment(\.dismiss) private var dismiss
+    @Environment(PassportPresenter.self) private var passports
+    /// How far the photo has scrolled away (0…1): the name moves into the top bar.
+    @State private var scrolled = 0.0
+    @State private var heroHeight: CGFloat = 600
     @State private var titleStyle: ArtistTitleStyle = .auto
     /// How bright the photo is where the title sits (0 dark … 1 bright).
     @State private var titleBackdrop = 0.0
@@ -52,6 +56,7 @@ struct ArtistDetailView: View {
             }
             .padding(.bottom, 32)
         }
+        .headerScrollProgress(headerHeight: heroHeight, progress: $scrolled)
         .artCanvas(colours)
         .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
@@ -69,6 +74,15 @@ struct ArtistDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button("Back", systemImage: "chevron.left") { dismiss() }
+            }
+            ToolbarItem(placement: .principal) {
+                ArtistTitleView(name: artist.name, artistID: artist.id, genre: "", size: 17, style: titleStyle)
+                    .frame(maxHeight: 30).opacity(scrolled).allowsHitTesting(false)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(LookStore.shared.logo(LookKey.artist(artist.name)) == nil ? "Add Logo" : "Edit Logo", systemImage: "signature") {
+                    passports.look = .artist(artist)
+                }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 ShareCardButton(make: {
@@ -104,12 +118,20 @@ struct ArtistDetailView: View {
                                    .init(color: .black.opacity(0.15 * titleBackdrop), location: 1)],
                            startPoint: .top, endPoint: .bottom)
             VStack(alignment: .leading, spacing: 8) {
-                ArtistTitleView(name: artist.name, artistID: artist.id, genre: genre, style: titleStyle).id(titleStyle)
+                ArtistTitleView(name: artist.name, artistID: artist.id, genre: genre, style: titleStyle, skipPlaced: true).id(titleStyle)
                 Text("Artist · \(releases) release\(releases == 1 ? "" : "s")").linerLabel(size: 12)
             }
             .padding(.horizontal, 20).padding(.bottom, 8)
         }
         .containerRelativeFrame(.vertical) { h, _ in h * 0.78 }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { heroHeight = $0 }
+        // Your own logo, where you placed it on the photo.
+        .overlay {
+            let key = LookKey.artist(artist.name), look = LookStore.shared.look(key)
+            if let logo = LookStore.shared.logo(key), let placement = look.placement {
+                PlacedLogo(image: logo, look: look, placement: placement).opacity(1 - scrolled)
+            }
+        }
     }
 
     /// Paints the page in the photo's colour; with no photo, in the colours of their covers instead.

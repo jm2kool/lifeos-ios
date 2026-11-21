@@ -106,7 +106,7 @@ enum AppleCatalog {
 
     // MARK: Requests
 
-    private static func artistID(_ name: String) async -> Int? {
+    static func artistID(_ name: String) async -> Int? {
         let found = results(await fetch("search", ["term": name, "entity": "musicArtist", "attribute": "artistTerm", "limit": "10"]))
         let wanted = MediaKey.normalise(name)
         let match = found.first { MediaKey.normalise($0["artistName"] as? String ?? "") == wanted } ?? found.first

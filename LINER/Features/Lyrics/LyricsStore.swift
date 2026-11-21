@@ -12,7 +12,7 @@ enum LyricsStore {
             return Lyrics(lines: lines, plain: lines.isEmpty ? lrc : nil)
         }
         let id = item.id
-        if !refresh, let cached = cache(id) {
+        if let cached = cache(id), !refresh || cached.edited {
             return make(cached.lrc, cached.plain)
         }
         guard UserDefaults.standard.string(forKey: "lyricsSource") != "off" else { return nil }
@@ -22,6 +22,31 @@ enum LyricsStore {
         context.insert(LyricsCache(itemID: id, lrc: result?.synced, plain: result?.plain))
         Store.shared.save()
         return make(result?.synced, result?.plain)
+    }
+
+    /// Saves lyrics you edited (as LRC). Mixtape tracks keep them on the track itself.
+    static func saveEdited(_ lrc: String, for item: QueueItem) {
+        if case .local(let t) = item, let track = TrackResolver.mixtapeTrack(t.id) {
+            track.lyricsLRC = lrc
+        } else {
+            let context = Store.shared.context
+            let old = cache(item.id)
+            let plain = old?.plain
+            if let old { context.delete(old) }
+            let fresh = LyricsCache(itemID: item.id, lrc: lrc, plain: plain)
+            fresh.edited = true
+            context.insert(fresh)
+        }
+        Store.shared.save()
+        LyricsEdits.shared.revision += 1
+    }
+
+    /// Drops your edits and fetches the lyrics again.
+    static func discardEdits(for item: QueueItem) async -> Lyrics? {
+        if let old = cache(item.id) { Store.shared.context.delete(old); Store.shared.save() }
+        let fresh = await lyrics(for: item, refresh: true)
+        LyricsEdits.shared.revision += 1
+        return fresh
     }
 
     private static func cache(_ id: String) -> LyricsCache? {
@@ -35,4 +60,11 @@ enum LyricsStore {
         if lines.isEmpty && (plain ?? "").isEmpty { return nil }
         return Lyrics(lines: lines, plain: plain)
     }
+}
+
+/// Bumped when you edit lyrics, so open lyric views reload.
+@MainActor @Observable
+final class LyricsEdits {
+    static let shared = LyricsEdits()
+    var revision = 0
 }

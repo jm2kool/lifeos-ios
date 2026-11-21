@@ -22,6 +22,8 @@ final class PassportPresenter {
     var song: QueueItem?
     var album: AlbumSubject?
     var editions: AlbumSubject?
+    /// A logo, font or pin cover to change.
+    var look: LookRequest?
     /// Customise Album, for this album.
     var customise: Album?
 }

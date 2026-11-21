@@ -44,38 +44,3 @@ final class AlbumLogoStore {
         return img
     }
 }
-
-/// An album's title: its logo when the cover has a clean one, otherwise the title in text.
-struct AlbumTitle: View {
-    let albumID: UInt64
-    let title: String
-    /// The chosen title size (Customise Album → Text size), 1 for standard.
-    var scale: CGFloat = 1
-    @AppStorage(AlbumText.plainTitlesKey) private var plainTitles = ""
-    @State private var logo: UIImage?
-
-    private var plain: Bool { AlbumTracklist.savedOnly("album-\(albumID)", in: plainTitles) }
-
-    var body: some View {
-        Group {
-            if let logo, !plain {
-                Image(uiImage: logo).resizable().scaledToFit()
-                    .frame(maxWidth: 300 * scale, maxHeight: 110 * scale, alignment: .leading)
-                    .shadow(color: .black.opacity(0.5), radius: 8)
-                    .accessibilityLabel(title)
-                    .transition(.opacity)
-            } else {
-                Text(title).font(.serif(30 * scale)).lineLimit(3)
-            }
-        }
-        .task(id: albumID) {
-            let found = await AlbumLogoStore.shared.logo(albumID: albumID, title: title)
-            withAnimation(.easeIn(duration: 0.3)) { logo = found }
-        }
-    }
-}
-
-#Preview {
-    AlbumTitle(albumID: PreviewData.snapshot.albums[0].id, title: PreviewData.snapshot.albums[0].title)
-        .padding().background(.black).preferredColorScheme(.dark)
-}

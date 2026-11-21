@@ -34,12 +34,16 @@ struct RootView: View {
             }
         }
         .overlay(alignment: .top) { ErrorBanner() }
+        // Lets the sleep timer and Automix fade Apple Music songs without the volume overlay.
+        .background { HiddenVolumeView().frame(width: 1, height: 1).allowsHitTesting(false) }
         .sheet(item: $passports.song) { SongPassportSheet(item: $0) }
         .sheet(item: $passports.album) { AlbumPassportSheet(subject: $0) }
         .sheet(item: $passports.editions) { EditionsSheet(subject: $0) }
+        .sheet(item: $passports.look) { LookSheet(request: $0) }
         .sheet(item: $passports.customise) { AlbumCustomiseSheet(album: $0) }
         .sheet(item: $prompts.current, onDismiss: { NewAlbumPrompts.shared.showNext(library.snapshot) }) { AlbumRatingPrompt(album: $0) }
         .task { if library.isAuthorized && connected && !library.hasLoaded { await library.refresh() } }
+        .task(id: library.snapshot.scannedAt) { if library.hasLoaded { await SplashCover.update(library.snapshot) } }
         .onOpenURL { url in Task { await openFile(url) } }
         .onChange(of: phase) { _, now in
             if now == .active && library.hasLoaded { library.recheckAccess(); Task { await library.refresh() } }

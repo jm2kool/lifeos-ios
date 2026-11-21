@@ -47,7 +47,9 @@ struct GatefoldCover: View {
     private func meta(_ u: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(kicker).font(.system(size: 2.6 * u, weight: .semibold)).tracking(0.6 * u).textCase(.uppercase).foregroundStyle(tint)
-            Text(record.title).font(.serif(17 * u)).lineLimit(2).minimumScaleFactor(0.45).padding(.top, 2 * u)
+            AlbumLogoTitle(lookKey: record.lookKey, albumID: record.albumID, title: record.title, maxWidth: 80 * u, maxHeight: 26 * u,
+                           font: .serif(17 * u), fontSize: 17 * u, lineLimit: 2)
+                .minimumScaleFactor(0.45).padding(.top, 2 * u)
             Text(record.artist).font(.system(size: 3 * u, weight: .semibold)).tracking(0.75 * u).textCase(.uppercase).padding(.top, 2.4 * u)
             facts(u).padding(.top, 5.5 * u)
             if !writers.isEmpty {
@@ -127,7 +129,7 @@ struct GatefoldTracks: View {
     var body: some View {
         let u = width / 100
         ZStack(alignment: .bottomLeading) {
-            Color(white: 0.05)
+            SleeveBackdrop(record: record, cover: cover, u: u)
             LinearGradient(colors: [.black.opacity(0.7), .clear], startPoint: .leading, endPoint: .trailing)
                 .frame(width: 16 * u).frame(maxHeight: .infinity, alignment: .leading)
             ScrollView {
@@ -149,7 +151,7 @@ struct GatefoldTracks: View {
                 .opacity(recordOut ? 0 : 1)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
                 .allowsHitTesting(false)
-            LinearGradient(colors: [.clear, Color(white: 0.05)], startPoint: .top, endPoint: .bottom)
+            LinearGradient(colors: [.clear, .black.opacity(0.55)], startPoint: .top, endPoint: .bottom)
                 .frame(height: 22 * u).allowsHitTesting(false)
             Button { onPlay(0) } label: {
                 Label("Put it on", systemImage: "play.fill").font(.system(size: 4 * u, weight: .bold))
@@ -173,7 +175,9 @@ struct GatefoldTracks: View {
             Group { if let cover { FillImage(image: cover) } else { ArtworkView(albumID: record.albumID, cornerRadius: 0) } }
                 .frame(width: 15 * u, height: 15 * u).clipShape(RoundedRectangle(cornerRadius: 0.8 * u))
             VStack(alignment: .leading, spacing: 1.6 * u) {
-                Text(record.title).font(.serif(7.4 * u)).lineLimit(1).minimumScaleFactor(0.6)
+                AlbumLogoTitle(lookKey: record.lookKey, albumID: record.albumID, title: record.title, maxWidth: 60 * u, maxHeight: 9 * u,
+                               font: .serif(7.4 * u), fontSize: 7.4 * u, lineLimit: 1)
+                    .minimumScaleFactor(0.6)
                 Text(record.artist).font(.system(size: 2.6 * u, weight: .semibold)).tracking(0.65 * u).textCase(.uppercase)
                     .foregroundStyle(Palette.label).lineLimit(1)
                 if let t = tracklist { switcher(t, u) }
@@ -225,7 +229,7 @@ struct GatefoldTracks: View {
                 }
                 .font(.system(size: 2.8 * u, weight: .semibold)).monospacedDigit()
                 .frame(width: 9 * u, alignment: .leading)
-                Text(item.title).font(.serif(4.6 * u)).foregroundStyle(playing ? tint : .white).lineLimit(1)
+                Text(item.title).albumFace(4.6 * u, fallback: .serif(4.6 * u)).foregroundStyle(playing ? tint : .white).lineLimit(1)
                 Spacer(minLength: 3 * u)
                 Text(item.duration.trackTime).font(.system(size: 3.2 * u)).foregroundStyle(Palette.label).monospacedDigit()
             }
@@ -236,6 +240,34 @@ struct GatefoldTracks: View {
         .buttonStyle(.plain)
         .accessibilityLabel("\(side)\(number), \(item.title)")
         .accessibilityHint("Puts the record on from this song")
+    }
+}
+
+/// The inner sleeve's paper: a deep blur of the cover's colours, with your logo (or the cover's own lettering)
+/// printed large and faint across it.
+struct SleeveBackdrop: View {
+    let record: VinylRecord
+    let cover: UIImage?
+    let u: CGFloat
+
+    var body: some View {
+        ZStack {
+            Color(white: 0.05)
+            Group { if let cover { FillImage(image: cover) } else { ArtworkView(albumID: record.albumID, cornerRadius: 0) } }
+                .blur(radius: 26 * u, opaque: true)
+                .saturation(1.3)
+                .opacity(0.85)
+            LinearGradient(colors: [.black.opacity(0.35), .black.opacity(0.62)], startPoint: .top, endPoint: .bottom)
+            AlbumLogoTitle(lookKey: record.lookKey, albumID: record.albumID, title: record.title, maxWidth: 84 * u, maxHeight: 40 * u,
+                           font: .serif(22 * u), fontSize: 22 * u, lineLimit: 2, alignment: .center)
+                .multilineTextAlignment(.center)
+                .opacity(0.12)
+                .blendMode(.plusLighter)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .offset(y: -8 * u)
+                .accessibilityHidden(true)
+        }
+        .allowsHitTesting(false)
     }
 }
 

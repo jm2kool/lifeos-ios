@@ -3,20 +3,24 @@ import SwiftUI
 
 /// An album (SPEC §6.4): full-bleed cover (motion cover if attached), serif title, glass actions, facts,
 /// edition switcher, tracklist, listening history and your top 3 songs. The cover's colours paint the whole page
-/// and drift about behind it, like the Apple Card.
+/// and drift about behind it, like the Apple Card; Customise Album changes everything else about it.
 struct AlbumDetailView: View {
     let album: Album
     @Environment(LibraryService.self) private var library
     @Environment(PassportPresenter.self) private var passports
-    @AppStorage(AlbumText.titleKey) private var titleScale = 1.0
     @Environment(\.openURL) private var openURL
     @Query private var notes: [AlbumNote]
     @Query private var editions: [Edition]
     @AppStorage(AlbumTracklist.storageKey) private var savedOnlyAlbums = ""
     /// The album as Apple Music lists it (nil until fetched, or when Apple doesn't know it).
     @State private var catalog: [AppleCatalog.Track]?
+    @State private var headerHeight: CGFloat = 400
+    @State private var scrolled = 0.0
+    @State private var coverColor = Color.white
+    @State private var djMix = false
     /// Colours from the cover on show, for the page behind it.
     @State private var colours: [ArtPalette.RGB] = []
+    @AppStorage(AlbumText.titleKey) private var titleScale = 1.0
 
     init(album: Album) {
         self.album = album
@@ -31,6 +35,7 @@ struct AlbumDetailView: View {
     }
 
     private var subjectID: String { "album-\(album.id)" }
+    private var lookKey: String { LookKey.album(album.id) }
     private var savedOnly: Bool { AlbumTracklist.savedOnly(subjectID, in: savedOnlyAlbums) }
     private var saved: [QueueItem] { library.snapshot.songs(album.songIDs).map(QueueItem.library) }
 
@@ -66,21 +71,20 @@ struct AlbumDetailView: View {
         let list = tracks
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                AlbumHeaderArt(albumID: album.id, note: notes.first, edition: activeEdition) { img, key in
-                    Task {
-                        let found = await ArtPalette.colours(of: [img], key: key)
-                        if !found.isEmpty { colours = found }
+                CoverHeader(lookKey: lookKey, backdrop: .album(album.id), coverColor: coverColor, scrolled: scrolled, height: $headerHeight) {
+                    AlbumHeaderArt(albumID: album.id, note: notes.first, edition: activeEdition) { img, key in
+                        Task {
+                            let found = await ArtPalette.colours(of: [img], key: key)
+                            if !found.isEmpty { colours = found }
+                        }
                     }
                 }
-                .aspectRatio(1, contentMode: .fit).clipped()
-                // The cover melts into its own colours below.
-                .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.6),
-                                                 .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
                 VStack(alignment: .leading, spacing: 8) {
                     if let edition = activeEdition {
-                        Text(edition.title).font(.serif(30 * titleScale)).lineLimit(3)
+                        Text(edition.title).albumFace(30 * titleScale, fallback: .serif(30 * titleScale)).lineLimit(3)
                     } else {
-                        AlbumTitle(albumID: album.id, title: album.title, scale: titleScale)
+                        AlbumLogoTitle(lookKey: lookKey, albumID: album.id, title: album.title, maxWidth: 300 * titleScale, maxHeight: 110 * titleScale,
+                                       font: .serif(30 * titleScale), fontSize: 30 * titleScale, coverColor: coverColor, skipPlaced: true)
                     }
                     if let artist = library.snapshot.artist(named: album.artist) {
                         NavigationLink(value: artist) { Text(album.artist).linerLabel(size: 12 * titleScale) }.buttonStyle(.plain)
@@ -108,12 +112,18 @@ struct AlbumDetailView: View {
                         .font(.footnote).foregroundStyle(Palette.label).padding(16)
                 }
                 AlbumHistory(album: album, songs: library.snapshot.songs(album.songIDs)).padding(.horizontal, 16).padding(.top, 8)
+                OtherEditionsShelf(title: album.title, artist: album.artist, excludingName: album.title).padding(.top, 28)
             }
             .padding(.bottom, 32)
         }
+        .headerScrollProgress(headerHeight: headerHeight, progress: $scrolled)
+        .environment(\.albumFace, LookStore.shared.look(lookKey).face)
+        .environment(\.mixContext, lookKey)
+        .sheet(isPresented: $djMix) { MixEditorView(context: lookKey, title: album.title, items: list) }
         .environment(\.editionCover, activeEdition.map { EditionCover(editionID: $0.id, itemIDs: Set(list.map(\.id))) })
         .artCanvas(colours)
         .ignoresSafeArea(edges: .top)
+        .task(id: album.id) { coverColor = await CoverColor.dominant(.album(album.id)) }
         .task(id: album.id) {
             let ids = library.snapshot.songs(album.songIDs).filter(\.hasStoreID).map(\.storeID)
             guard !ids.isEmpty else { return }
@@ -121,12 +131,17 @@ struct AlbumDetailView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                NavBarLogo(lookKey: lookKey, albumID: album.id, title: activeEdition?.title ?? album.title, visible: scrolled)
+                    .environment(\.albumFace, LookStore.shared.look(lookKey).face)
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Customise", systemImage: "slider.horizontal.3") { passports.customise = album }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     AlbumActionsMenu(album: album)
+                    Button(MixStore.shared.hasMix(lookKey) ? "Edit DJ Mix" : "DJ Mix", systemImage: "dial.medium") { djMix = true }
                     Button("Download in Music", systemImage: "arrow.down.circle") { openInMusic() }
                 } label: { Label("More", systemImage: "ellipsis") }
             }
@@ -192,44 +207,6 @@ struct AlbumDetailView: View {
             openURL(url)
         } else if let url = URL(string: "music://") {
             openURL(url)
-        }
-    }
-}
-
-/// The album header: a motion cover if you attached one; otherwise the cover (edition cover, your own cover,
-/// or the album artwork) as a moving Living Cover while you're on the page.
-struct AlbumHeaderArt: View {
-    let albumID: UInt64
-    let note: AlbumNote?
-    let edition: Edition?
-    /// Told about the still cover once it's loaded, with a key for it (the page takes its colours).
-    var onImage: ((UIImage, String) -> Void)?
-    @State private var image: UIImage?
-    @State private var look = ArtworkLook.neutral
-
-    private var stillKey: String {
-        "album-\(albumID)\(CoverVersions.suffix(albumID))-\(edition?.id.uuidString ?? "")-\(edition?.coverImage?.count ?? 0)"
-    }
-
-    var body: some View {
-        let motion = edition?.motionCoverFile ?? note?.motionCoverFile
-        ZStack {
-            ArtworkView(albumID: albumID, cornerRadius: 0)
-            if let motion {
-                LoopingVideo(url: MotionCoverFiles.url(motion))
-            } else if let image, MotionSettings.livingCoversOn {
-                LivingCoverView(image: image, look: look, key: stillKey).transition(.opacity)
-            }
-        }
-        .task(id: stillKey) {
-            var img: UIImage?
-            if let data = edition?.coverImage { img = UIImage(data: data) }
-            if img == nil { img = CoverOverrides.shared.image(albumID) }
-            if img == nil { img = await ArtworkCache.shared.image(album: albumID, pixels: 1400) }
-            guard let img else { return }
-            onImage?(img, stillKey)
-            look = await ArtworkAnalysis.look(for: img, key: stillKey)
-            withAnimation(.easeIn(duration: 0.4)) { image = img }
         }
     }
 }

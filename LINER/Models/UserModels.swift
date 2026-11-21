@@ -252,6 +252,8 @@ enum Coding {
     var lrc: String?
     var plain: String?
     var fetchedAt: Date
+    /// You fixed the timings or words (Edit Timings), so a refresh keeps them.
+    var edited: Bool = false
 
     init(itemID: String, lrc: String?, plain: String?) {
         self.itemID = itemID

@@ -2,8 +2,9 @@ import PhotosUI
 import SwiftData
 import SwiftUI
 
-/// Customise Album: everything you can change about an album in one place — text sizes, which tracklist or
-/// edition plays, the cover and motion cover, the title lettering, and its pin on Home — with a live preview.
+/// Customise Album: everything you can change about an album in one place — text sizes, logo, font and cover
+/// layout, which tracklist or edition plays, the cover and motion cover, the title lettering, and its pin on Home
+/// (and the pin's cover) — with a live preview.
 struct AlbumCustomiseSheet: View {
     let album: Album
     @Environment(\.dismiss) private var dismiss
@@ -33,6 +34,8 @@ struct AlbumCustomiseForm: View {
     @State private var video: PhotosPickerItem?
     @State private var working = false
     @State private var managingEditions = false
+    /// The logo, font or pin cover editor open over this sheet.
+    @State private var lookRequest: LookRequest?
 
     init(album: Album) {
         self.album = album
@@ -42,6 +45,7 @@ struct AlbumCustomiseForm: View {
     }
 
     private var subjectID: String { "album-\(album.id)" }
+    private var lookKey: String { LookKey.album(album.id) }
     private var note: AlbumNote? { notes.first }
 
     /// Which tracklist plays: the full album, only your saved songs, or one of your editions.
@@ -72,6 +76,7 @@ struct AlbumCustomiseForm: View {
             } header: { Text("Text size") } footer: {
                 Text("Sizes apply to every album, release, playlist and mixtape page.")
             }
+            styleSection
             Section("Tracklist") {
                 Picker("Plays", selection: choice) {
                     Text("Full Album").tag(Choice.full)
@@ -98,6 +103,10 @@ struct AlbumCustomiseForm: View {
                     })) {
                         ForEach(PinAppearance.allCases, id: \.self) { Text($0.label).tag($0) }
                     }
+                    Button("Choose Pin Cover…", systemImage: "photo.stack") {
+                        Store.shared.setAppearance(.albumArtwork, albumID: subjectID, key: album.key)
+                        lookRequest = .album(.pinCover, album, snapshot: library.snapshot)
+                    }
                 }
             }
         }
@@ -106,6 +115,7 @@ struct AlbumCustomiseForm: View {
         .navigationTitle("Customise Album")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $managingEditions) { EditionsSheet(subject: .library(album, snapshot: library.snapshot)) }
+        .sheet(item: $lookRequest) { LookSheet(request: $0) }
         .onChange(of: photo) { _, p in Task { await save(p, motion: false) } }
         .onChange(of: video) { _, v in Task { await save(v, motion: true) } }
     }
@@ -116,15 +126,37 @@ struct AlbumCustomiseForm: View {
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .bottom, spacing: 14) {
                 ArtworkView(albumID: album.id, cornerRadius: 10).frame(width: 72, height: 72)
-                AlbumTitle(albumID: album.id, title: album.title, scale: titleScale)
+                AlbumLogoTitle(lookKey: lookKey, albumID: album.id, title: album.title, maxWidth: 220 * titleScale, maxHeight: 80 * titleScale,
+                               font: .serif(30 * titleScale), fontSize: 30 * titleScale)
             }
             ForEach(Array(songs.enumerated()), id: \.element.id) { i, s in SongRow(song: s, number: s.trackNumber > 0 ? s.trackNumber : i + 1) }
         }
         .albumTextSizes()
+        .environment(\.albumFace, LookStore.shared.look(lookKey).face)
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Palette.cardFill, in: RoundedRectangle(cornerRadius: Palette.cornerRadius, style: .continuous))
         .animation(.liner, value: titleScale)
+    }
+
+    /// Logo, font and how the cover sits at the top of the page.
+    private var styleSection: some View {
+        let store = LookStore.shared
+        let look = store.look(lookKey)
+        return Section("Style") {
+            Button(store.logo(lookKey) == nil ? "Add Logo…" : "Edit Logo…", systemImage: "signature") {
+                lookRequest = .album(.logo, album, snapshot: library.snapshot)
+            }
+            Button(look.face == nil ? "Choose Font…" : "Font: \(look.face?.family ?? "")", systemImage: "textformat") {
+                lookRequest = .album(.font, album, snapshot: library.snapshot)
+            }
+            Picker("Cover", selection: Binding(get: { look.layout ?? .full }, set: { new in
+                withAnimation(.liner) { store.update(lookKey) { $0.layout = new == .full ? nil : new } }
+            })) {
+                Text("Full screen").tag(CoverLayout.full)
+                Text("Square").tag(CoverLayout.square)
+            }
+        }
     }
 
     private var coverSection: some View {

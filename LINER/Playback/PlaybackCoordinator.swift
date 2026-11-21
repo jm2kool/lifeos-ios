@@ -22,6 +22,8 @@ final class PlaybackCoordinator {
     private(set) var editionCover: EditionCover?
     /// Bumped on every seek, so views reading time refresh at once.
     private(set) var seekGeneration = 0
+    /// The DJ mix the queue plays with ("playlist-…", "album-…"), when it was started from one.
+    private(set) var mixContext: String?
 
     @ObservationIgnored let music = MusicEngine()
     @ObservationIgnored let local = LocalEngine()
@@ -40,7 +42,7 @@ final class PlaybackCoordinator {
     /// A song the system player skipped without playing (it couldn't play the library copy): it's tried once
     /// more by streaming it from Apple Music instead of moving on.
     @ObservationIgnored private var forceStreamID: UInt64?
-    @ObservationIgnored private var settleUntil = Date.distantPast
+    @ObservationIgnored var settleUntil = Date.distantPast
     private var settling: Bool { Date.now < settleUntil || music.preparing || awaitingStart }
     /// A new run was handed to the system player and it hasn't yet said it's playing our song. Until it does
     /// (or a few seconds pass), its notifications describe the old queue, and acting on them skipped songs —
@@ -61,6 +63,7 @@ final class PlaybackCoordinator {
         music.onStateChange = { [weak self] in self?.musicStateChanged() }
         local.onEnd = { [weak self] in self?.itemEnded() }
         nowPlaying.coordinator = self
+        MixDirector.shared.attach(self)
         Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
@@ -85,9 +88,10 @@ final class PlaybackCoordinator {
     /// Replaces the queue and starts playing; opens the full player too (Settings → Listening), unless the
     /// caller is a player of its own, like the turntable.
     func play(_ items: [QueueItem], startAt: Int = 0, shuffled: Bool = false, openPlayer: Bool = true,
-              edition: EditionCover? = nil) {
+              edition: EditionCover? = nil, mix: String? = nil) {
         guard !items.isEmpty else { return }
         editionCover = edition
+        mixContext = mix
         unshuffled = items
         shuffle = shuffled
         if openPlayer && Self.opensPlayer { showFullPlayer = true }
@@ -110,8 +114,8 @@ final class PlaybackCoordinator {
         return mediaItem != nil && !MusicEngine.streams(s, item: mediaItem)
     }
 
-    func play(songs: [Song], startAt: Int = 0, shuffled: Bool = false) {
-        play(songs.map(QueueItem.library), startAt: startAt, shuffled: shuffled)
+    func play(songs: [Song], startAt: Int = 0, shuffled: Bool = false, mix: String? = nil) {
+        play(songs.map(QueueItem.library), startAt: startAt, shuffled: shuffled, mix: mix)
     }
 
     /// Starts an item at once. Synchronous on purpose: the tap, the highlight and the sound happen together.
@@ -129,7 +133,7 @@ final class PlaybackCoordinator {
             if engine == .music { music.stop() }
             engine = .local
             do {
-                try local.load(song.assetURL!, startTime: time)
+                try local.load(song.assetURL!, startTime: time, mix: mix(for: item))
                 isPlaying = true
                 nowPlaying.useOwnNowPlaying()
             } catch {
@@ -163,7 +167,7 @@ final class PlaybackCoordinator {
             if engine == .music { music.stop() }
             engine = .local
             do {
-                try local.load(track.fileURL, startTime: time)
+                try local.load(track.fileURL, startTime: time, mix: mix(for: item))
                 isPlaying = true
                 nowPlaying.useOwnNowPlaying()
             } catch {
@@ -238,7 +242,7 @@ final class PlaybackCoordinator {
     func seek(to t: Double) {
         let clamped = min(max(0, t), max(0, duration - 0.5))
         lastMusicTime = clamped
-        switch engine { case .music: music.seek(clamped); case .local: local.seek(clamped); case .none: break }
+        switch engine { case .music: music.seek(clamped); case .local: local.seek(clamped, mix: current.flatMap(mix(for:))); case .none: break }
         seekGeneration += 1
         nowPlaying.update(elapsed: clamped)
     }
@@ -264,6 +268,35 @@ final class PlaybackCoordinator {
     func editQueue(_ change: (inout [QueueItem], Int) -> Void) {
         change(&queue, index)
         if !shuffle { unshuffled = queue }
+    }
+
+    // MARK: Mixing
+
+    /// This item's DJ mix in the queue's mix, if it has one.
+    func mix(for item: QueueItem) -> SongMix? { MixStore.shared.mix(mixContext, item.id) }
+
+    /// The file LINER. plays itself for an item (nil for Apple Music songs).
+    func ownFile(_ item: QueueItem) -> URL? {
+        switch item {
+        case .library(let s): s.playsInLINER ? s.assetURL : nil
+        case .local(let t): t.fileURL
+        }
+    }
+
+    /// Automix on LINER.'s own player: the next song starts under this one and they cross over. False when it
+    /// can't (an Apple Music song next, the end of the queue, repeat one).
+    func crossfadeToNext(over seconds: Double) -> Bool {
+        guard engine == .local, repeatMode != .one, index + 1 < queue.count, let url = ownFile(queue[index + 1]),
+              local.crossfade(to: url, mix: mix(for: queue[index + 1]), over: seconds) else { return false }
+        finishCurrent()
+        index += 1
+        resetListening()
+        settleUntil = .now.addingTimeInterval(1.2)
+        isPlaying = true
+        errorMessage = nil
+        nowPlaying.update()
+        if let c = current { onStarted?(c) }
+        return true
     }
 
     // MARK: Engine events
@@ -344,14 +377,14 @@ final class PlaybackCoordinator {
         lastMusicTime = music.currentTime
     }
 
-    private func resetListening() {
+    func resetListening() {
         lastMusicTime = 0
         startedAt = .now
         listened = 0
         lastTick = .now
     }
 
-    private func finishCurrent() {
+    func finishCurrent() {
         guard let item = current, listened > 1 else { return }
         onFinished?(PlayRecord(item: item, startedAt: startedAt, listened: listened, viaOwnPlayer: engine == .local))
         listened = 0

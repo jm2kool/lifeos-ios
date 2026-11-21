@@ -7,21 +7,22 @@ struct PlayableQueueRow: View {
     var number: Int?
     @Environment(PlaybackCoordinator.self) private var player
     @Environment(\.editionCover) private var edition
+    @Environment(\.mixContext) private var mixContext
     @Environment(\.tracklistScale) private var scale
 
     var body: some View {
         if case .library(let song) = item {
             PlayableSongRowItems(song: song, list: list, number: number)
         } else {
-            Button { player.play(list, startAt: list.firstIndex(of: item) ?? 0, edition: edition) } label: {
+            Button { player.play(list, startAt: list.firstIndex(of: item) ?? 0, edition: edition, mix: mixContext) } label: {
                 HStack(spacing: 12) {
                     if let number {
-                        Text("\(number)").font(.serif(17 * scale)).monospacedDigit().foregroundStyle(Palette.label).frame(width: 26 * scale)
+                        Text("\(number)").albumFace(17 * scale, fallback: .serif(17 * scale)).monospacedDigit().foregroundStyle(Palette.label).frame(width: 26 * scale)
                     } else {
                         QueueItemArtwork(item: item).frame(width: 46 * scale, height: 46 * scale)
                     }
                     VStack(alignment: .leading, spacing: 2 * scale) {
-                        Text(item.title).font(.system(size: 16 * scale)).lineLimit(1)
+                        Text(item.title).albumFace(16 * scale, fallback: .system(size: 16 * scale)).lineLimit(1)
                         Text(item.artist).font(.system(size: 13 * scale)).foregroundStyle(Palette.secondary).lineLimit(1)
                     }
                     Spacer()
@@ -41,9 +42,10 @@ private struct PlayableSongRowItems: View {
     var number: Int?
     @Environment(PlaybackCoordinator.self) private var player
     @Environment(\.editionCover) private var edition
+    @Environment(\.mixContext) private var mixContext
 
     var body: some View {
-        Button { player.play(list, startAt: list.firstIndex(of: .library(song)) ?? 0, edition: edition) } label: {
+        Button { player.play(list, startAt: list.firstIndex(of: .library(song)) ?? 0, edition: edition, mix: mixContext) } label: {
             SongRow(song: song, number: number, showArtwork: number == nil)
         }
         .buttonStyle(.plain)
@@ -57,9 +59,10 @@ struct PlayShuffleItemsRow<Trailing: View>: View {
     @ViewBuilder var trailing: Trailing
     @Environment(PlaybackCoordinator.self) private var player
     @Environment(\.editionCover) private var edition
+    @Environment(\.mixContext) private var mixContext
 
     var body: some View {
-        PlayShuffleIcons(play: { player.play(items, edition: edition) }, shuffle: { player.play(items, shuffled: true, edition: edition) }) { trailing }
+        PlayShuffleIcons(play: { player.play(items, edition: edition, mix: mixContext) }, shuffle: { player.play(items, shuffled: true, edition: edition, mix: mixContext) }) { trailing }
             .disabled(items.isEmpty)
     }
 }

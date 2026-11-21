@@ -8,6 +8,8 @@ extension Store {
         let note = albumNoteOrNew(albumID, key: key)
         note.pinned.toggle()
         note.pinnedAt = note.pinned ? .now : nil
+        // Albums pin as their cover with their logo; the artist portrait is a choice in the menu.
+        if note.pinned { note.pinnedAppearance = .albumArtwork }
         save()
     }
 
@@ -47,7 +49,7 @@ struct AlbumActionsMenu: View {
             Store.shared.togglePin(albumID: id, key: album.key)
         }
         Button("Album Passport", systemImage: "text.book.closed") { passports.album = .library(album, snapshot: library.snapshot) }
-        // Cover, editions, text size, title and the Home pin's look all live in Customise Album.
+        // Logo, font, cover layout, cover, editions, text size, title and the Home pin's look all live in Customise Album.
         Button("Customise Album", systemImage: "slider.horizontal.3") { passports.customise = album }
     }
 }

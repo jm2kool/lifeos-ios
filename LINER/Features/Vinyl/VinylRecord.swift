@@ -19,6 +19,9 @@ struct VinylRecord: Identifiable, Hashable {
         case mood(MoodPlaylist)
     }
 
+    /// Where its logo, font and layout are kept.
+    var lookKey: String { albumID.map(LookKey.album) ?? id }
+
     static func == (a: VinylRecord, b: VinylRecord) -> Bool { a.id == b.id }
     func hash(into h: inout Hasher) { h.combine(id) }
 }

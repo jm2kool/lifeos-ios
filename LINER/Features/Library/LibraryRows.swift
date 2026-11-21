@@ -50,12 +50,12 @@ struct SongRow: View {
     var body: some View {
         HStack(spacing: 12) {
             if let number {
-                Text("\(number)").font(.serif(17 * scale)).monospacedDigit().foregroundStyle(Palette.label).frame(width: 26 * scale)
+                Text("\(number)").albumFace(17 * scale, fallback: .serif(17 * scale)).monospacedDigit().foregroundStyle(Palette.label).frame(width: 26 * scale)
             } else if showArtwork {
                 ArtworkView(albumID: song.albumID, cornerRadius: 6).frame(width: 46 * scale, height: 46 * scale)
             }
             VStack(alignment: .leading, spacing: 2 * scale) {
-                Text(song.title).font(.system(size: 16 * scale)).lineLimit(1)
+                Text(song.title).albumFace(16 * scale, fallback: .system(size: 16 * scale)).lineLimit(1)
                 Text(number == nil && library.snapshot.albumOf(song) != nil ? "\(song.artist) · \(song.albumTitle)" : song.artist)
                     .font(.system(size: 13 * scale)).foregroundStyle(Palette.secondary).lineLimit(1)
             }
@@ -142,6 +142,8 @@ struct LibraryDestinations: ViewModifier {
             .navigationDestination(for: Mixtape.self) { MixtapeDetailView(mixtape: $0) }
             .navigationDestination(for: MoodPlaylist.self) { MoodPlaylistDetail(playlist: $0) }
             .navigationDestination(for: AppleCatalog.Release.self) { CatalogReleaseView(release: $0) }
+            .navigationDestination(for: AppleMusicWeb.PlaylistRef.self) { AppleMusicPlaylistView(ref: $0) }
+            .navigationDestination(for: MadeForYouMix.self) { MadeForYouView(mix: $0) }
     }
 }
 

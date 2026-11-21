@@ -17,6 +17,7 @@ struct ArtistCatalogPage: View {
                 if !page.topSongs.isEmpty { topSongs(page.topSongs) }
                 if !page.albums.isEmpty { releases("Albums", page.albums) }
                 if !page.singles.isEmpty { releases("Singles & EPs", page.singles) }
+                ArtistPlaylistsShelf(artist: artist.name)
             } else if loading {
                 ProgressView().frame(maxWidth: .infinity).padding(40)
             } else {
