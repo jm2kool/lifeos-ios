@@ -32,9 +32,15 @@ struct ArtistDetailView: View {
         let genre = albums.first?.genre ?? songs.first?.genre ?? ""
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
-                hero(releases: albums.count, genre: genre)
                 let playable = tab == .page && !(page?.topSongs.isEmpty ?? true) ? catalogSongs : songs
-                transport(playable)
+                // The photo, name and buttons sit on one still colour; the moving colour starts below them,
+                // so it never shows through the photo.
+                VStack(alignment: .leading, spacing: 26) {
+                    hero(releases: albums.count, genre: genre)
+                    transport(playable)
+                }
+                .padding(.bottom, 40)
+                .background { stillBackdrop }
                 Picker("Show", selection: $tab.animation(.liner)) {
                     ForEach(Tab.allCases) { t in Text(t == .stats ? "\(AppBrand.name) stats" : t.rawValue).tag(t) }
                 }
@@ -143,7 +149,7 @@ struct ArtistDetailView: View {
         let look = await ArtworkAnalysis.look(for: img, key: "artist-\(artist.id)")
         withAnimation(.easeOut(duration: 0.3)) { titleBackdrop = look.secondaryBrightness }
         let tint = await ArtPalette.tint(of: img, key: "artist-photo-\(artist.id)")
-        if !tint.isEmpty { colours = tint }
+        if !tint.isEmpty { withAnimation(.easeInOut(duration: 0.9)) { colours = tint } }
     }
 
     private func coverColours() async {
@@ -153,7 +159,17 @@ struct ArtistDetailView: View {
             let urls = ([page.latest].compactMap { $0 } + page.albums.prefix(3)).compactMap(\.artwork)
             found = await ArtPalette.web(urls, key: "artist-web-\(artist.id)")
         }
-        if !found.isEmpty { colours = found }
+        if !found.isEmpty { withAnimation(.easeInOut(duration: 0.9)) { colours = found } }
+    }
+
+    /// The page's colour held still behind the photo, fading into the moving colour at its foot.
+    @ViewBuilder private var stillBackdrop: some View {
+        if let base = colours.first {
+            let c = Color(red: Double(base.x), green: Double(base.y), blue: Double(base.z)).mix(with: .black, by: 0.3)
+            LinearGradient(stops: [.init(color: c, location: 0), .init(color: c, location: 0.92), .init(color: c.opacity(0), location: 1)],
+                           startPoint: .top, endPoint: .bottom)
+                .transition(.opacity)
+        }
     }
 
     /// The artist's colour, bright enough to draw with (nil until the photo or covers have loaded).
