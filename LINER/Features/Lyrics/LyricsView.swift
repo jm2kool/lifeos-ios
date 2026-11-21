@@ -15,6 +15,7 @@ struct LyricsView: View {
     /// Choosing lines to share, and the lines chosen (always one unbroken run).
     @State private var selecting = false
     @State private var picked: ClosedRange<Int>?
+    @State private var editing = false
 
     /// Story cards hold a few lines, like Apple Music's.
     private static let maxLines = 6, maxCharacters = 220
@@ -27,12 +28,15 @@ struct LyricsView: View {
                 content
             }
         }
-        .task(id: player.current?.id) {
+        .task(id: "\(player.current?.id ?? "")-\(LyricsEdits.shared.revision)") {
             loading = true
             lyrics = nil
             await art.load(player.current)
             if let item = player.current { lyrics = await LyricsStore.lyrics(for: item) }
             loading = false
+        }
+        .sheet(isPresented: $editing) {
+            if let item = player.current { LyricsEditor(item: item, original: lyrics) }
         }
         .safeAreaInset(edge: .bottom) { if selecting { shareBar.transition(.move(edge: .bottom).combined(with: .opacity)) } }
         .animation(.liner, value: selecting)
@@ -69,6 +73,9 @@ struct LyricsView: View {
             if selecting {
                 Button("Cancel") { stopSelecting() }.font(.system(size: 15, weight: .semibold)).buttonStyle(.plain)
             } else {
+                if lyrics != nil {
+                    GlassCircleButton(systemImage: "pencil", label: "Edit lyrics and timings", size: 40) { editing = true }
+                }
                 if !allLines.isEmpty {
                     GlassCircleButton(systemImage: "square.and.arrow.up", label: "Share lyrics", size: 40) { startSelecting(at: nil) }
                 }

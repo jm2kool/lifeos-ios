@@ -43,6 +43,7 @@ struct HomeView: View {
 
                 PinnedGrid()
                 HomeShelves()
+                ForYouShelves()
 
                 Text("Recently Added").font(.sectionTitle)
                 if library.recentlyAdded.isEmpty {

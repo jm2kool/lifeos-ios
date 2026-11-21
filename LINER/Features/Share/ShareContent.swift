@@ -2,7 +2,16 @@ import SwiftUI
 
 /// What a share card shows (SPEC §6.13): Song Passport, Album Passport, artist history, recap, now playing, lyric line.
 struct ShareContent: Sendable {
-    enum Kind: String, Sendable { case song, album, artist, recap, nowPlaying, lyric }
+    enum Kind: String, Sendable { case song, album, artist, recap, nowPlaying, lyric, topAlbums, topSongs, topArtists }
+
+    /// One row of a top-ten card.
+    struct RankedRow: Sendable, Hashable {
+        var title: String
+        var subtitle: String
+        var value: String
+        var albumID: UInt64?
+        var portraitName: String?
+    }
 
     var kind: Kind
     var kicker: String
@@ -18,6 +27,31 @@ struct ShareContent: Sendable {
     var portraitName: String?
     /// For the lock-screen style video background (album or mixtape artwork key).
     var artworkKey: String?
+    /// Top-ten cards: the rows, first to tenth.
+    var ranked: [RankedRow] = []
+
+    /// Cards that can be printed as a passport page.
+    var hasPassport: Bool { [.song, .album, .artist, .topAlbums, .topSongs, .topArtists, .nowPlaying].contains(kind) }
+
+    /// Your top albums, songs or artists of all time.
+    static func top(_ kind: Kind, stats: LibraryStats) -> ShareContent {
+        var c = ShareContent(kind: kind, kicker: "My top \(kind == .topAlbums ? "albums" : kind == .topSongs ? "songs" : "artists")",
+                             title: "All time", subtitle: "\(stats.totalPlays.grouped) plays")
+        switch kind {
+        case .topAlbums:
+            c.ranked = stats.albums.prefix(10).map { RankedRow(title: $0.title, subtitle: $0.artist, value: $0.playCount.grouped, albumID: $0.id) }
+        case .topSongs:
+            c.ranked = stats.songs.prefix(10).map { RankedRow(title: $0.title, subtitle: $0.artist, value: $0.playCount.grouped, albumID: $0.albumID) }
+        default:
+            c.ranked = stats.artists.prefix(10).map {
+                RankedRow(title: $0.name, subtitle: "\($0.albumIDs.count) releases", value: $0.playCount.grouped, albumID: $0.albumIDs.first, portraitName: $0.name)
+            }
+        }
+        c.albumID = c.ranked.first?.albumID
+        c.portraitName = c.ranked.first?.portraitName
+        c.artworkKey = c.albumID.map { "album-\($0)" }
+        return c
+    }
 
     static func nowPlaying(_ item: QueueItem) -> ShareContent {
         ShareContent(kind: .nowPlaying, kicker: "Now playing", title: item.title, subtitle: item.artist, lines: [item.albumTitle],

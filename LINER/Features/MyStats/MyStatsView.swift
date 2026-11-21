@@ -8,6 +8,7 @@ struct MyStatsView: View {
     @Environment(LibraryService.self) private var library
     @Namespace private var zoom
     @AppStorage("stats.page") private var page: Page = .overview
+    @State private var sharing: ShareContent?
 
     var body: some View {
         let stats = library.stats
@@ -33,6 +34,20 @@ struct MyStatsView: View {
             .background(Palette.background)
             .refreshable { await library.refresh() }
             .libraryDestinations(zoom)
+            .toolbar {
+                if page == .overview && stats.totalPlays > 0 {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Menu {
+                            Button("Top Albums", systemImage: "square.stack") { sharing = .top(.topAlbums, stats: stats) }
+                            Button("Top Songs", systemImage: "music.note") { sharing = .top(.topSongs, stats: stats) }
+                            Button("Top Artists", systemImage: "person.2") { sharing = .top(.topArtists, stats: stats) }
+                        } label: { Label("Share", systemImage: "square.and.arrow.up") }
+                    }
+                }
+            }
+            .sheet(isPresented: Binding(get: { sharing != nil }, set: { if !$0 { sharing = nil } })) {
+                if let sharing { ShareCardSheet(content: sharing) }
+            }
         }
     }
 

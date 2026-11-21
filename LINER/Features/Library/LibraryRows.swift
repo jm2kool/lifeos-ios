@@ -141,6 +141,8 @@ struct LibraryDestinations: ViewModifier {
             .navigationDestination(for: Mixtape.self) { MixtapeDetailView(mixtape: $0) }
             .navigationDestination(for: MoodPlaylist.self) { MoodPlaylistDetail(playlist: $0) }
             .navigationDestination(for: AppleCatalog.Release.self) { CatalogReleaseView(release: $0) }
+            .navigationDestination(for: AppleMusicWeb.PlaylistRef.self) { AppleMusicPlaylistView(ref: $0) }
+            .navigationDestination(for: MadeForYouMix.self) { MadeForYouView(mix: $0) }
     }
 }
 

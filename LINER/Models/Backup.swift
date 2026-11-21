@@ -26,6 +26,8 @@ struct BackupFile: Codable {
     /// Logos, fonts and layouts by look key, and imported font files (added in 1.5; missing from older backups).
     var looks: [String: LookItem]?
     var fonts: [String: Data]?
+    /// Lyrics you edited, as LRC by song (added in 1.7).
+    var editedLyrics: [String: String]?
 }
 
 @MainActor
@@ -53,6 +55,8 @@ enum BackupService {
         b.pinnedPlaylists = ((try? c.fetch(FetchDescriptor<PinnedPlaylist>())) ?? []).map(\.playlistID)
         b.looks = LookStore.shared.exported()
         b.fonts = FontLibrary.exported()
+        b.editedLyrics = Dictionary(((try? c.fetch(FetchDescriptor<LyricsCache>(predicate: #Predicate { $0.edited }))) ?? [])
+            .compactMap { l in l.lrc.map { (l.itemID, $0) } }, uniquingKeysWith: { a, _ in a })
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         enc.dateEncodingStrategy = .iso8601
@@ -111,6 +115,14 @@ enum BackupService {
         Store.shared.save()
         if let fonts = b.fonts { FontLibrary.restore(fonts) }
         if let looks = b.looks { LookStore.shared.restore(looks) }
+        for (id, lrc) in b.editedLyrics ?? [:] {
+            let all = (try? c.fetch(FetchDescriptor<LyricsCache>(predicate: #Predicate { $0.itemID == id }))) ?? []
+            for old in all { c.delete(old) }
+            let fresh = LyricsCache(itemID: id, lrc: lrc, plain: nil)
+            fresh.edited = true
+            c.insert(fresh)
+        }
+        if b.editedLyrics?.isEmpty == false { Store.shared.save() }
         var summary = "Restored \(b.songs.count) song passports, \(b.albums.count) albums, \(b.editions.count) editions, \(b.mixtapes.count) mixtapes and \(b.moods.count) mood playlists."
         if missingAudio > 0 { summary += " \(missingAudio) mixtape tracks need their audio files imported again." }
         return summary
