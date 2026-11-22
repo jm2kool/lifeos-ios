@@ -152,7 +152,7 @@ struct PlansSection: View {
         let list = library.plans.filter { media.includes($0.film) }
         if !list.isEmpty {
             VStack(alignment: .leading, spacing: 14) {
-                SectionHeader(title: "Your plans", subtitle: "What you're going to watch, and when")
+                SectionHeader("Your plans", subtitle: "What you're going to watch, and when")
                 ScrollView(.horizontal) {
                     LazyHStack(spacing: 12) {
                         ForEach(list) { p in PlanCard(plan: p) }
