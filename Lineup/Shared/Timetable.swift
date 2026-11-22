@@ -257,6 +257,12 @@ enum Clock {
 
     static func range(_ start: Date, _ end: Date) -> String { "\(time(start))–\(time(end))" }
 
+    /// "9:50–10:50", without AM and PM, for the watch's small screen.
+    static func shortRange(_ start: Date, _ end: Date) -> String {
+        let style = Date.FormatStyle().hour(.defaultDigits(amPM: .omitted)).minute()
+        return "\(start.formatted(style))–\(end.formatted(style))"
+    }
+
     static func date(minutes: Int, on day: Date = .now) -> Date {
         let cal = Calendar.current
         return cal.date(byAdding: .minute, value: minutes, to: cal.startOfDay(for: day)) ?? day

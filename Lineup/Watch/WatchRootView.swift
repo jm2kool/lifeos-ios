@@ -115,27 +115,18 @@ struct LessonPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            HStack {
-                Text(label)
-                    .font(.caption2.weight(.heavy))
-                    .foregroundStyle(slot.colour)
-                Spacer()
-                Text(Clock.range(slot.start, slot.end))
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
+            Text("\(Text(label).foregroundStyle(slot.colour).fontWeight(.heavy))  \(Clock.shortRange(slot.start, slot.end))")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .padding(.trailing, 12)
             Text(slot.name)
                 .font(.title2.bold())
                 .lineLimit(2)
                 .minimumScaleFactor(0.6)
-            if !slot.room.isEmpty {
-                Label(slot.room, systemImage: "mappin.and.ellipse")
-                    .font(.headline)
-                    .lineLimit(1)
-            }
-            if !slot.teacher.isEmpty {
-                Text(slot.teacher).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
-            }
+            Text([slot.room, slot.teacher].filter { !$0.isEmpty }.joined(separator: " · "))
+                .font(.headline)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
 
             Spacer(minLength: 2)
 
@@ -153,8 +144,9 @@ struct LessonPage: View {
                 Text("Bring: \(slot.bring.joined(separator: ", "))")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .padding(.trailing, 40)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.trailing, 44)
             }
         }
         .padding(.horizontal, 4)
