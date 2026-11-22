@@ -32,3 +32,12 @@ This is a standing rule from the owner. Whenever you add or change something use
 - On-device Apple Intelligence goes through `Matinee/Services/Intelligence.swift` (and `Finder.swift`), always behind
   `#if canImport(FoundationModels)` and `Intelligence.isAvailable`, with a non-AI fallback.
 - Optional server features (follows, activity, parties) degrade gracefully when their tables are missing.
+
+## Lineup (the school timetable app in `Lineup/`)
+
+A separate iPhone + Apple Watch app that shares nothing with Matinee (see `Lineup/README.md`). It has its own
+XcodeGen spec (`Lineup/project.yml`) and its own workflow, "Build Lineup" (`.github/workflows/lineup.yml`), which runs
+when `Lineup/**` changes and publishes a draft release named "Lineup (latest build)"; send that link after a passing
+build, the same way as Matinee's. Matinee's changelog and tour rules don't apply to it: instead, keep
+`Lineup/README.md`'s tables up to date and bump `MARKETING_VERSION` in `Lineup/project.yml`. It must keep working
+offline: no network calls, data stays on the devices and moves over WatchConnectivity.
