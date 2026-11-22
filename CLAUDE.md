@@ -4,6 +4,11 @@ Matinee is a SwiftUI film and TV diary for iOS 26 (see README.md). There is no M
 CI (`.github/workflows/build.yml`) compiles every push to `matinee`/`main` and publishes the `.ipa`, so
 check the "Build IPA" run after pushing and fix any compile errors it reports.
 
+**Every time a build passes, send the owner the link to download it.** The repo is public, so the IPA goes into a
+draft release named "Matinee (latest build)" that only the owner can see. Its link changes with every build: look it up
+(list the repo's releases, take that draft's `html_url`) and send it, along with https://github.com/jm2kool/lifeos-ios/releases,
+which always lists it.
+
 ## Every change updates the changelog and the tour
 
 This is a standing rule from the owner. Whenever you add or change something users can see:
