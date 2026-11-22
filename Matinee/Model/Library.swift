@@ -151,13 +151,21 @@ final class Library {
         withAnimation(.smooth) { setDoc(restored) }
         if let w = restored.watching { Watching.shared.adopt(w) }
         persist()
+        if restored.plans != nil { Task { await Reminders.refreshPlans(self) } }
         toast = Toast(text: "Undone", symbol: "arrow.uturn.backward")
     }
 
     func log(_ e: LogEntry) {
         defer { if let saved = doc.entries.first(where: { $0.id == e.id }) { Task { await Social.shared.post(saved) } } }
+        let hadPlan = doc.plans?.isEmpty == false
+        defer { if hadPlan { Task { await Reminders.refreshPlans(self) } } }
         mutate("Logged \(e.film.title)\(e.episodeLabel.map { " · \($0)" } ?? "")", symbol: "eye.fill") { d in
             if let i = d.entries.firstIndex(where: { $0.id == e.id }) { d.entries[i] = e } else { d.entries.append(e) }
+            // Logging a whole film or show settles a plan for it that's begun, or was for the day you watched it.
+            if e.season == nil, d.plans != nil {
+                d.plans?.removeAll { $0.film.id == e.film.id && ($0.date <= .now || Calendar.current.isDate($0.date, inSameDayAs: e.watchedOn)) }
+                if d.plans?.isEmpty == true { d.plans = nil }
+            }
             // An unrated comfort watch leaves any rating you gave before alone.
             let keepRating = (d.comfort ?? []).contains(e.film.id) && e.rating == nil
             if let s = e.season {
@@ -388,6 +396,46 @@ final class Library {
             d.reminders = list
         }
         Task { await Reminders.refresh(self, force: true, ask: on) }
+    }
+
+    // MARK: Plans
+
+    /// Every planned watch, soonest first.
+    var plans: [PlannedWatch] { (doc.plans ?? []).sorted { $0.date < $1.date } }
+    /// Plans still to come, or on right now.
+    var upcomingPlans: [PlannedWatch] { plans.filter { !$0.isOver } }
+    /// The oldest finished plan that hasn't been answered yet: the one How was it? asks about.
+    var duePlan: PlannedWatch? { plans.first { $0.isDue } }
+    func plan(for id: String) -> PlannedWatch? { plans.first { $0.film.id == id && !$0.isOver } ?? plans.first { $0.film.id == id } }
+    func plan(id: UUID) -> PlannedWatch? { plans.first { $0.id == id } }
+
+    /// Add a plan, or update it if it's already there.
+    func savePlan(_ p: PlannedWatch) {
+        let isNew = plan(id: p.id) == nil
+        mutate("\(isNew ? "Planned" : "Moved to") \(p.when)", symbol: "calendar.badge.clock") { d in
+            var list = d.plans ?? []
+            var p = p
+            p.snoozedUntil = nil
+            if let i = list.firstIndex(where: { $0.id == p.id }) { list[i] = p } else { list.append(p) }
+            d.plans = list.sorted { $0.date < $1.date }
+        }
+        Task { await Reminders.refreshPlans(self, ask: true) }
+    }
+
+    func removePlan(_ p: PlannedWatch, toast: Bool = true) {
+        mutate(toast ? "Plan removed" : nil, symbol: "calendar.badge.minus", undoable: toast) { d in
+            d.plans = (d.plans ?? []).filter { $0.id != p.id }
+            if d.plans?.isEmpty == true { d.plans = nil }
+        }
+        Task { await Reminders.refreshPlans(self) }
+    }
+
+    /// "Ask me later": How was it? waits a few hours.
+    func snoozePlan(_ p: PlannedWatch, hours: Double = 3) {
+        mutate { d in
+            guard let i = d.plans?.firstIndex(where: { $0.id == p.id }) else { return }
+            d.plans?[i].snoozedUntil = .now.addingTimeInterval(hours * 3600)
+        }
     }
 
     /// Quiet batch changes (imports): no toast per film.

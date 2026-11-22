@@ -4,7 +4,7 @@ import Vision
 import UIKit
 
 /// Photograph a cinema ticket (or pick a screenshot of a booking): Matinee reads it on the phone, finds the
-/// film, and opens the log sheet with the date from the ticket.
+/// film, and opens the log sheet with the date from the ticket. A showing that's still to come becomes a plan instead.
 struct TicketScanSheet: View {
     @Environment(Library.self) private var library
     @Environment(Router.self) private var router
@@ -15,6 +15,8 @@ struct TicketScanSheet: View {
     @State private var reading = false
     @State private var matches: [FilmRef] = []
     @State private var date: Date?
+    /// Whether the ticket gave a start time as well as a day.
+    @State private var hasTime = false
     @State private var lines: [String] = []
     @State private var failed = false
 
@@ -29,7 +31,7 @@ struct TicketScanSheet: View {
                         VStack(spacing: 12) {
                             Image(systemName: "ticket.fill").font(.system(size: 54)).foregroundStyle(Theme.accent)
                             Text("Log from a ticket").font(.title2.weight(.bold))
-                            Text("Take a photo of your cinema ticket, or pick a screenshot of the booking. Matinee reads it on your iPhone and fills in the film and the date.")
+                            Text("Take a photo of your cinema ticket, or pick a screenshot of the booking. Matinee reads it on your iPhone and fills in the film and the date. Booked for later? It goes on Home as a plan, and Matinee asks how it was afterwards.")
                                 .font(.subheadline).foregroundStyle(Theme.dim).multilineTextAlignment(.center)
                         }
                         .frame(maxWidth: .infinity)
@@ -55,8 +57,14 @@ struct TicketScanSheet: View {
                     }
 
                     if let date, !matches.isEmpty {
-                        Label("Watched \(date.formatted(date: .complete, time: .omitted))", systemImage: "calendar")
-                            .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.watch)
+                        if isUpcoming {
+                            Label("Showing \(date.formatted(date: .complete, time: hasTime ? .shortened : .omitted)) — tap the film to plan it",
+                                  systemImage: "calendar.badge.clock")
+                                .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.star)
+                        } else {
+                            Label("Watched \(date.formatted(date: .complete, time: .omitted))", systemImage: "calendar")
+                                .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.watch)
+                        }
                     }
 
                     if !matches.isEmpty {
@@ -70,7 +78,7 @@ struct TicketScanSheet: View {
                                         Text(f.yearText).font(.subheadline).foregroundStyle(Theme.dim)
                                     }
                                     Spacer()
-                                    Image(systemName: "plus.circle.fill").font(.title2).foregroundStyle(Theme.accent)
+                                    Image(systemName: isUpcoming ? "calendar.badge.plus" : "plus.circle.fill").font(.title2).foregroundStyle(Theme.accent)
                                 }
                                 .contentShape(.rect)
                             }
@@ -116,12 +124,12 @@ struct TicketScanSheet: View {
 
     private func read(_ img: UIImage) {
         image = img
-        matches = []; date = nil; lines = []; failed = false
+        matches = []; date = nil; hasTime = false; lines = []; failed = false
         reading = true
         Task {
             let found = await TicketReader.read(img)
             lines = found.map(\.text)
-            date = TicketReader.date(in: lines.joined(separator: "\n"))
+            if let s = TicketReader.showing(in: lines.joined(separator: "\n")) { date = s.date; hasTime = s.hasTime }
             var titles: [String] = []
             if let ai = await Intelligence.ticketTitle(lines.joined(separator: "\n")) { titles.append(ai) }
             titles += TicketReader.titleCandidates(found)
@@ -135,9 +143,20 @@ struct TicketScanSheet: View {
         }
     }
 
+    /// The ticket is for a showing that hasn't finished yet: later today, or another day.
+    private var isUpcoming: Bool {
+        guard let date else { return false }
+        if hasTime { return date > .now.addingTimeInterval(-30 * 60) }
+        return date > .now && !Calendar.current.isDateInToday(date)
+    }
+
     private func log(_ f: FilmRef) {
+        if isUpcoming, let date {
+            router.sheet = .plan(f, PlannedWatch(film: f, date: date, hasTime: hasTime, place: "Cinema"))
+            return
+        }
         var e = LogEntry(film: f)
-        if let date { e.watchedOn = date }
+        if let date { e.watchedOn = min(date, .now) }
         e.tags = ["cinema"]
         router.sheet = .logDraft(e)
     }
@@ -190,14 +209,19 @@ enum TicketReader {
         return t.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
     }
 
-    /// The first date on the ticket that's in the past year, if any.
-    static func date(in text: String) -> Date? {
+    /// The showing on the ticket: the latest date within a year either side of today, and whether it gave a time.
+    /// A date with no time comes back at noon, so a time is only trusted when it isn't exactly 12:00.
+    static func showing(in text: String) -> (date: Date, hasTime: Bool)? {
         guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.date.rawValue) else { return nil }
         let range = NSRange(text.startIndex..., in: text)
-        let yearAgo = Calendar.current.date(byAdding: .year, value: -1, to: .now)!
-        return detector.matches(in: text, range: range).compactMap(\.date)
-            .first { $0 <= .now.addingTimeInterval(86_400) && $0 >= yearAgo }
-            .map { min($0, .now) }
+        let cal = Calendar.current
+        let yearAgo = cal.date(byAdding: .year, value: -1, to: .now)!, yearOn = cal.date(byAdding: .year, value: 1, to: .now)!
+        let found = detector.matches(in: text, range: range).compactMap(\.date).filter { $0 >= yearAgo && $0 <= yearOn }
+        // A booking often shows the day it was made too; the showing is the latest of them.
+        guard let d = found.max() else { return nil }
+        let noon = { (x: Date) in cal.component(.hour, from: x) == 12 && cal.component(.minute, from: x) == 0 }
+        if let timed = found.first(where: { cal.isDate($0, inSameDayAs: d) && !noon($0) }) { return (timed, true) }
+        return (cal.startOfDay(for: d), false)
     }
 }
 

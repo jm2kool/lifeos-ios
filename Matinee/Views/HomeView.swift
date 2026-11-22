@@ -54,6 +54,7 @@ struct HomeView: View {
                     header.padding(.top, Screen.safeTop + 8)
                     TMDBConnectCard()
                 }
+                PlansSection(media: media)
                 if showsShows && !library.currentlyWatching.isEmpty {
                     CurrentlyWatchingSection(shows: library.currentlyWatching)
                 }

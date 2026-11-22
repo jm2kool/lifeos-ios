@@ -7,6 +7,7 @@ struct RootView: View {
     @Environment(Router.self) private var router
     @Environment(Watching.self) private var watching
     @Environment(Taste.self) private var taste
+    @Environment(\.scenePhase) private var phase
     @State private var showSignIn = false
     @State private var showSplash: Bool = {
         let env = ProcessInfo.processInfo.environment
@@ -87,6 +88,13 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .deviceDidShake)) { _ in pickFromWatchlist() }
         // Widgets and the Live Activity open films with matinee://film/<id>?title=…; shared profiles are matinee://u/<username>.
         .onOpenURL { url in
+            // matinee://howwasit/<plan id> — from the notification when a planned watch is over.
+            if url.scheme == "matinee", url.host == "howwasit" {
+                guard let id = UUID(uuidString: url.lastPathComponent), library.plan(id: id) != nil else { return }
+                router.closeRandom()
+                router.sheet = .howWasIt(id)
+                return
+            }
             // matinee://find?url=<link> — from a Shortcut in the share sheet.
             if url.scheme == "matinee", url.host == "find" {
                 let q = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "url" || $0.name == "q" }?.value
@@ -143,6 +151,10 @@ struct RootView: View {
             }
         }
         .onChange(of: router.pendingAction) { _, a in if a != nil { runPendingAction() } }
+        // A planned watch that's over gets asked about as soon as Matinee opens, once nothing else is in the way.
+        .onChange(of: phase) { _, p in if p == .active { askAboutPlans() } }
+        .onChange(of: router.tour) { _, t in if t == nil { askAboutPlans() } }
+        .onChange(of: taste.showQuiz) { _, on in if !on { askAboutPlans() } }
         .onContinueUserActivity(CSSearchableItemActionType) { activity in
             guard let film = Spotlight.film(for: activity, in: library) else { return }
             router.sheet = nil
@@ -173,7 +185,18 @@ struct RootView: View {
     private func afterSignIn() {
         if router.pendingAction != nil { runPendingAction(); return }
         guard router.tour == nil, !taste.showQuiz else { return }
-        if let t = Tour.pending { router.tour = t } else if taste.shouldOffer { taste.showQuiz = true }
+        if let t = Tour.pending { router.tour = t } else if taste.shouldOffer { taste.showQuiz = true } else { askAboutPlans() }
+    }
+
+    /// "How was it?" for the oldest planned watch that's finished — after the opening titles, sign-in, the tour
+    /// and the quiz, and never over another sheet.
+    private func askAboutPlans() {
+        Task {
+            try? await Task.sleep(for: .seconds(1))
+            guard let p = library.duePlan, !showSplash, !showSignIn, router.tour == nil, !taste.showQuiz,
+                  router.sheet == nil, router.randomDeck == nil, router.pendingAction == nil else { return }
+            router.sheet = .howWasIt(p.id)
+        }
     }
 
     private func finishTour(_ action: TourAction?) {
@@ -286,6 +309,8 @@ struct SheetHost: View {
         case .party(let c): PartySheet(code: c)
         case .finder(let t): FinderView(initial: t)
         case .story(let e): StoryShareSheet(entry: e)
+        case .plan(let f, let p): LogSheet(film: f, existing: nil, plan: p, startPlanning: true)
+        case .howWasIt(let id): HowWasItSheet(planID: id)
         }
     }
 }

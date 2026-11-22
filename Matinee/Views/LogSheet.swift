@@ -2,12 +2,17 @@ import SwiftUI
 
 /// Log a viewing: when, how much you liked it, and what you thought — all on one screen.
 /// Everything is scored out of 100 on a dial, or in stars if that's what you picked in Settings.
-/// Comfort films and shows skip the rating altogether.
+/// Comfort films and shows skip the rating altogether. Switch to Planning to watch to put it on Home for a set day
+/// (a cinema trip, a film night) instead; Matinee asks how it was once it's over.
 struct LogSheet: View {
     let film: FilmRef
     let existing: LogEntry?
     /// A new entry that's already filled in — an episode or season of a show.
     var draft: LogEntry? = nil
+    /// A plan to change, or one already filled in (from a ticket for a showing still to come).
+    var plan: PlannedWatch? = nil
+    /// Open on Planning to watch rather than Watched.
+    var startPlanning = false
     @Environment(Library.self) private var library
     @Environment(\.dismiss) private var dismiss
 
@@ -28,6 +33,14 @@ struct LogSheet: View {
     @State private var palette: PosterPalette?
     @State private var suggestion: String?
     @State private var writing = false
+    @State private var planning = false
+    @State private var planDate = LogSheet.defaultPlanTime
+    @State private var planHasTime = false
+    @State private var place = ""
+    @State private var showPlanCalendar = false
+    @State private var runtime: Int?
+    /// The plan this sheet works on: the one passed in, or one already in the library for this title.
+    @State private var basePlan: PlannedWatch?
 
     /// The sheet is painted in the film's accent colour, like its page.
     private var bg: Color { palette?.background ?? .black }
@@ -39,7 +52,12 @@ struct LogSheet: View {
     private var earlier: [LogEntry] {
         library.entries(for: film.id).filter { $0.season == context?.season && $0.episode == context?.episode && $0.id != existing?.id }
     }
+    /// Only a new viewing of a whole film or show can be a plan instead.
+    private var canPlan: Bool { existing == nil && !isPart }
+    /// The plan being changed, if it's still in the library.
+    private var currentPlan: PlannedWatch? { basePlan.flatMap { library.plan(id: $0.id) } }
     private var title: String {
+        if planning { return currentPlan != nil ? "Your plan" : "Plan a watch" }
         if existing != nil { return "Edit entry" }
         if let c = context, c.season != nil { return c.episode == nil ? "Log season" : "Log episode" }
         return film.isShow ? "Log show" : "Log film"
@@ -72,6 +90,63 @@ struct LogSheet: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 4)
 
+                    if canPlan {
+                        GlassEffectContainer(spacing: 8) {
+                            HStack(spacing: 8) {
+                                chip("Watched it", !planning) { withAnimation(.smooth) { planning = false } }
+                                chip("Planning to watch", planning) { withAnimation(.smooth) { planning = true } }
+                            }
+                        }
+                    }
+
+                    if planning { planSection } else { watchedSections }
+                }
+                .padding(20)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .background {
+                ZStack {
+                    bg
+                    // A soft glow from the poster behind the logo.
+                    if let g = palette?.glow {
+                        Circle().fill(g).frame(width: 420, height: 420).blur(radius: 120).opacity(0.45).offset(y: -260)
+                    }
+                }
+                .ignoresSafeArea()
+            }
+            .scrollContentBackground(.hidden)
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel", systemImage: "xmark") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(planning ? "Plan it" : "Save", systemImage: planning ? "calendar.badge.plus" : "checkmark") { save() }
+                        .buttonStyle(.glassProminent)
+                }
+            }
+        }
+        .presentationDragIndicator(.visible)
+        .presentationBackground(bg)
+        .animation(.easeInOut(duration: 0.5), value: palette)
+        .task(id: film.id) {
+            async let a = Catalog.art(film.id)
+            let url = film.largePoster ?? film.poster
+            if let hit = Palette.cached(url) { palette = hit }
+            art = await a
+            withAnimation(.easeOut(duration: 0.3)) { artLoaded = true }
+            if palette == nil, let p = await Palette.of((art?.poster) ?? url) { palette = p }
+        }
+        .task(id: film.id) {
+            // The runtime tells a plan when it'll be over. Shows go by a typical episode instead.
+            if canPlan, !film.isShow, runtime == nil { runtime = (try? await Catalog.detail(film.id))?.runtimeMinutes }
+        }
+        .onAppear(perform: prefill)
+        // A review in progress is kept if you close the sheet, and comes back next time you log this.
+        .onChange(of: review) { _, text in if existing == nil { ReviewDrafts.set(text, for: draftKey) } }
+    }
+
+    /// When, how it went, and what you thought: everything for a viewing that's happened.
+    @ViewBuilder private var watchedSections: some View {
                     // When
                     VStack(alignment: .leading, spacing: 10) {
                         label("Watched")
@@ -175,44 +250,111 @@ struct LogSheet: View {
                         }
                         .buttonStyle(.glass).controlSize(.large)
                     }
-                }
-                .padding(20)
-            }
-            .scrollDismissesKeyboard(.interactively)
-            .background {
-                ZStack {
-                    bg
-                    // A soft glow from the poster behind the logo.
-                    if let g = palette?.glow {
-                        Circle().fill(g).frame(width: 420, height: 420).blur(radius: 120).opacity(0.45).offset(y: -260)
+    }
+
+    /// Planning to watch: the day, a start time if you know it, and where. No rating until it's over.
+    @ViewBuilder private var planSection: some View {
+        let cal = Calendar.current
+        VStack(alignment: .leading, spacing: 10) {
+            label("When")
+            GlassEffectContainer(spacing: 8) {
+                HStack(spacing: 8) {
+                    chip("Today", cal.isDateInToday(planDate) && !showPlanCalendar) { setPlanDay(.now); showPlanCalendar = false }
+                    chip("Tomorrow", cal.isDateInTomorrow(planDate) && !showPlanCalendar) {
+                        setPlanDay(cal.date(byAdding: .day, value: 1, to: .now)!); showPlanCalendar = false
+                    }
+                    let later = !cal.isDateInToday(planDate) && !cal.isDateInTomorrow(planDate)
+                    chip(later ? planDate.formatted(.dateTime.day().month(.abbreviated)) : "Pick date", later || showPlanCalendar) {
+                        withAnimation(.smooth) { showPlanCalendar.toggle() }
                     }
                 }
-                .ignoresSafeArea()
             }
-            .scrollContentBackground(.hidden)
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel", systemImage: "xmark") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save", systemImage: "checkmark") { save() }.buttonStyle(.glassProminent)
+            if showPlanCalendar {
+                DatePicker("", selection: $planDate, in: cal.startOfDay(for: .now)..., displayedComponents: .date)
+                    .datePickerStyle(.graphical)
+                    .padding(8)
+                    .background(surface, in: .rect(cornerRadius: 20))
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+            Toggle(isOn: $planHasTime.animation(.smooth)) {
+                Label("Set a start time", systemImage: "clock")
+            }
+            .tint(Theme.accent)
+            if planHasTime {
+                DatePicker("Starts at", selection: $planDate, displayedComponents: .hourAndMinute)
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(surface, in: .rect(cornerRadius: 18))
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+
+        VStack(alignment: .leading, spacing: 10) {
+            label("Where")
+            GlassEffectContainer(spacing: 8) {
+                HStack(spacing: 8) {
+                    chip("Cinema", place == "Cinema") { place = place == "Cinema" ? "" : "Cinema" }
+                    chip("At home", place == "At home") { place = place == "At home" ? "" : "At home" }
                 }
             }
+            TextField("Or somewhere else (a friend's, a festival…)", text: $place)
+                .padding(14)
+                .background(surface, in: .rect(cornerRadius: 18))
         }
-        .presentationDragIndicator(.visible)
-        .presentationBackground(bg)
-        .animation(.easeInOut(duration: 0.5), value: palette)
-        .task(id: film.id) {
-            async let a = Catalog.art(film.id)
-            let url = film.largePoster ?? film.poster
-            if let hit = Palette.cached(url) { palette = hit }
-            art = await a
-            withAnimation(.easeOut(duration: 0.3)) { artLoaded = true }
-            if palette == nil, let p = await Palette.of((art?.poster) ?? url) { palette = p }
+
+        Toggle(isOn: $comfort.animation(.smooth)) {
+            Label("Comfort \(film.isShow ? "show" : "film") — don't ask me to rate it", systemImage: comfort ? "sofa.fill" : "sofa")
         }
-        .onAppear(perform: prefill)
-        // A review in progress is kept if you close the sheet, and comes back next time you log this.
-        .onChange(of: review) { _, text in if existing == nil { ReviewDrafts.set(text, for: draftKey) } }
+        .tint(Theme.star)
+
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "bell.badge").foregroundStyle(palette?.highlight ?? Theme.accent)
+            Text(planNote).font(.subheadline).foregroundStyle(.white.opacity(0.75))
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(surface, in: .rect(cornerRadius: 18))
+
+        if let p = currentPlan {
+            Button(role: .destructive) { library.removePlan(p); dismiss() } label: {
+                Label("Remove this plan", systemImage: "calendar.badge.minus").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.glass).controlSize(.large)
+        }
+    }
+
+    /// The plan as it stands on the sheet.
+    private var draftPlan: PlannedWatch {
+        var p = basePlan ?? PlannedWatch(film: film, date: planDate)
+        p.film = film
+        p.date = planHasTime ? planDate : Calendar.current.startOfDay(for: planDate)
+        p.hasTime = planHasTime
+        p.minutes = runtime ?? p.minutes
+        p.place = place.trimmingCharacters(in: .whitespaces)
+        return p
+    }
+
+    private var planNote: String {
+        let p = draftPlan
+        let kind = film.isShow ? "show" : "film"
+        guard p.hasTime else { return "It'll sit on Home until the day. Next time you open Matinee after that, it'll ask how the \(kind) was." }
+        let ask = comfort ? "it'll ask you to log it" : "it'll ask how it was"
+        return "Should be over around \(p.endsAt.formatted(date: .omitted, time: .shortened)). Open Matinee after that and \(ask)."
+    }
+
+    /// Moves the plan to another day, keeping its start time.
+    private func setPlanDay(_ day: Date) {
+        let cal = Calendar.current
+        let t = cal.dateComponents([.hour, .minute], from: planDate)
+        planDate = cal.date(bySettingHour: t.hour ?? 19, minute: t.minute ?? 0, second: 0, of: day) ?? day
+    }
+
+    /// The next whole hour, or 7 pm if that's later — a sensible start for a film.
+    static var defaultPlanTime: Date {
+        let cal = Calendar.current
+        let nextHour = cal.nextDate(after: .now, matching: DateComponents(minute: 0), matchingPolicy: .nextTime) ?? .now
+        let evening = cal.date(bySettingHour: 19, minute: 0, second: 0, of: .now) ?? nextHour
+        return max(nextHour, evening)
     }
 
     /// Apple Intelligence turns quick notes into a short review in your own words, on the phone.
@@ -289,9 +431,22 @@ struct LogSheet: View {
             else { rating = d.rating ?? library.seasonRating(film.id, s) }
             rewatch = !earlier.isEmpty
         } else {
-            rating = library.rating(film.id)
-            liked = library.isLiked(film.id)
+            rating = draft?.rating ?? library.rating(film.id)
+            liked = draft?.liked == true || library.isLiked(film.id)
             rewatch = !earlier.isEmpty
+        }
+        if canPlan {
+            planning = startPlanning
+            basePlan = plan ?? library.upcomingPlans.first { $0.film.id == film.id }
+            if let p = basePlan {
+                planDate = p.hasTime ? p.date : Calendar.current.date(bySettingHour: 19, minute: 0, second: 0, of: p.date) ?? p.date
+                // Moving a plan that's been and gone: start from this evening rather than the old day.
+                if p.isOver { planDate = LogSheet.defaultPlanTime }
+                planHasTime = p.hasTime
+                place = p.place
+                runtime = p.minutes
+                showPlanCalendar = false
+            }
         }
         // A draft from a ticket brings its date and tags.
         if existing == nil, let d = draft {
@@ -306,6 +461,15 @@ struct LogSheet: View {
     }
 
     private func save() {
+        if planning {
+            library.setComfort(film, comfort)
+            library.savePlan(draftPlan)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            dismiss()
+            return
+        }
+        // Logging it settles the plan it came from.
+        if let p = currentPlan { library.removePlan(p, toast: false) }
         addTag()
         var e = existing ?? draft ?? LogEntry(film: film)
         library.setComfort(film, comfort)

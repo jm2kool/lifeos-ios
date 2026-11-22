@@ -643,6 +643,9 @@ struct FilmContextMenu: ViewModifier {
                 Label(library.inWatchlist(film.id) ? "Remove from watchlist" : "Add to watchlist", systemImage: library.inWatchlist(film.id) ? "clock.badge.xmark" : "clock")
             }
             Button { router.sheet = .addToList(film) } label: { Label("Add to list…", systemImage: "text.badge.plus") }
+            Button { router.sheet = .plan(film, library.plan(for: film.id)) } label: {
+                Label(library.plan(for: film.id).map { "Planned · \($0.when)" } ?? "Plan a watch…", systemImage: "calendar.badge.clock")
+            }
         } preview: {
             PosterView(film: film, width: 220, corner: 12).environment(library)
         }

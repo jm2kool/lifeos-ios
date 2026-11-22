@@ -384,7 +384,22 @@ struct FilmView: View {
                 }
                 .disabled(hosting)
             }
+            planRow
             comfortRow(comfort)
+        }
+    }
+
+    /// Planning to watch it on a set day — a cinema trip, a film night. It goes on Home, and Matinee asks how it was.
+    private var planRow: some View {
+        let plan = library.plan(for: ref.id)
+        return GlassChip(prominent: plan != nil, action: {
+            // A new plan starts this evening, with the runtime this page already knows.
+            router.sheet = .plan(ref, plan ?? PlannedWatch(film: ref, date: LogSheet.defaultPlanTime, minutes: detail?.runtimeMinutes))
+        }) {
+            Label(plan.map { "Planned · \($0.when)\($0.place.isEmpty ? "" : " · \($0.place)")" } ?? "Plan to watch on a day",
+                  systemImage: plan.map(\.placeSymbol) ?? "calendar.badge.clock")
+                .lineLimit(1).minimumScaleFactor(0.75)
+                .frame(maxWidth: .infinity)
         }
     }
 

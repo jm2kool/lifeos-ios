@@ -46,6 +46,7 @@ struct MatineeApp: App {
                     await auth.refreshIfNeeded()
                     await library.reconcileWithCloud()
                     await Reminders.refresh(library)
+                    await Reminders.refreshPlans(library)
                     await Social.shared.refreshFollowing()
                     await Availability.shared.refresh(library)
                 }
@@ -116,6 +117,8 @@ enum SheetRoute: Identifiable, Equatable {
     case party(String)
     case finder(String?)                        // the AI finder, optionally with a link or text to look up
     case story(LogEntry)                        // share an entry (or a film) to Instagram Stories
+    case plan(FilmRef, PlannedWatch?)           // plan to watch a title on a set day, or change a plan
+    case howWasIt(UUID)                         // a planned watch is over: how was it?
 
     var id: String {
         switch self {
@@ -139,6 +142,8 @@ enum SheetRoute: Identifiable, Equatable {
         case .party(let c): return "party-\(c)"
         case .finder(let t): return "finder-\(t ?? "")"
         case .story(let e): return "story-\(e.id)"
+        case .plan(let f, let p): return "plan-\(f.id)-\(p?.id.uuidString ?? "")"
+        case .howWasIt(let id): return "howwasit-\(id)"
         }
     }
 }

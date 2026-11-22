@@ -26,6 +26,7 @@ Matinee is not affiliated with Letterboxd.
 | — | **TV shows** | Search finds shows as well as films. Tick off episodes, rate each one, and see what's up next. |
 | — | **Currently watching** | Pin a show from its page and it sits at the top of Home with the next episode to tick off or start, and the last one ready to rate. |
 | — | **Comfort films and shows** | Mark a title as a comfort watch (on its page or when you log it) and Matinee logs it without ever asking for a rating. |
+| — | **Plan a watch, then "How was it?"** | Switch the log sheet to Planning to watch (or tap Plan on a film, a finder result or a long-press menu) and set the day, a start time and where — cinema, at home. Plans sit on Home with a countdown and in Coming up. Once it should be over, opening Matinee (or its notification) asks how it was and logs it in a tap. A ticket for a showing still to come becomes a plan. |
 | — | **Season and series wrap-up** | Finish a season or a whole show and you see the average of your episode ratings next to a rating you choose yourself. |
 | Lists | **Lists with progress** | Shows "you've seen 3 of 7". Lists can be ranked and reordered by dragging. |
 | Profile favourites | **Up to eight favourite films and shows (Settings → Edit favourites) + ratings spread** | Tap any bar in your ratings chart to see those films. |

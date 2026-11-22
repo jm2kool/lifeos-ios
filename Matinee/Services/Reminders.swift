@@ -53,6 +53,38 @@ enum Reminders {
         for r in requests.sorted(by: { fireDate($0) < fireDate($1) }).prefix(60) { try? await center.add(r) }
     }
 
+    /// Planned watches: a nudge before one with a start time, and "How was it?" once it should be over.
+    /// Needs no film data, so it runs straight away whenever a plan changes.
+    static func refreshPlans(_ library: Library, ask: Bool = false) async {
+        if ask, library.plans.contains(where: { !$0.isOver }) { await requestPermission() }
+        let center = UNUserNotificationCenter.current()
+        let old = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix("plan-") }
+        center.removePendingNotificationRequests(withIdentifiers: old)
+        guard await authorized else { return }
+        for p in library.upcomingPlans.prefix(10) {
+            let url = planURL(p).absoluteString
+            if p.hasTime, p.date.addingTimeInterval(-3600) > .now {
+                let c = UNMutableNotificationContent()
+                c.title = p.film.title
+                c.body = p.place.isEmpty ? "Starts at \(p.date.formatted(date: .omitted, time: .shortened))." : "\(p.place) at \(p.date.formatted(date: .omitted, time: .shortened)). Enjoy it."
+                c.sound = .default
+                c.threadIdentifier = "plans"
+                c.userInfo = ["url": filmURL(p.film).absoluteString]
+                try? await center.add(request("plan-start-\(p.id)", c, p.date.addingTimeInterval(-3600)))
+            }
+            let c = UNMutableNotificationContent()
+            c.title = "How was \(p.film.title)?"
+            c.body = "Tap to give it a score and log it while it's fresh."
+            c.sound = .default
+            c.threadIdentifier = "plans"
+            c.userInfo = ["url": url]
+            try? await center.add(request("plan-end-\(p.id)", c, max(p.endsAt, .now.addingTimeInterval(60))))
+        }
+    }
+
+    /// matinee://howwasit/<plan id> — opens the How was it? sheet.
+    static func planURL(_ p: PlannedWatch) -> URL { URL(string: "matinee://howwasit/\(p.id.uuidString)")! }
+
     private static func fireDate(_ r: UNNotificationRequest) -> Date {
         (r.trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate() ?? .distantFuture
     }

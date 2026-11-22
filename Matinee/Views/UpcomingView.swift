@@ -55,6 +55,13 @@ enum Upcoming {
         for r in library.reminders where r.date >= today && r.date <= until && !out.contains(where: { $0.film.id == r.film.id }) {
             out.append(UpcomingItem(film: r.film, date: r.date, kind: .release, detail: "Release day · reminder on", id: "rel-\(r.film.id)"))
         }
+        // Your own plans: cinema trips and film nights.
+        for p in library.upcomingPlans where p.date <= until {
+            let place = p.place.isEmpty ? "Your plan" : "Your plan · \(p.place)"
+            out.append(UpcomingItem(film: p.film, date: max(p.date, today), kind: .release,
+                                    detail: p.hasTime ? "\(place) · \(p.date.formatted(date: .omitted, time: .shortened))" : place,
+                                    id: "plan-\(p.id)"))
+        }
         return out.sorted { ($0.date, $0.film.title) < ($1.date, $1.film.title) }
     }
 
@@ -160,7 +167,7 @@ struct ComingUpSection: View {
     @State private var items: [UpcomingItem] = []
 
     private var signature: String {
-        "\(library.currentlyWatching.map(\.id))|\(library.showsInProgress.count)|\(library.doc.watchlist.count)|\(library.reminders.count)"
+        "\(library.currentlyWatching.map(\.id))|\(library.showsInProgress.count)|\(library.doc.watchlist.count)|\(library.reminders.count)|\(library.plans.map(\.id))"
     }
 
     var body: some View {

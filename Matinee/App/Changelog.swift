@@ -53,6 +53,19 @@ struct Release: Identifiable, Hashable {
 enum Changelog {
     /// Newest first.
     static let releases: [Release] = [
+        Release(version: "1.6", date: "22 November 2026", headline: "Plans, and how was it?", items: [
+            ChangeItem(symbol: "calendar.badge.clock", title: "Plan a watch",
+                       detail: "Going to the cinema tonight, or saving a film for December? Open the log sheet and switch to Planning to watch, or tap Plan on a film's page. Pick the day, a start time if you know it, and where.",
+                       action: .quickLog),
+            ChangeItem(symbol: "popcorn.fill", title: "Your plans on Home",
+                       detail: "Plans sit at the top of Home with how long to go, and in the Coming up calendar. Press and hold one to move or remove it.",
+                       action: .home),
+            ChangeItem(symbol: "star.bubble.fill", title: "How was it?",
+                       detail: "Once a plan should be over, open Matinee and it asks how it was: score it, heart it and log it in one tap. A notification asks too, if you've allowed them."),
+            ChangeItem(symbol: "ticket.fill", title: "Tickets for later",
+                       detail: "Scan a ticket for a showing that's still to come and Matinee plans it with the date and time from the ticket, instead of logging it.",
+                       action: .scanTicket),
+        ]),
         Release(version: "1.5", date: "6 November 2026", headline: "Straight to your story", items: [
             ChangeItem(symbol: "camera.circle.fill", title: "Share to Instagram Stories",
                        detail: "Swipe right on a diary entry and tap Story, or use ••• on any film. Your film becomes a cinema ticket — poster, score, heart and a line of your review — that drops into Instagram's story editor, ready to move about. Pick Glow, Colour or Poster for the look, and switch your rating and review on or off before you share.",
@@ -252,7 +265,7 @@ enum Tour {
                    detail: "Watch, like, save and score a film right on its page — drag round the dial or slide across the stars. Tap the poster for the trailer, and see where it's streaming, your own services first.",
                    action: .search),
         ChangeItem(symbol: "book.pages.fill", title: "Your diary",
-                   detail: "Log what you watch with the date, your score, a review and tags. Swipe an entry to edit or log it again, scan a cinema ticket to log it in one go, and set a goal for the year.",
+                   detail: "Log what you watch with the date, your score, a review and tags. Plan a cinema trip or a film night and Matinee asks how it was afterwards. Scan a cinema ticket to log it in one go, and set a goal for the year.",
                    action: .diary),
         ChangeItem(symbol: "dice.fill", title: "Can't decide?",
                    detail: "Shake your phone (or double-tap Library) for a deck of picks from your watchlist. Swipe left for another, right to open it.",

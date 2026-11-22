@@ -166,6 +166,60 @@ struct ReleaseReminder: Codable, Hashable, Identifiable {
     var id: String { film.id }
 }
 
+/// A film or show you mean to watch at a set time — a cinema booking, a night in. It sits on Home until it's
+/// over, and then Matinee asks how it was.
+struct PlannedWatch: Codable, Hashable, Identifiable {
+    var id = UUID()
+    var film: FilmRef
+    var date: Date
+    /// Whether `date` carries a start time, or only the day.
+    var hasTime = false
+    /// The runtime, so Matinee knows when it'll be over.
+    var minutes: Int?
+    /// "Cinema", "At home", or anything you type.
+    var place = ""
+    /// "Ask me later" pushes the How was it? question back to here.
+    var snoozedUntil: Date?
+    var createdAt = Date.now
+
+    /// When it should be finished: the start plus the runtime (or a typical length), or the end of the day without a time.
+    var endsAt: Date {
+        let cal = Calendar.current
+        guard hasTime else { return cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: date)) ?? date }
+        let length = minutes.flatMap { $0 > 0 ? $0 : nil } ?? (film.isShow ? 60 : 150)
+        // A few minutes for the adverts and trailers before a cinema showing.
+        let extra = place.lowercased().contains("cinema") ? 20 : 5
+        return date.addingTimeInterval(Double(length + extra) * 60)
+    }
+    var isOver: Bool { endsAt <= .now }
+    /// Over, and not put off with "Ask me later".
+    var isDue: Bool { isOver && (snoozedUntil.map { $0 <= .now } ?? true) }
+    var isOn: Bool { date <= .now && !isOver }
+
+    /// "Tonight · 7:30 pm", "Tomorrow", "Sat 13 Dec · 6:15 pm".
+    var when: String {
+        let cal = Calendar.current
+        let day: String
+        if cal.isDateInToday(date) { day = hasTime && cal.component(.hour, from: date) >= 17 ? "Tonight" : "Today" }
+        else if cal.isDateInTomorrow(date) { day = "Tomorrow" }
+        else if cal.isDateInYesterday(date) { day = "Yesterday" }
+        else {
+            let days = cal.dateComponents([.day], from: cal.startOfDay(for: .now), to: cal.startOfDay(for: date)).day ?? 0
+            if (0..<7).contains(days) { day = date.formatted(.dateTime.weekday(.wide)) }
+            else if date.year == Date.now.year { day = date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)) }
+            else { day = date.formatted(.dateTime.day().month(.abbreviated).year()) }
+        }
+        return hasTime ? "\(day) · \(date.formatted(date: .omitted, time: .shortened))" : day
+    }
+
+    var placeSymbol: String {
+        let p = place.lowercased()
+        if p.contains("cinema") || p.contains("theat") { return "popcorn.fill" }
+        if p.contains("home") { return "sofa.fill" }
+        return p.isEmpty ? "calendar" : "mappin.and.ellipse"
+    }
+}
+
 struct Profile: Codable, Hashable {
     var name = ""
     var handle = ""
@@ -201,6 +255,7 @@ struct LibraryDoc: Codable {
     var blocked: [String]?                    // account ids of people whose posts and profile you don't want to see
     var services: [Int]?                      // TMDB ids of the streaming services you pay for
     var posters: [String: URL]?               // a poster you picked for a film, by film id
+    var plans: [PlannedWatch]?                // films and shows you mean to watch on a set day, soonest first
 
     /// Favourite films and shows together, in your order. Older libraries kept them apart, films first.
     var allFavorites: [FilmRef] { topFavorites ?? (favorites + (favoriteShows ?? [])) }
@@ -260,6 +315,9 @@ struct LibraryDoc: Codable {
         if d.services == nil { d.services = other.services }
         let posters = (other.posters ?? [:]).merging(d.posters ?? [:]) { _, mine in mine }
         if !posters.isEmpty { d.posters = posters }
+        var plans = d.plans ?? []
+        for p in other.plans ?? [] where !plans.contains(where: { $0.id == p.id }) { plans.append(p) }
+        if !plans.isEmpty { d.plans = plans.sorted { $0.date < $1.date } }
         d.updatedAt = .now
         return d
     }

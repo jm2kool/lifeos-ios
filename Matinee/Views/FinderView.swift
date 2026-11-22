@@ -182,6 +182,8 @@ struct FinderView: View {
                     Button("Open", systemImage: "arrow.up.right") { open(m.film) }.buttonStyle(.glassProminent)
                     Button(saved ? "Saved" : "Watchlist", systemImage: saved ? "checkmark" : "clock") { library.toggleWatchlist(m.film) }
                         .buttonStyle(.glass)
+                    Button("Plan", systemImage: "calendar.badge.clock") { router.sheet = .plan(m.film, library.plan(for: m.film.id)) }
+                        .buttonStyle(.glass)
                 }
                 .controlSize(.small)
                 .padding(.top, 2)
