@@ -113,9 +113,11 @@ jobs:
           APP=$(ls -d simbuild/Debug-watchsimulator/LineupWatch.app)
           xcrun simctl install "$W" "$APP"
           ID=com.jm2kool.lineup.watchkitapp
-          SIMCTL_CHILD_LINEUP_SAMPLE=1 xcrun simctl launch "$W" $ID; sleep 8; xcrun simctl io "$W" screenshot out/watch-1-now.png
-          SIMCTL_CHILD_LINEUP_SAMPLE=1 SIMCTL_CHILD_LINEUP_PAGE=homework xcrun simctl launch --terminate-running-process "$W" $ID; sleep 6; xcrun simctl io "$W" screenshot out/watch-2-homework.png
-          SIMCTL_CHILD_LINEUP_SAMPLE=1 SIMCTL_CHILD_LINEUP_PAGE=pack xcrun simctl launch --terminate-running-process "$W" $ID; sleep 6; xcrun simctl io "$W" screenshot out/watch-3-pack.png
+          # A freshly booted watch is slow to open its first app, so open it once and let it settle.
+          SIMCTL_CHILD_LINEUP_SAMPLE=1 xcrun simctl launch "$W" $ID; sleep 45
+          SIMCTL_CHILD_LINEUP_SAMPLE=1 xcrun simctl launch --terminate-running-process "$W" $ID; sleep 15; xcrun simctl io "$W" screenshot out/watch-1-now.png
+          SIMCTL_CHILD_LINEUP_SAMPLE=1 SIMCTL_CHILD_LINEUP_PAGE=homework xcrun simctl launch --terminate-running-process "$W" $ID; sleep 12; xcrun simctl io "$W" screenshot out/watch-2-homework.png
+          SIMCTL_CHILD_LINEUP_SAMPLE=1 SIMCTL_CHILD_LINEUP_PAGE=pack xcrun simctl launch --terminate-running-process "$W" $ID; sleep 12; xcrun simctl io "$W" screenshot out/watch-3-pack.png
           ls -lh out
 
       - continue-on-error: true
