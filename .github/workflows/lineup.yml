@@ -1,0 +1,142 @@
+name: Build Lineup
+
+on:
+  push:
+    branches: [main, matinee]
+    paths: ['Lineup/**', '.github/workflows/lineup.yml', '!**.md']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: lineup-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: Lineup
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use the newest Xcode
+        run: |
+          XC=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          [ -z "$XC" ] && XC=/Applications/Xcode.app
+          sudo xcode-select -s "$XC"
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i -E "iphoneos|watchos" || true
+
+      - name: Make sure the watchOS platform is installed
+        run: |
+          if ! xcodebuild -showsdks | grep -q "watchos"; then
+            sudo xcodebuild -downloadPlatform watchOS
+          fi
+
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen >/dev/null 2>&1 || brew install xcodegen
+          xcodegen generate
+
+      - name: Build (unsigned)
+        run: |
+          xcodebuild -project Lineup.xcodeproj -scheme Lineup -configuration Release -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            SYMROOT="$PWD/build" build > build.log 2>&1 || {
+              grep -E "error:|fatal error" build.log | sort -u | head -60 | while IFS= read -r l; do echo "::error::${l#$PWD/}"; done; exit 1; }
+          grep -c "warning:" build.log || true
+          test -d build/Release-iphoneos/Lineup.app
+          test -d build/Release-iphoneos/Lineup.app/Watch/LineupWatch.app || { echo "::error::The watch app wasn't embedded"; ls -R build/Release-iphoneos/Lineup.app | head -40; exit 1; }
+
+      - name: Package .ipa
+        run: |
+          rm -rf Payload && mkdir Payload
+          cp -R build/Release-iphoneos/Lineup.app Payload/
+          codesign --force --sign - Payload/Lineup.app/Watch/LineupWatch.app || true
+          codesign --force --sign - Payload/Lineup.app || true
+          zip -qry Lineup.ipa Payload
+          ls -lh Lineup.ipa
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lineup-build-log
+          path: Lineup/build.log
+          if-no-files-found: ignore
+
+      - name: Upload .ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lineup-ipa
+          path: Lineup/Lineup.ipa
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLIC_REPO: ${{ !github.event.repository.private }}
+        run: |
+          TAG=lineup-latest; NAME="Lineup (latest build)"
+          NOTES="Unsigned build of ${GITHUB_SHA::7}, with the Apple Watch app inside. Install with Sideloadly using your Apple ID."
+          for id in $(gh api repos/$GITHUB_REPOSITORY/releases --jq ".[] | select(.name==\"$NAME\") | .id"); do
+            gh api -X DELETE repos/$GITHUB_REPOSITORY/releases/$id >/dev/null || true
+          done
+          git push origin ":refs/tags/$TAG" 2>/dev/null || true
+          if [ "$PUBLIC_REPO" = "true" ]; then FLAGS="--draft"; else FLAGS=""; fi
+          gh release create $TAG Lineup.ipa --title "$NAME" --target $GITHUB_SHA --notes "$NOTES" $FLAGS
+
+      # Screenshots from the simulators, with a made-up timetable, so changes can be checked without a device.
+      - continue-on-error: true
+        name: Build for the simulators
+        run: |
+          xcodebuild -project Lineup.xcodeproj -scheme Lineup -configuration Debug -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO SYMROOT="$PWD/simbuild" build > sim.log 2>&1 || { grep -E "error:" sim.log | sort -u | head -40 | while IFS= read -r l; do echo "::error::${l#$PWD/}"; done; exit 1; }
+          ls simbuild
+
+      - continue-on-error: true
+        name: Watch screenshots
+        run: |
+          mkdir -p out
+          W=$(xcrun simctl list devices available | grep -E "Apple Watch" | grep -E "Series (10|11)|Ultra" | head -1 | grep -oE '[0-9A-F-]{36}')
+          [ -z "$W" ] && W=$(xcrun simctl list devices available | grep "Apple Watch" | head -1 | grep -oE '[0-9A-F-]{36}')
+          if [ -z "$W" ]; then
+            RT=$(xcrun simctl list runtimes | grep -i watchos | tail -1 | grep -oE 'com.apple.CoreSimulator.SimRuntime.watchOS[^ ]*')
+            W=$(xcrun simctl create "Lineup Watch" "com.apple.CoreSimulator.SimDeviceType.Apple-Watch-Series-10-46mm" "$RT")
+          fi
+          echo "Watch: $W"
+          xcrun simctl boot "$W" || true
+          xcrun simctl bootstatus "$W" -b
+          APP=$(ls -d simbuild/Debug-watchsimulator/LineupWatch.app)
+          xcrun simctl install "$W" "$APP"
+          ID=com.jm2kool.lineup.watchkitapp
+          SIMCTL_CHILD_LINEUP_SAMPLE=1 xcrun simctl launch "$W" $ID; sleep 8; xcrun simctl io "$W" screenshot out/watch-1-now.png
+          SIMCTL_CHILD_LINEUP_SAMPLE=1 SIMCTL_CHILD_LINEUP_PAGE=homework xcrun simctl launch --terminate-running-process "$W" $ID; sleep 6; xcrun simctl io "$W" screenshot out/watch-2-homework.png
+          SIMCTL_CHILD_LINEUP_SAMPLE=1 SIMCTL_CHILD_LINEUP_PAGE=pack xcrun simctl launch --terminate-running-process "$W" $ID; sleep 6; xcrun simctl io "$W" screenshot out/watch-3-pack.png
+          ls -lh out
+
+      - continue-on-error: true
+        name: iPhone screenshot
+        run: |
+          mkdir -p out
+          P=$(xcrun simctl list devices available | grep -E "iPhone 1[67] Pro \(" | head -1 | grep -oE '[0-9A-F-]{36}')
+          [ -z "$P" ] && P=$(xcrun simctl list devices available | grep "iPhone" | head -1 | grep -oE '[0-9A-F-]{36}')
+          xcrun simctl boot "$P" || true
+          xcrun simctl bootstatus "$P" -b
+          xcrun simctl ui "$P" appearance dark || true
+          xcrun simctl install "$P" simbuild/Debug-iphonesimulator/Lineup.app
+          SIMCTL_CHILD_LINEUP_SAMPLE=1 xcrun simctl launch "$P" com.jm2kool.lineup; sleep 8; xcrun simctl io "$P" screenshot out/phone-1-today.png
+          ls -lh out
+
+      - continue-on-error: true
+        name: Publish the preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls out/*.png
+          gh release delete lineup-preview --yes --cleanup-tag 2>/dev/null || true
+          gh release create lineup-preview out/*.png --target $GITHUB_SHA --title "Lineup preview (simulator)" \
+            --notes "Screenshots from the iPhone and Apple Watch simulators, using a made-up timetable." --prerelease
