@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// Pick a font for one album: every family on the iPhone and any you import, previewed with the album's own title
-/// and songs. It's used for the title, the tracklist and the sleeve (and the player, if you switch that on).
+/// and songs. It's used for the title, the tracklist, the sleeve, the player and the lyrics.
 struct FontPickerSheet: View {
     let request: LookRequest
     @Environment(\.dismiss) private var dismiss
@@ -11,6 +11,8 @@ struct FontPickerSheet: View {
     @State private var imported: [String] = []
     @State private var system: [String] = []
     @State private var importFailed = false
+    @State private var matching = false
+    @State private var noMatch = false
 
     private var store: LookStore { LookStore.shared }
     private var face: AlbumFace? { store.look(request.key).face }
@@ -19,6 +21,20 @@ struct FontPickerSheet: View {
         NavigationStack {
             List {
                 Section { preview }
+                if let logo = store.logo(request.key), !request.isArtist {
+                    Section {
+                        Button { match(logo) } label: {
+                            HStack {
+                                Label("Match the Logo", systemImage: "wand.and.sparkles")
+                                Spacer()
+                                if matching { ProgressView() }
+                            }
+                        }
+                        .disabled(matching)
+                    } footer: {
+                        Text("Finds the font on your iPhone that looks most like your logo's lettering.")
+                    }
+                }
                 if let face { Section("Style") { styleControls(face) } }
                 Section {
                     row(nil, name: "\(AppBrand.name) default")
@@ -49,6 +65,9 @@ struct FontPickerSheet: View {
                 }
             }
             .alert("That file isn't a font LINER. can read", isPresented: $importFailed) { Button("OK") {} }
+            .alert("No words to match in this logo", isPresented: $noMatch) { Button("OK") {} } message: {
+                Text("Matching reads the logo's lettering. Pick a font from the list instead.")
+            }
             .onAppear {
                 FontLibrary.registerImported()
                 imported = FontLibrary.importedFamilies()
@@ -108,7 +127,6 @@ struct FontPickerSheet: View {
             Text("ALL CAPS").tag(AlbumFace.Caps.upper)
             Text("lowercase").tag(AlbumFace.Caps.lower)
         }
-        Toggle("Use in the player too", isOn: Binding(get: { face.inPlayer }, set: { v in change { $0.inPlayer = v } }))
     }
 
     private func pick(_ family: String) {
@@ -116,6 +134,16 @@ struct FontPickerSheet: View {
             var f = l.face ?? AlbumFace(family: family)
             f.family = family
             l.face = f
+        }
+    }
+
+    private func match(_ logo: UIImage) {
+        guard let png = logo.pngData() else { return }
+        matching = true
+        Task {
+            let face = await FontMatcher.match(png: png)
+            matching = false
+            if let face { store.update(request.key) { $0.face = face } } else { noMatch = true }
         }
     }
 

@@ -2,11 +2,12 @@ import SwiftUI
 
 /// On the full player, just above the song's name: the line being sung, and the next one smaller in a darker
 /// grey, sliding up as the song goes. Tap to open the full lyrics. It always keeps its place (so nothing jumps):
-/// while lyrics load, and for songs without synced lyrics, it says so quietly.
+/// while lyrics load, and for songs without synced lyrics, it says so quietly. Lines are in the album's font when it has one.
 struct NowPlayingLyrics: View {
     let item: QueueItem
     var open: () -> Void = {}
     @Environment(PlaybackCoordinator.self) private var player
+    @Environment(LibraryService.self) private var library
     @State private var lyrics: Lyrics?
     @State private var loading = true
 
@@ -26,6 +27,7 @@ struct NowPlayingLyrics: View {
                 lines(current: "♪", next: lyrics?.plain != nil ? "Lyrics without timings — tap to read" : "No lyrics for this song", index: -4)
             }
         }
+        .environment(\.albumFace, LookStore.shared.face(for: item, snapshot: library.snapshot))
         .task(id: "\(item.id)-\(LyricsEdits.shared.revision)") {
             loading = true
             let found = await LyricsStore.lyrics(for: item)
@@ -37,11 +39,11 @@ struct NowPlayingLyrics: View {
         Button(action: open) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(current.isEmpty ? "♪" : current)
-                    .font(.serif(21, weight: .semibold)).foregroundStyle(.white)
+                    .albumFace(21, weight: .semibold, fallback: .serif(21, weight: .semibold)).foregroundStyle(.white)
                     .lineLimit(2).minimumScaleFactor(0.8)
                 if !next.isEmpty {
                     Text(next)
-                        .font(.serif(15)).foregroundStyle(.white.opacity(0.42))
+                        .albumFace(15, fallback: .serif(15)).foregroundStyle(.white.opacity(0.42))
                         .lineLimit(1)
                 }
             }

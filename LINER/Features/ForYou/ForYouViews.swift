@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Home's "Made for You" and "From Apple Music" shelves.
+/// Home's "Made for You" and "From Apple Music" shelves; tap a title to fold the shelf away.
 struct ForYouShelves: View {
     @Environment(LibraryService.self) private var library
     @State private var editorial: [AppleMusicWeb.PlaylistRef] = []
@@ -9,17 +9,17 @@ struct ForYouShelves: View {
         let mixes = MadeForYouMix.all(library.snapshot, stats: library.stats)
         VStack(alignment: .leading, spacing: 20) {
             if !mixes.isEmpty {
-                shelf("Made for You") {
+                CollapsibleShelf("Made for You", id: "madeForYou") {
                     ForEach(mixes) { mix in
                         NavigationLink(value: mix) {
-                            tile(title: mix.title, subtitle: mix.subtitle) { MosaicCover(albumIDs: mix.coverAlbumIDs) }
+                            tile(title: mix.title, subtitle: mix.subtitle) { MixCover(mix: mix) }
                         }
                         .buttonStyle(.plain)
                     }
                 }
             }
             if !editorial.isEmpty {
-                shelf("From Apple Music") {
+                CollapsibleShelf("From Apple Music", id: "fromAppleMusic") {
                     ForEach(editorial.prefix(24)) { ref in
                         NavigationLink(value: ref) {
                             tile(title: ref.title, subtitle: ref.curator) { CatalogArtwork(url: ref.artwork(400), cornerRadius: 0) }
@@ -30,16 +30,6 @@ struct ForYouShelves: View {
             }
         }
         .task { if editorial.isEmpty { editorial = await AppleMusicWeb.editorial() } }
-    }
-
-    private func shelf<C: View>(_ title: String, @ViewBuilder content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title).font(.sectionTitle)
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(alignment: .top, spacing: 14) { content() }
-            }
-            .scrollClipDisabled()
-        }
     }
 
     private func tile<A: View>(title: String, subtitle: String, @ViewBuilder art: () -> A) -> some View {
@@ -53,22 +43,6 @@ struct ForYouShelves: View {
     }
 }
 
-/// Four covers in a square (one when there's only one).
-struct MosaicCover: View {
-    let albumIDs: [UInt64]
-    var body: some View {
-        if albumIDs.count >= 4 {
-            Grid(horizontalSpacing: 0, verticalSpacing: 0) {
-                GridRow { cover(0); cover(1) }
-                GridRow { cover(2); cover(3) }
-            }
-        } else {
-            ArtworkView(albumID: albumIDs.first, cornerRadius: 0)
-        }
-    }
-    private func cover(_ i: Int) -> some View { ArtworkView(albumID: albumIDs[i], cornerRadius: 0).aspectRatio(1, contentMode: .fit) }
-}
-
 /// One of the Made for You mixes.
 struct MadeForYouView: View {
     let mix: MadeForYouMix
@@ -78,7 +52,7 @@ struct MadeForYouView: View {
         let songs = library.snapshot.songs(mix.songIDs)
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                MosaicCover(albumIDs: mix.coverAlbumIDs).frame(width: 260, height: 260)
+                MixCover(mix: mix).frame(width: 260, height: 260)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous)).frame(maxWidth: .infinity)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(mix.title).font(.itemTitle)
@@ -149,7 +123,7 @@ struct AppleMusicPlaylistView: View {
     }
 }
 
-/// The artist's playlists on Apple Music (Essentials and the rest), on their Page.
+/// The artist's playlists on Apple Music (Essentials and the rest), on their Page. Tap the title to fold it away.
 struct ArtistPlaylistsShelf: View {
     let artist: String
     @State private var playlists: [AppleMusicWeb.PlaylistRef] = []
@@ -157,21 +131,15 @@ struct ArtistPlaylistsShelf: View {
     var body: some View {
         Group {
             if !playlists.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Apple Music Playlists").font(.sectionTitle).padding(.horizontal, 16)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(alignment: .top, spacing: 14) {
-                            ForEach(playlists) { ref in
-                                NavigationLink(value: ref) {
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        CatalogArtwork(url: ref.artwork(400), cornerRadius: 10).frame(width: 150, height: 150)
-                                        Text(ref.title).font(.system(size: 14, weight: .medium)).lineLimit(2).frame(width: 150, alignment: .leading)
-                                    }
-                                }
-                                .buttonStyle(.plain)
+                CollapsibleShelf("Apple Music Playlists", id: "artistPlaylists", horizontalPadding: 16) {
+                    ForEach(playlists) { ref in
+                        NavigationLink(value: ref) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                CatalogArtwork(url: ref.artwork(400), cornerRadius: 10).frame(width: 150, height: 150)
+                                Text(ref.title).font(.system(size: 14, weight: .medium)).lineLimit(2).frame(width: 150, alignment: .leading)
                             }
                         }
-                        .padding(.horizontal, 16)
+                        .buttonStyle(.plain)
                     }
                 }
             }

@@ -39,13 +39,15 @@ struct ZoomSource: ViewModifier {
     }
 }
 
-/// A song in a list: small cover (or track number), title, artist, plays.
+/// A song in a list: small cover (or track number), title, artist, plays. In an album's tracklist the artist is in
+/// the album's font, and left out when the song is only by the album's own artist.
 struct SongRow: View {
     let song: Song
     var number: Int?
     var showArtwork = true
     @Environment(LibraryService.self) private var library
     @Environment(\.tracklistScale) private var scale
+    @Environment(\.albumArtist) private var albumArtist
 
     var body: some View {
         HStack(spacing: 12) {
@@ -56,8 +58,10 @@ struct SongRow: View {
             }
             VStack(alignment: .leading, spacing: 2 * scale) {
                 Text(song.title).albumFace(16 * scale, fallback: .system(size: 16 * scale)).lineLimit(1)
-                Text(number == nil && library.snapshot.albumOf(song) != nil ? "\(song.artist) · \(song.albumTitle)" : song.artist)
-                    .font(.system(size: 13 * scale)).foregroundStyle(Palette.secondary).lineLimit(1)
+                if !(number != nil && song.artist.isOnly(albumArtist)) {
+                    Text(number == nil && library.snapshot.albumOf(song) != nil ? "\(song.artist) · \(song.albumTitle)" : song.artist)
+                        .albumFace(13 * scale, fallback: .system(size: 13 * scale)).foregroundStyle(Palette.secondary).lineLimit(1)
+                }
             }
             Spacer(minLength: 8)
             if song.isCloudOnly { Image(systemName: "icloud").font(.caption).foregroundStyle(Palette.faint) }
@@ -66,6 +70,14 @@ struct SongRow: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(song.title) by \(song.artist), \(song.playCount.playsLabel)")
+    }
+}
+
+extension String {
+    /// Whether this song artist is just `albumArtist`, with nobody else credited.
+    func isOnly(_ albumArtist: String?) -> Bool {
+        guard let albumArtist, !albumArtist.isEmpty else { return false }
+        return MediaKey.normalise(self) == MediaKey.normalise(albumArtist)
     }
 }
 

@@ -47,7 +47,7 @@ enum PinCover: Codable, Hashable, Sendable {
     case remote(URL)
 }
 
-/// A font you picked for an album: its title, tracklist and sleeve (and, if you like, the player).
+/// A font you picked for an album: its title, tracklist, sleeve, the player and the lyrics.
 struct AlbumFace: Codable, Hashable, Sendable {
     enum Caps: String, Codable, CaseIterable, Sendable { case normal, upper, lower }
 
@@ -57,6 +57,7 @@ struct AlbumFace: Codable, Hashable, Sendable {
     var weight = 3
     var tracking = 0.0
     var caps = Caps.normal
+    /// From 1.5, when the player was a switch; it now always uses the album's font. Kept so saved looks still load.
     var inPlayer = false
 
     static let systemSans = "System"
@@ -70,13 +71,15 @@ struct AlbumFace: Codable, Hashable, Sendable {
 
     var fontWeight: Font.Weight { Self.weights[max(0, min(Self.weights.count - 1, weight))] }
 
-    func font(_ size: CGFloat) -> Font {
-        switch family {
-        case Self.systemSans: .system(size: size, weight: fontWeight)
-        case Self.systemSerif: .system(size: size, weight: fontWeight, design: .serif)
-        case Self.systemRounded: .system(size: size, weight: fontWeight, design: .rounded)
-        case Self.systemMono: .system(size: size, weight: fontWeight, design: .monospaced)
-        default: .custom(family, size: size).weight(fontWeight)
+    /// The font at this size, in the weight you chose unless `weight` asks for another (the sung lyric line).
+    func font(_ size: CGFloat, weight: Font.Weight? = nil) -> Font {
+        let w = weight ?? fontWeight
+        return switch family {
+        case Self.systemSans: .system(size: size, weight: w)
+        case Self.systemSerif: .system(size: size, weight: w, design: .serif)
+        case Self.systemRounded: .system(size: size, weight: w, design: .rounded)
+        case Self.systemMono: .system(size: size, weight: w, design: .monospaced)
+        default: .custom(family, size: size).weight(w)
         }
     }
 
@@ -113,17 +116,20 @@ enum LookKey {
 extension EnvironmentValues {
     /// The font chosen for the album on screen (nil keeps LINER.'s own).
     @Entry var albumFace: AlbumFace? = nil
+    /// The artist of the album on screen, so its tracklist only names the artist on songs with someone else on them.
+    @Entry var albumArtist: String? = nil
 }
 
 /// Text in the album's own font when it has one.
 struct FaceModifier: ViewModifier {
     let size: CGFloat
+    var weight: Font.Weight? = nil
     let fallback: Font
     @Environment(\.albumFace) private var face
 
     func body(content: Content) -> some View {
         if let face {
-            content.font(face.font(size)).tracking(face.tracking).textCase(face.textCase)
+            content.font(face.font(size, weight: weight)).tracking(face.tracking).textCase(face.textCase)
         } else {
             content.font(fallback)
         }
@@ -133,6 +139,10 @@ struct FaceModifier: ViewModifier {
 extension View {
     /// Uses the album's font (from `albumFace`) at this size, or `fallback` when it has none.
     func albumFace(_ size: CGFloat, fallback: Font) -> some View { modifier(FaceModifier(size: size, fallback: fallback)) }
+    /// The same, in a set weight whichever weight the album's font uses.
+    func albumFace(_ size: CGFloat, weight: Font.Weight, fallback: Font) -> some View {
+        modifier(FaceModifier(size: size, weight: weight, fallback: fallback))
+    }
 }
 
 extension Color {

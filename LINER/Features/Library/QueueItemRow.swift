@@ -9,6 +9,7 @@ struct PlayableQueueRow: View {
     @Environment(\.editionCover) private var edition
     @Environment(\.mixContext) private var mixContext
     @Environment(\.tracklistScale) private var scale
+    @Environment(\.albumArtist) private var albumArtist
 
     var body: some View {
         if case .library(let song) = item {
@@ -23,7 +24,9 @@ struct PlayableQueueRow: View {
                     }
                     VStack(alignment: .leading, spacing: 2 * scale) {
                         Text(item.title).albumFace(16 * scale, fallback: .system(size: 16 * scale)).lineLimit(1)
-                        Text(item.artist).font(.system(size: 13 * scale)).foregroundStyle(Palette.secondary).lineLimit(1)
+                        if !(number != nil && item.artist.isOnly(albumArtist)) {
+                            Text(item.artist).albumFace(13 * scale, fallback: .system(size: 13 * scale)).foregroundStyle(Palette.secondary).lineLimit(1)
+                        }
                     }
                     Spacer()
                     Image(systemName: "recordingtape").font(.caption).foregroundStyle(Palette.faint)

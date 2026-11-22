@@ -221,6 +221,11 @@ struct LogoEditorSheet: View {
                     if request.isArtist { $0.tint = .white }
                 }
             }
+            // An album without a font of its own takes the one closest to its new logo.
+            if !request.isArtist, store.look(request.key).face == nil, let face = await FontMatcher.match(png: png),
+               store.look(request.key).face == nil {
+                store.update(request.key) { $0.face = face }
+            }
         }
     }
 }

@@ -3,9 +3,10 @@ import SwiftUI
 /// Sing-along lyrics (SPEC §6.6): big serif lines over the blurred cover. The active line is bright, past lines
 /// fade, future lines are dim; it opens on the line being sung and scrolls to keep it about a third of the way down. Tap a line to
 /// jump there; hold it to save the line or make it a favourite moment. Share picks a run of lines (like Apple Music)
-/// and puts them on a story card.
+/// and puts them on a story card. Lines are in the album's font when you chose one for it.
 struct LyricsView: View {
     @Environment(PlaybackCoordinator.self) private var player
+    @Environment(LibraryService.self) private var library
     @Environment(\.dismiss) private var dismiss
     @State private var lyrics: Lyrics?
     @State private var loading = true
@@ -27,6 +28,7 @@ struct LyricsView: View {
                 header
                 content
             }
+            .environment(\.albumFace, player.current.flatMap { LookStore.shared.face(for: $0, snapshot: library.snapshot) })
         }
         .task(id: "\(player.current?.id ?? "")-\(LyricsEdits.shared.revision)") {
             loading = true
@@ -66,7 +68,7 @@ struct LyricsView: View {
     private var header: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(player.current?.title ?? "").font(.serif(20)).lineLimit(1)
+                Text(player.current?.title ?? "").albumFace(20, fallback: .serif(20)).lineLimit(1)
                 Text(player.current?.artist ?? "").linerLabel(size: 10)
             }
             Spacer()
@@ -149,7 +151,7 @@ struct LyricsView: View {
     private func pickable(_ text: String, index: Int, size: CGFloat) -> some View {
         let on = picked?.contains(index) == true
         return Text(text.isEmpty ? "♪" : text)
-            .font(.serif(size, weight: on ? .semibold : .regular))
+            .albumFace(size, weight: on ? .semibold : .regular, fallback: .serif(size, weight: on ? .semibold : .regular))
             .foregroundStyle(.white.opacity(on ? 1 : 0.4))
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 6).padding(.horizontal, 10)
@@ -175,7 +177,7 @@ struct LyricsView: View {
             }
         } else if let plain = lyrics?.plain {
             ScrollView {
-                Text(plain).font(.serif(24)).lineSpacing(8).padding(24).frame(maxWidth: .infinity, alignment: .leading)
+                Text(plain).albumFace(24, fallback: .serif(24)).lineSpacing(8).padding(24).frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
             }
         } else {
@@ -222,7 +224,8 @@ struct LyricsView: View {
     /// state: -1 past, 0 active, 1 future.
     private func lineView(_ line: Lyrics.Line, state: Int) -> some View {
         Text(line.text.isEmpty ? "♪" : line.text)
-            .font(.serif(state == 0 ? 34 : 30, weight: state == 0 ? .semibold : .regular))
+            .albumFace(state == 0 ? 34 : 30, weight: state == 0 ? .semibold : .regular,
+                       fallback: .serif(state == 0 ? 34 : 30, weight: state == 0 ? .semibold : .regular))
             .foregroundStyle(.white.opacity(state == 0 ? 1 : (state < 0 ? 0.28 : 0.45)))
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())

@@ -118,6 +118,7 @@ struct AlbumDetailView: View {
         }
         .headerScrollProgress(headerHeight: headerHeight, progress: $scrolled)
         .environment(\.albumFace, LookStore.shared.look(lookKey).face)
+        .environment(\.albumArtist, album.artist)
         .environment(\.mixContext, lookKey)
         .sheet(isPresented: $djMix) { MixEditorView(context: lookKey, title: album.title, items: list) }
         .environment(\.editionCover, activeEdition.map { EditionCover(editionID: $0.id, itemIDs: Set(list.map(\.id))) })

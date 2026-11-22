@@ -108,9 +108,8 @@ extension LookStore {
         return LookKey.album(snapshot.album(song.albumID)?.id ?? song.albumID)
     }
 
-    /// The album's font for the player, when you chose to use it there.
-    func playerFace(for item: QueueItem, snapshot: LibrarySnapshot) -> AlbumFace? {
-        guard let face = look(key(for: item, snapshot: snapshot)).face, face.inPlayer else { return nil }
-        return face
+    /// The font of the album a song comes from, for the player's title and the lyrics.
+    func face(for item: QueueItem, snapshot: LibrarySnapshot) -> AlbumFace? {
+        look(key(for: item, snapshot: snapshot)).face
     }
 }

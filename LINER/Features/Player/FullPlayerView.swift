@@ -112,7 +112,7 @@ struct FullPlayerView: View {
             HStack(alignment: .bottom, spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(item.title).albumFace(32, fallback: .serif(32)).lineLimit(2).minimumScaleFactor(0.7)
-                        .environment(\.albumFace, LookStore.shared.playerFace(for: item, snapshot: library.snapshot))
+                        .environment(\.albumFace, LookStore.shared.face(for: item, snapshot: library.snapshot))
                     Text(item.artist).linerLabel(size: 12).foregroundStyle(.white.opacity(0.75))
                 }
                 .id(item.id)
