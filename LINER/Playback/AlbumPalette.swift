@@ -3,9 +3,9 @@ import UIKit
 
 /// An album's tracklist colours, picked from its cover the way iTunes 11 and the old Music app did: the text
 /// colours are the most common colours inside the cover that stay readable on the page behind them, and the
-/// song that's playing takes the cover's most vivid one. The page is the cover's moving colour canvas
-/// (`ArtCanvas`) when there is one; otherwise the background is the most common colour along the cover's edges,
-/// and a black, white or grey edge gives way to the cover's strongest colour, deepened, so it stays colourful.
+/// song that's playing takes the cover's most vivid one. The page is one solid colour: the most common colour
+/// along the cover's edges, deepened so white details still read on it, and a black, white or grey edge gives
+/// way to the cover's strongest colour, so the page stays colourful. (`page` keeps a colour that's already set.)
 struct AlbumColours: Sendable, Equatable {
     var background: Color
     /// Titles and song names.
@@ -115,9 +115,12 @@ enum AlbumPalette {
             // The page is already painted: keep it.
         } else if edgeHSB.s < 0.18, let strong = vivid.first?.0 {
             let h = strong.hsb
-            bg = .fromHSB(h.h, max(0.55, h.s), edgeHSB.v > 0.75 ? 0.82 : 0.3)
+            bg = .fromHSB(h.h, max(0.55, h.s), 0.32)
         } else if edgeHSB.s < 0.18 {
-            bg = edgeHSB.v > 0.75 ? RGB(r: 0.93, g: 0.92, b: 0.9) : RGB(r: 0.07, g: 0.07, b: 0.075)
+            bg = RGB(r: 0.08, g: 0.08, b: 0.085)
+        } else {
+            // A rich, deep version of the edge colour, so the page's white details still read on it.
+            bg = .fromHSB(edgeHSB.h, max(0.45, edgeHSB.s), min(max(edgeHSB.v, 0.2), 0.42))
         }
         let dark = bg.luminance < 0.4
 

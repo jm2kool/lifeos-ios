@@ -78,7 +78,8 @@ struct StudioColourSection: View {
 
     var body: some View {
         StudioCard(title: "Colours") {
-            swatch("Page", \.background, current: draft.page.first.map { Color(red: Double($0.x), green: Double($0.y), blue: Double($0.z)) } ?? .black)
+            swatch("Page", \.background, current: draft.page)
+            Text("The colour the page takes below the cover, where the cover fades out.").font(.footnote).foregroundStyle(Palette.label)
             Divider().overlay(Palette.stroke)
             Text("Tracklist").font(.system(size: 13, weight: .medium))
             StudioChips(options: [(id: 0, label: "As in Settings"), (id: 1, label: "Coloured"), (id: 2, label: "White")],
@@ -90,7 +91,6 @@ struct StudioColourSection: View {
             swatch("Details", \.secondary, current: draft.colours.secondary)
             swatch("Playing", \.accent, current: draft.colours.accent)
         }
-        .onChange(of: draft.look.background) { _, _ in Task { await draft.refreshColours() } }
     }
 
     private func swatch(_ name: String, _ path: WritableKeyPath<StudioLook, String?>, current: Color) -> some View {

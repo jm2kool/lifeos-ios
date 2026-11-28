@@ -2,8 +2,9 @@ import SwiftData
 import SwiftUI
 
 /// An album (SPEC §6.4): full-bleed cover (motion cover if attached), serif title, glass actions, facts,
-/// edition switcher, tracklist, listening history and your top 3 songs. The cover's colours paint the whole page
-/// and drift about behind it, like the Apple Card; Customise Album changes everything else about it.
+/// edition switcher, tracklist, listening history and your top 3 songs. The cover stays still (unless Studio gives
+/// it motion or a video) and fades out by the title into one solid colour from it, like the old Music app, with the
+/// tracklist in the cover's colours; Studio and Customise Album change everything else about it.
 struct AlbumDetailView: View {
     let album: Album
     @Environment(LibraryService.self) private var library
@@ -18,9 +19,7 @@ struct AlbumDetailView: View {
     @State private var scrolled = 0.0
     @State private var coverColor = Color.white
     @State private var djMix = false
-    /// Colours from the cover on show, for the page behind it.
-    @State private var colours: [ArtPalette.RGB] = []
-    /// The tracklist's colours, picked from the same cover to read on that page (like the old Music app).
+    /// The page's colour and the tracklist's colours, picked from the cover on show (like the old Music app).
     @State private var picked: AlbumColours?
     @AppStorage(AlbumPalette.settingKey) private var colouredTracklists = true
     @AppStorage(AlbumText.titleKey) private var titleScale = 1.0
@@ -70,6 +69,11 @@ struct AlbumDetailView: View {
         return parts.joined(separator: " · ")
     }
 
+    /// The one colour the page takes below the cover: the cover's (or the one you chose in Studio).
+    private var pageColour: Color {
+        picked.map { studio.colours(from: $0).background } ?? studio.background.map(Color.init(hex:)) ?? Palette.background
+    }
+
     /// Your Studio look for this album (the plain album when you haven't made one).
     private var studio: StudioLook { StudioStore.shared.look(album.id) ?? StudioLook() }
 
@@ -85,14 +89,12 @@ struct AlbumDetailView: View {
         let tint = tint
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                CoverHeader(lookKey: lookKey, backdrop: .album(album.id), coverColor: coverColor, scrolled: scrolled, height: $headerHeight) {
+                CoverHeader(lookKey: lookKey, backdrop: .album(album.id), coverColor: coverColor, scrolled: scrolled, height: $headerHeight,
+                            fadeColour: pageColour) {
                     AlbumHeaderArt(albumID: album.id, note: notes.first, edition: activeEdition, motion: look.motion) { img, key in
                         Task {
-                            let found = await ArtPalette.colours(of: [img], key: key)
-                            if !found.isEmpty { colours = found }
-                            let page = look.canvas?.first ?? found.first
-                            let text = await AlbumPalette.colours(for: img, key: "\(key)-text-\(page.map { "\($0)" } ?? "")", page: page)
-                            withAnimation(.easeInOut(duration: 0.5)) { picked = text }
+                            let found = await AlbumPalette.colours(for: img, key: "\(key)-page")
+                            withAnimation(.easeInOut(duration: 0.5)) { picked = found }
                         }
                     }
                 }
@@ -140,7 +142,9 @@ struct AlbumDetailView: View {
         .environment(\.mixContext, lookKey)
         .sheet(isPresented: $djMix) { MixEditorView(context: lookKey, title: album.title, items: list) }
         .environment(\.editionCover, activeEdition.map { EditionCover(editionID: $0.id, itemIDs: Set(list.map(\.id))) })
-        .artCanvas(look.canvas ?? colours)
+        // Below the cover, the page is one solid colour from it.
+        .background(pageColour.ignoresSafeArea())
+        .environment(\.onArt, picked != nil)
         .ignoresSafeArea(edges: .top)
         .task(id: album.id) { coverColor = await CoverColor.dominant(.album(album.id)) }
         .task(id: album.id) {

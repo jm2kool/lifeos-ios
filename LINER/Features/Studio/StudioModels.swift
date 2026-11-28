@@ -1,4 +1,3 @@
-import simd
 import SwiftUI
 
 /// Where a Studio cover can show.
@@ -65,7 +64,7 @@ struct StudioLook: Codable, Hashable, Sendable {
     var motion: StudioMotion = .off
     /// Colour the tracklist from the cover; nil follows Settings → Covers → Coloured tracklists.
     var colouredTracklist: Bool?
-    /// Hex overrides: the page behind everything, the title and song names, details, and the song playing.
+    /// Hex overrides: the page's colour below the cover, song names, details, and the song playing.
     var background: String?
     var primary: String?
     var secondary: String?
@@ -101,15 +100,6 @@ struct StudioLook: Codable, Hashable, Sendable {
         if let h = secondary { c.secondary = Color(hex: h) }
         if let h = accent { c.accent = Color(hex: h) }
         return c
-    }
-
-    /// Your page colour as a few close shades for the moving canvas, or nil to keep the cover's.
-    var canvas: [SIMD3<Float>]? {
-        guard let h = background else { return nil }
-        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-        UIColor(Color(hex: h)).getRed(&r, green: &g, blue: &b, alpha: &a)
-        let base = SIMD3<Float>(Float(r), Float(g), Float(b))
-        return [base, base * 0.8, simd_min(base * 1.15, SIMD3<Float>(repeating: 1)), base * 0.62]
     }
 }
 

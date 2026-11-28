@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// The album header: a video cover (Studio's, or the motion cover you attached); otherwise the still cover
-/// (edition cover, Studio's album-page cover, your own cover, or the album artwork) with its Studio motion
-/// effect, or as a moving Living Cover while you're on the page.
+/// (edition cover, Studio's album-page cover, your own cover, or the album artwork), held still unless you gave
+/// it a motion effect in Studio.
 struct AlbumHeaderArt: View {
     let albumID: UInt64
     let note: AlbumNote?
@@ -24,9 +24,8 @@ struct AlbumHeaderArt: View {
             if let video {
                 LoopingVideo(url: MotionCoverFiles.url(video))
             } else if let image, motion != .off {
+                // Still unless you gave the cover motion in Studio.
                 StudioMotionView(image: image, motion: motion, focus: look.focus, key: stillKey).transition(.opacity)
-            } else if let image, MotionSettings.livingCoversOn {
-                LivingCoverView(image: image, look: look, key: stillKey).transition(.opacity)
             }
         }
         .task(id: stillKey) {
@@ -52,6 +51,8 @@ struct CoverHeader<Art: View>: View {
     /// 0…1 as the page scrolls past the header; your logo fades as it moves into the navigation bar.
     var scrolled: Double = 0
     @Binding var height: CGFloat
+    /// The page colour the full-screen cover fades into, finishing by the title (nil keeps a plain fade).
+    var fadeColour: Color? = nil
     @ViewBuilder let art: () -> Art
 
     var body: some View {
@@ -74,8 +75,8 @@ struct CoverHeader<Art: View>: View {
                                              .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
             } else {
                 art().aspectRatio(1, contentMode: .fit).clipped()
-                    .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.6),
-                                             .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
+                    .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: fadeColour == nil ? 0.6 : 0.5),
+                                             .init(color: .clear, location: fadeColour == nil ? 1 : 0.94)], startPoint: .top, endPoint: .bottom))
                     .overlay {
                         if let logo = store.logo(lookKey), let placement = look.placement {
                             PlacedLogo(image: logo, look: look, placement: placement, coverColor: coverColor)

@@ -7,10 +7,8 @@ final class StudioDraft {
     var look: StudioLook
     let saved: StudioLook?
     var place: StudioPlace = .album
-    /// The album's own artwork, the page colours (`ArtCanvas`) and tracklist colours picked from whichever cover
-    /// the album page uses.
+    /// The album's own artwork, and the page and tracklist colours picked from whichever cover the album page uses.
     var original: UIImage?
-    var canvas: [ArtPalette.RGB] = []
     var picked = AlbumColours.black
     var busy = false
     /// The logo or font editor open over Studio.
@@ -33,16 +31,14 @@ final class StudioDraft {
     /// The tracklist colours as this album will actually show them.
     var shownColours: AlbumColours? { look.shownColours(picked) }
 
-    /// The page as it will be painted: your colour, or the cover's.
-    var page: [ArtPalette.RGB] { look.canvas ?? canvas }
+    /// The page's colour below the cover: yours, or the cover's.
+    var page: Color { colours.background }
 
     func refreshColours() async {
         guard let img = image(look.cover(for: .album)) else { return }
         let key = "studio-\(album.id)-\(look.cover(for: .album)?.rendered ?? "original")"
-        let found = await ArtPalette.colours(of: [img], key: key)
-        let lead = look.canvas?.first ?? found.first
-        let text = await AlbumPalette.colours(for: img, key: "\(key)-text-\(lead.map { "\($0)" } ?? "")", page: lead)
-        withAnimation(.easeInOut(duration: 0.4)) { canvas = found; picked = text }
+        let found = await AlbumPalette.colours(for: img, key: key)
+        withAnimation(.easeInOut(duration: 0.4)) { picked = found }
     }
 }
 
@@ -83,7 +79,7 @@ struct StudioEditor: View {
                 .padding(.horizontal, 16).padding(.bottom, 40)
             }
             .scrollDismissesKeyboard(.interactively)
-            .background { ArtCanvas(colours: draft.page).opacity(0.7) }
+            .background { LinearGradient(colors: [draft.page, draft.page.mix(with: .black, by: 0.6)], startPoint: .top, endPoint: .bottom).ignoresSafeArea() }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { cancel() } }
                 ToolbarItem(placement: .principal) { Text("LINER. STUDIO").font(.system(size: 12, weight: .bold)).tracking(3) }

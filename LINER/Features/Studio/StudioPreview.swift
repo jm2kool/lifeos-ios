@@ -26,7 +26,7 @@ struct StudioPreview: View {
         let look = LookStore.shared.look(lookKey)
         let tint = draft.shownColours
         return ZStack(alignment: .top) {
-            ArtCanvas(colours: draft.page)
+            draft.page
             if look.layout == .square {
                 StudioCoverDisplay(draft: draft, place: .album)
                     .frame(width: 150, height: 150)
@@ -35,8 +35,8 @@ struct StudioPreview: View {
                     .padding(.top, 22)
             } else {
                 StudioCoverDisplay(draft: draft, place: .album).frame(height: 230).clipped()
-                    .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.55),
-                                                 .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
+                    .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.5),
+                                                 .init(color: .clear, location: 0.94)], startPoint: .top, endPoint: .bottom))
             }
             VStack(alignment: .leading, spacing: 6) {
                 Spacer()
