@@ -10,7 +10,6 @@ final class StudioStore {
     static let shared = StudioStore()
     private(set) var looks: [String: StudioLook] = [:]
     @ObservationIgnored private var images: [String: UIImage] = [:]
-    @ObservationIgnored private var loaded = false
 
     static var folder: URL {
         let url = URL.applicationSupportDirectory.appending(path: "LINER/Studio", directoryHint: .isDirectory)
@@ -19,22 +18,16 @@ final class StudioStore {
     }
     private static var file: URL { folder.appending(path: "looks.json") }
 
-    private func load() {
-        guard !loaded else { return }
-        loaded = true
+    private init() {
         if let data = try? Data(contentsOf: Self.file), let all = try? JSONDecoder().decode([String: StudioLook].self, from: data) {
             looks = all
         }
     }
 
-    func look(_ albumID: UInt64) -> StudioLook? {
-        load()
-        return looks["album-\(albumID)"]
-    }
+    func look(_ albumID: UInt64) -> StudioLook? { looks["album-\(albumID)"] }
 
     /// Saves a look (or removes it when it's back to the plain album) and tells every cover cache.
     func save(_ look: StudioLook?, for albumID: UInt64) {
-        load()
         let old = looks["album-\(albumID)"]
         looks["album-\(albumID)"] = look?.isPlain == true ? nil : look
         if let data = try? JSONEncoder().encode(looks) { try? data.write(to: Self.file, options: .atomic) }
