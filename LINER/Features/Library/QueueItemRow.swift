@@ -10,6 +10,7 @@ struct PlayableQueueRow: View {
     @Environment(\.mixContext) private var mixContext
     @Environment(\.tracklistScale) private var scale
     @Environment(\.albumArtist) private var albumArtist
+    @Environment(\.albumColours) private var colours
 
     var body: some View {
         if case .library(let song) = item {
@@ -17,19 +18,22 @@ struct PlayableQueueRow: View {
         } else {
             Button { player.play(list, startAt: list.firstIndex(of: item) ?? 0, edition: edition, mix: mixContext) } label: {
                 HStack(spacing: 12) {
-                    if let number {
+                    if let number, let colours {
+                        AlbumTrackNumber(number: number, itemID: item.id, colours: colours, scale: scale).frame(width: 26 * scale)
+                    } else if let number {
                         Text("\(number)").albumFace(17 * scale, fallback: .serif(17 * scale)).monospacedDigit().foregroundStyle(Palette.label).frame(width: 26 * scale)
                     } else {
                         QueueItemArtwork(item: item).frame(width: 46 * scale, height: 46 * scale)
                     }
                     VStack(alignment: .leading, spacing: 2 * scale) {
-                        Text(item.title).albumFace(16 * scale, fallback: .system(size: 16 * scale)).lineLimit(1)
+                        Text(item.title).albumFace(16 * scale, fallback: .system(size: 16 * scale)).lineLimit(1).albumRowTitle(item.id, colours)
                         if !(number != nil && item.artist.isOnly(albumArtist)) {
-                            Text(item.artist).albumFace(13 * scale, fallback: .system(size: 13 * scale)).foregroundStyle(Palette.secondary).lineLimit(1)
+                            Text(item.artist).albumFace(13 * scale, fallback: .system(size: 13 * scale))
+                                .foregroundStyle(colours?.secondary ?? Palette.secondary).lineLimit(1)
                         }
                     }
                     Spacer()
-                    Image(systemName: "recordingtape").font(.caption).foregroundStyle(Palette.faint)
+                    Image(systemName: "recordingtape").font(.caption).foregroundStyle(colours?.secondary ?? Palette.faint)
                 }
                 .contentShape(Rectangle())
             }

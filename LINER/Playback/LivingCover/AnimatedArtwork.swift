@@ -76,8 +76,9 @@ enum MotionLookup {
         switch item {
         case .library(let s):
             let id = "album-\(s.albumID)"
-            guard let note = Store.shared.albumNote(id) else { return nil }
+            guard let note = Store.shared.albumNote(id) else { return StudioStore.shared.video(s.albumID, .player) }
             if let ed = note.activeEditionID, let e = edition(ed), let f = e.motionCoverFile { return f }
+            if let studio = StudioStore.shared.video(s.albumID, .player) { return studio }
             return note.motionCoverFile
         case .local(let t):
             guard let mid = t.mixtapeID else { return nil }

@@ -16,6 +16,8 @@ struct SettingsView: View {
     @AppStorage("animatedLockForLibrary") private var lockForLibrary = true
     @AppStorage("ownPlayerForFiles") private var ownPlayer = true
     @AppStorage("lyricsSource") private var lyricsSource = "lrclib"
+    @AppStorage("lyricsStyle") private var lyricsStyle = LyricsStyle.singAlong.rawValue
+    @AppStorage(AlbumPalette.settingKey) private var colouredTracklists = true
     @AppStorage("needleSounds") private var needleSounds = true
     @AppStorage("liveLyrics") private var liveLyrics = true
     @AppStorage("openPlayerOnPlay") private var openPlayerOnPlay = true
@@ -50,6 +52,9 @@ struct SettingsView: View {
                         Text("LRCLIB").tag("lrclib")
                         Text("Off").tag("off")
                     }
+                    Picker("Full-screen lyrics", selection: $lyricsStyle) {
+                        ForEach(LyricsStyle.allCases) { Text($0.label).tag($0.rawValue) }
+                    }
                 } header: { Text("Listening") } footer: {
                     Text("With Vinyl Mode on, Home becomes your record crate and the Library shows albums as a crate.")
                 }
@@ -62,6 +67,7 @@ struct SettingsView: View {
                     Text("Text sizes for album, release, playlist and mixtape pages. Everything else about an album is under Customise on its page.")
                 }
                 Section {
+                    Toggle("Coloured tracklists", isOn: $colouredTracklists)
                     Toggle("Living Covers", isOn: $livingCovers)
                     Toggle("Album title logos", isOn: $albumLogos)
                     Picker("Style", selection: $coverStyle) {

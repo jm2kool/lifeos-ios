@@ -26,4 +26,6 @@ final class PassportPresenter {
     var look: LookRequest?
     /// Customise Album, for this album.
     var customise: Album?
+    /// The album open in LINER. Studio.
+    var studio: Album?
 }

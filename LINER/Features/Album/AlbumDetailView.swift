@@ -20,6 +20,9 @@ struct AlbumDetailView: View {
     @State private var djMix = false
     /// Colours from the cover on show, for the page behind it.
     @State private var colours: [ArtPalette.RGB] = []
+    /// The tracklist's colours, picked from the same cover to read on that page (like the old Music app).
+    @State private var picked: AlbumColours?
+    @AppStorage(AlbumPalette.settingKey) private var colouredTracklists = true
     @AppStorage(AlbumText.titleKey) private var titleScale = 1.0
 
     init(album: Album) {
@@ -67,15 +70,29 @@ struct AlbumDetailView: View {
         return parts.joined(separator: " · ")
     }
 
+    /// Your Studio look for this album (the plain album when you haven't made one).
+    private var studio: StudioLook { StudioStore.shared.look(album.id) ?? StudioLook() }
+
+    /// The tracklist colours, or nil for plain white (Settings → Covers → Coloured tracklists, or Studio).
+    private var tint: AlbumColours? {
+        _ = colouredTracklists
+        return picked.flatMap { studio.shownColours($0) }
+    }
+
     var body: some View {
         let list = tracks
+        let look = studio
+        let tint = tint
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 CoverHeader(lookKey: lookKey, backdrop: .album(album.id), coverColor: coverColor, scrolled: scrolled, height: $headerHeight) {
-                    AlbumHeaderArt(albumID: album.id, note: notes.first, edition: activeEdition) { img, key in
+                    AlbumHeaderArt(albumID: album.id, note: notes.first, edition: activeEdition, motion: look.motion) { img, key in
                         Task {
                             let found = await ArtPalette.colours(of: [img], key: key)
                             if !found.isEmpty { colours = found }
+                            let page = look.canvas?.first ?? found.first
+                            let text = await AlbumPalette.colours(for: img, key: "\(key)-text-\(page.map { "\($0)" } ?? "")", page: page)
+                            withAnimation(.easeInOut(duration: 0.5)) { picked = text }
                         }
                     }
                 }
@@ -91,7 +108,7 @@ struct AlbumDetailView: View {
                     } else {
                         Text(album.artist).linerLabel(size: 12 * titleScale)
                     }
-                    actions(list).padding(.top, 10)
+                    actions(list).padding(.top, 10).environment(\.albumColours, tint)
                     Text(facts).linerLabel(size: 10 * titleScale).padding(.top, 8)
                     editionSwitcher.padding(.top, 4)
                 }
@@ -101,11 +118,12 @@ struct AlbumDetailView: View {
                     ForEach(Array(list.enumerated()), id: \.offset) { i, item in
                         PlayableQueueRow(item: item, list: list, number: trackNumbersLookRight(list) ? (item.song?.trackNumber ?? i + 1) : i + 1)
                             .padding(.vertical, 10)
-                        Divider().overlay(Palette.stroke)
+                        Divider().overlay(tint.map { $0.primary.opacity(0.16) } ?? Palette.stroke)
                     }
                 }
                 .padding(.horizontal, 16).padding(.top, 18)
                 .albumTextSizes()
+                .environment(\.albumColours, tint)
 
                 if let date = library.snapshot.songs(album.songIDs).compactMap(\.releaseDate).first {
                     Text("Released \(date.formatted(date: .long, time: .omitted))")
@@ -122,7 +140,7 @@ struct AlbumDetailView: View {
         .environment(\.mixContext, lookKey)
         .sheet(isPresented: $djMix) { MixEditorView(context: lookKey, title: album.title, items: list) }
         .environment(\.editionCover, activeEdition.map { EditionCover(editionID: $0.id, itemIDs: Set(list.map(\.id))) })
-        .artCanvas(colours)
+        .artCanvas(look.canvas ?? colours)
         .ignoresSafeArea(edges: .top)
         .task(id: album.id) { coverColor = await CoverColor.dominant(.album(album.id)) }
         .task(id: album.id) {
@@ -137,7 +155,7 @@ struct AlbumDetailView: View {
                     .environment(\.albumFace, LookStore.shared.look(lookKey).face)
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Customise", systemImage: "slider.horizontal.3") { passports.customise = album }
+                Button("Studio", systemImage: "paintbrush.pointed") { passports.studio = album }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -169,6 +187,7 @@ struct AlbumDetailView: View {
                 Button { setEdition(e) } label: { checked(e.title, activeEdition?.id == e.id) }
             }
             Divider()
+            Button("Edit in Studio", systemImage: "paintbrush.pointed") { passports.studio = album }
             Button("Customise Album", systemImage: "slider.horizontal.3") { passports.customise = album }
         } label: {
             HStack(spacing: 4) {

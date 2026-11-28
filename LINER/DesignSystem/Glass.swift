@@ -60,14 +60,21 @@ struct AnyPrimitiveButtonStyle: PrimitiveButtonStyle {
     .padding().background(LinearGradient(colors: [.orange, .black], startPoint: .top, endPoint: .bottom))
 }
 
-/// The primary action: always white glass with black text, whatever tint is around it.
+/// The primary action: white glass with black text, whatever tint is around it, except over a coloured
+/// tracklist, where it takes the album's accent colour (like the old Music app).
 struct LinerPrimaryStyle: PrimitiveButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        Button(role: configuration.role, action: configuration.trigger) {
-            configuration.label.foregroundStyle(.black).singleLineLabel()
+    func makeBody(configuration: Configuration) -> some View { Body(configuration: configuration) }
+
+    private struct Body: View {
+        let configuration: PrimitiveButtonStyleConfiguration
+        @Environment(\.albumColours) private var colours
+        var body: some View {
+            Button(role: configuration.role, action: configuration.trigger) {
+                configuration.label.foregroundStyle(.black).singleLineLabel()
+            }
+            .buttonStyle(.glassProminent)
+            .tint(colours.map { $0.accent.mix(with: .white, by: 0.25) } ?? .white)
         }
-        .buttonStyle(.glassProminent)
-        .tint(.white)
     }
 }
 

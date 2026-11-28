@@ -1,11 +1,13 @@
 import SwiftUI
 
-/// The album header: a motion cover if you attached one; otherwise the cover (edition cover, your own cover,
-/// or the album artwork) as a moving Living Cover while you're on the page.
+/// The album header: a video cover (Studio's, or the motion cover you attached); otherwise the still cover
+/// (edition cover, Studio's album-page cover, your own cover, or the album artwork) with its Studio motion
+/// effect, or as a moving Living Cover while you're on the page.
 struct AlbumHeaderArt: View {
     let albumID: UInt64
     let note: AlbumNote?
     let edition: Edition?
+    var motion: StudioMotion = .off
     /// Told about the still cover once it's loaded, with a key for it (the page takes its colours).
     var onImage: ((UIImage, String) -> Void)?
     @State private var image: UIImage?
@@ -16,11 +18,13 @@ struct AlbumHeaderArt: View {
     }
 
     var body: some View {
-        let motion = edition?.motionCoverFile ?? note?.motionCoverFile
+        let video = edition?.motionCoverFile ?? StudioStore.shared.video(albumID, .album) ?? note?.motionCoverFile
         ZStack {
-            ArtworkView(albumID: albumID, cornerRadius: 0)
-            if let motion {
-                LoopingVideo(url: MotionCoverFiles.url(motion))
+            ArtworkView(albumID: albumID, cornerRadius: 0, place: .album)
+            if let video {
+                LoopingVideo(url: MotionCoverFiles.url(video))
+            } else if let image, motion != .off {
+                StudioMotionView(image: image, motion: motion, focus: look.focus, key: stillKey).transition(.opacity)
             } else if let image, MotionSettings.livingCoversOn {
                 LivingCoverView(image: image, look: look, key: stillKey).transition(.opacity)
             }
@@ -28,6 +32,7 @@ struct AlbumHeaderArt: View {
         .task(id: stillKey) {
             var img: UIImage?
             if let data = edition?.coverImage { img = UIImage(data: data) }
+            if img == nil { img = StudioStore.shared.still(albumID, .album) }
             if img == nil { img = CoverOverrides.shared.image(albumID) }
             if img == nil { img = await ArtworkCache.shared.image(album: albumID, pixels: 1400) }
             guard let img else { return }

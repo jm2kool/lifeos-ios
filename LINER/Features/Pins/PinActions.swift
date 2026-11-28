@@ -50,6 +50,7 @@ struct AlbumActionsMenu: View {
         }
         Button("Album Passport", systemImage: "text.book.closed") { passports.album = .library(album, snapshot: library.snapshot) }
         // Logo, font, cover layout, cover, editions, text size, title and the Home pin's look all live in Customise Album.
+        Button("Edit in Studio", systemImage: "paintbrush.pointed") { passports.studio = album }
         Button("Customise Album", systemImage: "slider.horizontal.3") { passports.customise = album }
     }
 }

@@ -1,10 +1,12 @@
 import SwiftUI
 
-/// Square album art: your own cover if you set one, else the library artwork from the cache, with a quiet
+/// Square album art: the Studio cover for this place or your own cover if you set one, else the library artwork from the cache, with a quiet
 /// placeholder while it loads. Failed loads are retried, and tried again after each library scan.
 struct ArtworkView: View {
     let albumID: UInt64?
     var cornerRadius: CGFloat = 8
+    /// Which Studio cover to show (the library grid's, unless it's a pin or the album page).
+    var place: StudioPlace = .grid
     @Environment(\.displayScale) private var scale
     @Environment(LibraryService.self) private var library
     @State private var image: UIImage?
@@ -12,7 +14,7 @@ struct ArtworkView: View {
     var body: some View {
         GeometryReader { geo in
             let pixels = max(geo.size.width, geo.size.height) * scale
-            let custom = albumID.flatMap { CoverOverrides.shared.image($0) }
+            let custom = albumID.flatMap { StudioStore.shared.still($0, place) ?? CoverOverrides.shared.image($0) }
             ZStack {
                 Palette.placeholder
                 if let shown = custom ?? image {

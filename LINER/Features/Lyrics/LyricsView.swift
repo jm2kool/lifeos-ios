@@ -1,261 +1,231 @@
 import SwiftUI
 
-/// Sing-along lyrics (SPEC §6.6): big serif lines over the blurred cover. The active line is bright, past lines
-/// fade, future lines are dim; it opens on the line being sung and scrolls to keep it about a third of the way down. Tap a line to
-/// jump there; hold it to save the line or make it a favourite moment. Share picks a run of lines (like Apple Music)
-/// and puts them on a story card. Lines are in the album's font when you chose one for it.
+/// The three looks for full-screen lyrics.
+enum LyricsStyle: String, CaseIterable, Identifiable {
+    case singAlong, video, behind
+    var id: String { rawValue }
+    var label: String {
+        switch self { case .singAlong: "Sing-along"; case .video: "Lyric video"; case .behind: "Behind the cover" }
+    }
+    var symbol: String {
+        switch self { case .singAlong: "text.alignleft"; case .video: "play.rectangle"; case .behind: "person.and.background.dotted" }
+    }
+}
+
+/// Full-screen lyrics (SPEC §6.6): the whole screen becomes the song. Every word fills with light as it's sung,
+/// over the cover's colours in motion (Sing-along), or one huge line at a time over the cover (Lyric video), or
+/// giant letters behind the person on the cover (Behind the cover). The controls fade away after a few seconds;
+/// touch to bring them back. Tap a line to jump there; hold it to save or share it. Lines are in the album's font
+/// when you chose one for it.
 struct LyricsView: View {
-    @Environment(PlaybackCoordinator.self) private var player
-    @Environment(LibraryService.self) private var library
-    @Environment(\.dismiss) private var dismiss
-    @State private var lyrics: Lyrics?
-    @State private var loading = true
-    @State private var art = PlayerArtwork()
-    @State private var saved: String?
-    @State private var sharing: ShareContent?
+    @Environment(PlaybackCoordinator.self) var player
+    @Environment(LibraryService.self) var library
+    @Environment(\.dismiss) var dismiss
+    @AppStorage("lyricsStyle") var styleRaw = LyricsStyle.singAlong.rawValue
+    @State var lyrics: Lyrics?
+    @State var loading = true
+    @State var art = PlayerArtwork()
+    @State var colours = AlbumColours.black
+    @State var cutout: UIImage?
+    @State var saved: String?
+    @State var sharing: ShareContent?
     /// Choosing lines to share, and the lines chosen (always one unbroken run).
-    @State private var selecting = false
-    @State private var picked: ClosedRange<Int>?
-    @State private var editing = false
+    @State var selecting = false
+    @State var picked: ClosedRange<Int>?
+    @State var controls = true
+    @State var lastTouch = Date.now
+    @State var nudge = 0.0
+    @State var listening = false
+    @State var editing = false
 
     /// Story cards hold a few lines, like Apple Music's.
-    private static let maxLines = 6, maxCharacters = 220
+    static let maxLines = 6, maxCharacters = 220
+
+    var style: LyricsStyle {
+        let s = LyricsStyle(rawValue: styleRaw) ?? .singAlong
+        return s == .behind && cutout == nil && art.image != nil && !loading ? .singAlong : s
+    }
+
+    /// Where the song is, for the words: a touch ahead to make up for the screen, plus your nudge.
+    func now() -> Double { player.currentTime + 0.1 + nudge }
+
+    /// The album's font, if you chose one for it.
+    var face: AlbumFace? { player.current.flatMap { LookStore.shared.face(for: $0, snapshot: library.snapshot) } }
+
+    /// Lyric type: the album's font when it has one (always bold enough to sing along to), LINER.'s otherwise.
+    func lyricFont(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {
+        face?.font(size, weight: weight) ?? .system(size: size, weight: weight)
+    }
 
     var body: some View {
         ZStack {
             backdrop
-            VStack(spacing: 0) {
-                header
-                content
-            }
-            .environment(\.albumFace, player.current.flatMap { LookStore.shared.face(for: $0, snapshot: library.snapshot) })
+            content
+            chrome.opacity(controls || selecting ? 1 : 0).allowsHitTesting(controls || selecting)
         }
-        .task(id: "\(player.current?.id ?? "")-\(LyricsEdits.shared.revision)") {
-            loading = true
-            lyrics = nil
-            await art.load(player.current)
-            if let item = player.current { lyrics = await LyricsStore.lyrics(for: item) }
-            loading = false
+        .contentShape(Rectangle())
+        .onTapGesture { touch() }
+        .statusBarHidden(!controls)
+        .persistentSystemOverlays(controls ? .automatic : .hidden)
+        .task(id: "\(player.current?.id ?? "")-\(LyricsEdits.shared.revision)") { await load() }
+        .task(id: styleRaw) {
+            guard styleRaw == LyricsStyle.behind.rawValue, cutout == nil, let img = art.image, let item = player.current else { return }
+            cutout = await SubjectMask.cutout(img, key: CoverArt.key(for: item))
+            if cutout == nil { flash("This cover has no clear subject, so it stays in Sing-along") }
         }
-        .sheet(isPresented: $editing) {
-            if let item = player.current { LyricsEditor(item: item, original: lyrics) }
+        .task(id: lastTouch) {
+            try? await Task.sleep(for: .seconds(3.5))
+            guard !Task.isCancelled, player.isPlaying, !selecting, lyrics?.isSynced == true else { return }
+            withAnimation(.easeInOut(duration: 0.6)) { controls = false }
         }
         .safeAreaInset(edge: .bottom) { if selecting { shareBar.transition(.move(edge: .bottom).combined(with: .opacity)) } }
         .animation(.liner, value: selecting)
+        .animation(.easeInOut(duration: 0.5), value: style)
+        .sheet(isPresented: $editing) {
+            if let item = player.current { LyricsEditor(item: item, original: lyrics) }
+        }
         .sheet(isPresented: Binding(get: { sharing != nil }, set: { if !$0 { sharing = nil } })) {
             if let sharing { ShareCardSheet(content: sharing) }
         }
         .overlay(alignment: .bottom) {
             if let saved {
-                Text(saved).font(.footnote).padding(12).glassEffect(.regular, in: Capsule()).padding(.bottom, 30)
+                Text(saved).font(.footnote).padding(12).glassEffect(.regular, in: Capsule()).padding(.bottom, 120)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .task { try? await Task.sleep(for: .seconds(2)); withAnimation { self.saved = nil } }
+                    .task { try? await Task.sleep(for: .seconds(2.4)); withAnimation { self.saved = nil } }
             }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    func touch() {
+        lastTouch = .now
+        if !controls { withAnimation(.easeInOut(duration: 0.3)) { controls = true } }
+    }
+
+    private func load() async {
+        loading = true
+        lyrics = nil
+        cutout = nil
+        guard let item = player.current else { loading = false; return }
+        nudge = LyricsNudge.offset(item.id)
+        await art.load(item)
+        if let img = art.image {
+            let key = CoverArt.key(for: item)
+            let found = await AlbumPalette.colours(for: img, key: key)
+            withAnimation(.easeInOut(duration: 0.8)) { colours = found }
+            if LyricsStyle(rawValue: styleRaw) == .behind { cutout = await SubjectMask.cutout(img, key: key) }
+        }
+        lyrics = await LyricsStore.lyrics(for: item)
+        withAnimation(.liner) { loading = false }
+    }
+
+    // MARK: Background
+
+    @ViewBuilder private var backdrop: some View {
+        switch style {
+        case .singAlong:
+            LyricsBackdrop(colours: colours, playing: player.isPlaying)
+        case .video:
+            ZStack {
+                colours.background
+                if let img = art.image {
+                    TimelineView(.animation(minimumInterval: 1 / 30)) { ctx in
+                        let t = ctx.date.timeIntervalSinceReferenceDate
+                        FocusedFillImage(image: img, focus: art.look.focus).scaleEffect(1.08 + 0.06 * sin(t / 9))
+                    }
+                }
+                LinearGradient(stops: [.init(color: .black.opacity(0.25), location: 0), .init(color: .clear, location: 0.3),
+                                       .init(color: colours.background.opacity(0.55), location: 0.62), .init(color: .black.opacity(0.88), location: 1)],
+                               startPoint: .top, endPoint: .bottom)
+            }
+            .ignoresSafeArea()
+        case .behind:
+            ZStack {
+                colours.background
+                if let img = art.image { FocusedFillImage(image: img, focus: art.look.focus) }
+                colours.background.opacity(0.25)
+            }
+            .ignoresSafeArea()
         }
     }
 
-    private var backdrop: some View {
-        ZStack {
-            Color.black
-            if let img = art.image {
-                FillImage(image: img).blur(radius: 60).opacity(0.55).scaleEffect(1.3)
+    // MARK: Lyrics
+
+    @ViewBuilder private var content: some View {
+        if loading {
+            ProgressView().tint(.white)
+        } else if let lyrics, lyrics.isSynced, !selecting {
+            switch style {
+            case .singAlong: singAlong(lyrics)
+            case .video: LyricVideoStage(lyrics: lyrics, colours: colours, face: face, clock: now)
+            case .behind: BehindCoverStage(lyrics: lyrics, colours: colours, face: face, cutout: cutout, focus: art.look.focus, clock: now)
             }
-            Color.black.opacity(0.35)
+        } else if selecting {
+            pickList
+        } else if let plain = lyrics?.plain {
+            ScrollView {
+                Text(plain).font(lyricFont(26)).textCase(face?.textCase).lineSpacing(8).padding(24).padding(.top, 90)
+                    .frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
+            }
+        } else {
+            EmptyStateView(symbol: "quote.bubble", title: "No lyrics found",
+                           message: player.current?.isLibrary == false ? "Add an .lrc file to this mixtape track in its editor." : "LRCLIB doesn't have this song yet.")
         }
-        .ignoresSafeArea()
+    }
+
+    // MARK: Controls
+
+    private var chrome: some View {
+        VStack(spacing: 0) {
+            header
+            Spacer()
+            if !selecting {
+                VStack(spacing: 14) {
+                    Scrubber()
+                    TransportControls(tint: colours.accent)
+                }
+                .padding(.horizontal, 18).padding(.vertical, 14)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
+                .padding(.horizontal, 12).padding(.bottom, 4)
+            }
+        }
     }
 
     private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(player.current?.title ?? "").albumFace(20, fallback: .serif(20)).lineLimit(1)
-                Text(player.current?.artist ?? "").linerLabel(size: 10)
+        HStack(spacing: 12) {
+            if let item = player.current {
+                QueueItemArtwork(item: item, cornerRadius: 8).frame(width: 44, height: 44)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.title).font(lyricFont(16)).lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text(item.artist).font(.system(size: 13)).foregroundStyle(.white.opacity(0.7)).lineLimit(1)
+                        if let lyrics, lyrics.isSynced { badge(lyrics.timing) }
+                    }
+                }
             }
             Spacer()
             if selecting {
                 Button("Cancel") { stopSelecting() }.font(.system(size: 15, weight: .semibold)).buttonStyle(.plain)
             } else {
-                if lyrics != nil {
-                    GlassCircleButton(systemImage: "pencil", label: "Edit lyrics and timings", size: 40) { editing = true }
-                }
-                if !allLines.isEmpty {
-                    GlassCircleButton(systemImage: "square.and.arrow.up", label: "Share lyrics", size: 40) { startSelecting(at: nil) }
-                }
+                LyricsMenu(view: self)
                 GlassCircleButton(systemImage: "xmark", label: "Close lyrics", size: 40) { dismiss() }
             }
         }
-        .padding(20)
+        .padding(.horizontal, 18).padding(.top, 10)
     }
 
-    // MARK: Sharing lines
-
-    /// Every line's text, synced or plain, in order.
-    private var allLines: [String] {
-        guard let lyrics else { return [] }
-        if lyrics.isSynced { return lyrics.lines.map(\.text) }
-        return (lyrics.plain ?? "").components(separatedBy: .newlines)
+    private func badge(_ timing: Lyrics.Timing) -> some View {
+        Text(timing == .word ? "WORD-TIMED" : "ESTIMATED")
+            .font(.system(size: 8.5, weight: .bold)).tracking(1.2)
+            .padding(.horizontal, 6).padding(.vertical, 2.5)
+            .background(.white.opacity(timing == .word ? 0.28 : 0.14), in: Capsule())
+            .accessibilityLabel(timing == .word ? "Word-timed lyrics" : "Word timings estimated")
     }
 
-    private var pickedText: [String] {
-        guard let picked else { return [] }
-        let lines = allLines
-        return picked.compactMap { lines.indices.contains($0) ? lines[$0].trimmingCharacters(in: .whitespaces) : nil }.filter { !$0.isEmpty }
-    }
+    func flash(_ text: String) { withAnimation { saved = text } }
+}
 
-    private var shareBar: some View {
-        let count = pickedText.count
-        return HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(count == 0 ? "Choose lines to share" : "\(count) line\(count == 1 ? "" : "s")").font(.system(size: 15, weight: .semibold))
-                Text("Up to \(Self.maxLines) lines in a row").font(.caption).foregroundStyle(Palette.secondary)
-            }
-            Spacer()
-            Button("Share", systemImage: "square.and.arrow.up") {
-                guard let item = player.current, !pickedText.isEmpty else { return }
-                sharing = .lyric(item, lines: pickedText)
-                stopSelecting()
-            }
-            .buttonStyle(.linerPrimary).buttonBorderShape(.capsule).disabled(count == 0)
-        }
-        .padding(.horizontal, 18).padding(.vertical, 12)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .padding(.horizontal, 16).padding(.bottom, 8)
-    }
-
-    private func startSelecting(at line: Int?) {
-        picked = line.map { $0...$0 }
-        selecting = true
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-    }
-
-    private func stopSelecting() { selecting = false; picked = nil }
-
-    /// Tapping grows or shrinks the run from its ends; a line too far away starts a new run there.
-    private func pick(_ i: Int) {
-        UISelectionFeedbackGenerator().selectionChanged()
-        guard let r = picked else { picked = i...i; return }
-        if r.contains(i) {
-            if r.count == 1 { picked = nil }
-            else if i == r.lowerBound { picked = (i + 1)...r.upperBound }
-            else if i == r.upperBound { picked = r.lowerBound...(i - 1) }
-            else { picked = r.lowerBound...i }
-            return
-        }
-        let grown = min(i, r.lowerBound)...max(i, r.upperBound)
-        let lines = allLines
-        let characters = grown.reduce(0) { $0 + (lines.indices.contains($1) ? lines[$1].count : 0) }
-        picked = grown.count <= Self.maxLines && characters <= Self.maxCharacters ? grown : i...i
-    }
-
-    /// A line while choosing: chosen lines are bright on a soft highlight, the rest step back.
-    private func pickable(_ text: String, index: Int, size: CGFloat) -> some View {
-        let on = picked?.contains(index) == true
-        return Text(text.isEmpty ? "♪" : text)
-            .albumFace(size, weight: on ? .semibold : .regular, fallback: .serif(size, weight: on ? .semibold : .regular))
-            .foregroundStyle(.white.opacity(on ? 1 : 0.4))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 6).padding(.horizontal, 10)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.white.opacity(on ? 0.14 : 0)))
-            .contentShape(Rectangle())
-            .onTapGesture { if !text.isEmpty { pick(index) } }
-            .animation(.easeOut(duration: 0.18), value: on)
-            .accessibilityAddTraits(on ? .isSelected : [])
-            .accessibilityHint("Double-tap to add or remove this line")
-    }
-
-    @ViewBuilder private var content: some View {
-        if loading {
-            Spacer(); ProgressView(); Spacer()
-        } else if let lyrics, lyrics.isSynced {
-            synced(lyrics)
-        } else if selecting, lyrics?.plain != nil {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(Array(allLines.enumerated()), id: \.offset) { i, text in pickable(text, index: i, size: 24) }
-                }
-                .padding(.horizontal, 14).padding(.vertical, 24)
-            }
-        } else if let plain = lyrics?.plain {
-            ScrollView {
-                Text(plain).albumFace(24, fallback: .serif(24)).lineSpacing(8).padding(24).frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
-            }
-        } else {
-            Spacer()
-            EmptyStateView(symbol: "quote.bubble", title: "No lyrics found",
-                           message: player.current?.isLibrary == false ? "Add an .lrc file to this mixtape track in its editor." : "LRCLIB doesn't have this song yet.")
-            Spacer()
-        }
-    }
-
-    private func synced(_ lyrics: Lyrics) -> some View {
-        TimelineView(.periodic(from: .now, by: 0.1)) { _ in
-            let active = lyrics.activeIndex(at: player.currentTime + 0.25)
-            ScrollViewReader { proxy in
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 22) {
-                        Color.clear.frame(height: 200)
-                        ForEach(lyrics.lines) { line in
-                            Group {
-                                if selecting { pickable(line.text, index: line.id, size: 28).padding(.horizontal, -10) }
-                                else { lineView(line, state: active.map { line.id < $0 ? -1 : (line.id == $0 ? 0 : 1) } ?? 1) }
-                            }
-                            .id(line.id)
-                        }
-                        Color.clear.frame(height: 420)
-                    }
-                    .padding(.horizontal, 24)
-                }
-                .onChange(of: active) { _, now in
-                    guard let now, !selecting else { return }
-                    withAnimation(.liner) { proxy.scrollTo(now, anchor: UnitPoint(x: 0.5, y: 0.35)) }
-                }
-                // Opening the lyrics lands straight on the line being sung, not the top of the song.
-                .task(id: lyrics) {
-                    let now = lyrics.activeIndex(at: player.currentTime + 0.25) ?? 0
-                    proxy.scrollTo(now, anchor: UnitPoint(x: 0.5, y: 0.35))
-                    try? await Task.sleep(for: .milliseconds(50))
-                    proxy.scrollTo(now, anchor: UnitPoint(x: 0.5, y: 0.35))
-                }
-            }
-        }
-    }
-
-    /// state: -1 past, 0 active, 1 future.
-    private func lineView(_ line: Lyrics.Line, state: Int) -> some View {
-        Text(line.text.isEmpty ? "♪" : line.text)
-            .albumFace(state == 0 ? 34 : 30, weight: state == 0 ? .semibold : .regular,
-                       fallback: .serif(state == 0 ? 34 : 30, weight: state == 0 ? .semibold : .regular))
-            .foregroundStyle(.white.opacity(state == 0 ? 1 : (state < 0 ? 0.28 : 0.45)))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-            .animation(.easeOut(duration: 0.25), value: state)
-            .onTapGesture { player.seek(to: line.time) }
-            .contextMenu {
-                Button("Save line", systemImage: "bookmark") { save(line: line) }
-                Button("Save as favourite moment", systemImage: "star") { saveMoment(line) }
-                if player.current != nil, !line.text.isEmpty {
-                    Button("Share lyrics", systemImage: "square.and.arrow.up") { startSelecting(at: line.id) }
-                }
-            }
-            .accessibilityAddTraits(state == 0 ? .isSelected : [])
-            .accessibilityHint("Double-tap to jump here")
-    }
-
-    private func save(line: Lyrics.Line) {
-        guard let item = player.current, !line.text.isEmpty else { return }
-        let note = Store.shared.songNoteOrNew(for: item)
-        if !note.lyricLines.contains(line.text) { note.lyricLines.append(line.text) }
-        note.updatedAt = .now
-        Store.shared.save()
-        withAnimation { saved = "Saved to Song Passport" }
-    }
-
-    private func saveMoment(_ line: Lyrics.Line) {
-        guard let item = player.current else { return }
-        let note = Store.shared.songNoteOrNew(for: item)
-        note.moments.append(Moment(seconds: line.time, name: line.text))
-        Store.shared.save()
-        withAnimation { saved = "Saved as a favourite moment" }
-    }
+#Preview {
+    LyricsView()
+        .environment(PreviewData.player).environment(PreviewData.library).modelContainer(Store.shared.container)
 }

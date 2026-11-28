@@ -7,6 +7,7 @@ enum CoverArt {
         switch item {
         case .library(let song):
             if let data = edition(for: item)?.coverImage, let img = UIImage(data: data) { return img }
+            if let studio = StudioStore.shared.still(song.albumID, .player) { return studio }
             if let mine = CoverOverrides.shared.image(song.albumID) { return mine }
             return await ArtworkCache.shared.image(album: song.albumID, pixels: pixels)
         case .local(let track):

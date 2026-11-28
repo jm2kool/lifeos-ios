@@ -10,6 +10,8 @@ struct FullPlayerView: View {
     @State private var art = PlayerArtwork()
     @State private var sheet: PlayerSheet?
     @AppStorage("playerVinyl") private var vinyl = false
+    @State private var showLyrics = false
+    @Namespace private var lyricsZoom
 
     enum PlayerSheet: String, Identifiable { case queue, lyrics, songPassport, share, equalizer; var id: String { rawValue } }
 
@@ -35,11 +37,15 @@ struct FullPlayerView: View {
         .background(Color.black)
         .keepsScreenAwake()
         .task(id: player.current.map { CoverArt.key(for: $0) }) { await art.load(player.current) }
-        .task { await Demo.playerOpened(open: { sheet = $0 }, record: { withAnimation(.liner) { vinyl = true } }) }
+        .task { await Demo.playerOpened(open: { if $0 == .lyrics { showLyrics = true } else { sheet = $0 } }, record: { withAnimation(.liner) { vinyl = true } }) }
+        // The lyrics grow out of the line on the player into the whole screen.
+        .fullScreenCover(isPresented: $showLyrics) {
+            LyricsView().navigationTransition(.zoom(sourceID: "lyrics", in: lyricsZoom))
+        }
         .sheet(item: $sheet) { which in
             switch which {
             case .queue: QueueSheet().presentationDetents([.medium, .large])
-            case .lyrics: PlayerExtras.lyrics()
+            case .lyrics: EmptyView()
             case .songPassport: PlayerExtras.songPassport(for: player.current)
             case .share: if let item = player.current { ShareCardSheet(content: .nowPlaying(item)) }
             case .equalizer: EqualizerView().presentationDetents([.medium, .large])
@@ -100,7 +106,7 @@ struct FullPlayerView: View {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
             .padding(.trailing, 6)
-            PlayerExtras.moreMenu(item: player.current, dismiss: { dismiss() }, share: { sheet = .share }, lyrics: { sheet = .lyrics },
+            PlayerExtras.moreMenu(item: player.current, dismiss: { dismiss() }, share: { sheet = .share }, lyrics: { showLyrics = true },
                                    equalizer: { sheet = .equalizer })
         }
         .padding(.top, 8)
@@ -108,7 +114,8 @@ struct FullPlayerView: View {
 
     private func bottom(_ item: QueueItem) -> some View {
         VStack(alignment: .leading, spacing: 18) {
-            NowPlayingLyrics(item: item) { sheet = .lyrics }
+            NowPlayingLyrics(item: item) { showLyrics = true }
+                .matchedTransitionSource(id: "lyrics", in: lyricsZoom)
             HStack(alignment: .bottom, spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(item.title).albumFace(32, fallback: .serif(32)).lineLimit(2).minimumScaleFactor(0.7)
@@ -132,7 +139,7 @@ struct FullPlayerView: View {
                 Image(systemName: "speaker.fill").font(.caption).foregroundStyle(Palette.secondary)
                 VolumeSlider().frame(height: 34)
                 RoutePicker().frame(width: 30, height: 30)
-                Button { sheet = .lyrics } label: { Image(systemName: "quote.bubble") }.accessibilityLabel("Lyrics")
+                Button { showLyrics = true } label: { Image(systemName: "quote.bubble") }.accessibilityLabel("Lyrics")
                 Button { sheet = .queue } label: { Image(systemName: "list.bullet") }.accessibilityLabel("Queue")
             }
             .font(.system(size: 18))

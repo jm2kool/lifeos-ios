@@ -48,24 +48,29 @@ struct SongRow: View {
     @Environment(LibraryService.self) private var library
     @Environment(\.tracklistScale) private var scale
     @Environment(\.albumArtist) private var albumArtist
+    /// Set on an album page with a coloured tracklist.
+    @Environment(\.albumColours) private var colours
 
     var body: some View {
         HStack(spacing: 12) {
-            if let number {
+            if let number, let colours {
+                AlbumTrackNumber(number: number, itemID: QueueItem.library(song).id, colours: colours, scale: scale).frame(width: 26 * scale)
+            } else if let number {
                 Text("\(number)").albumFace(17 * scale, fallback: .serif(17 * scale)).monospacedDigit().foregroundStyle(Palette.label).frame(width: 26 * scale)
             } else if showArtwork {
                 ArtworkView(albumID: song.albumID, cornerRadius: 6).frame(width: 46 * scale, height: 46 * scale)
             }
             VStack(alignment: .leading, spacing: 2 * scale) {
                 Text(song.title).albumFace(16 * scale, fallback: .system(size: 16 * scale)).lineLimit(1)
+                    .albumRowTitle(QueueItem.library(song).id, colours)
                 if !(number != nil && song.artist.isOnly(albumArtist)) {
                     Text(number == nil && library.snapshot.albumOf(song) != nil ? "\(song.artist) · \(song.albumTitle)" : song.artist)
-                        .albumFace(13 * scale, fallback: .system(size: 13 * scale)).foregroundStyle(Palette.secondary).lineLimit(1)
+                        .albumFace(13 * scale, fallback: .system(size: 13 * scale)).foregroundStyle(colours?.secondary ?? Palette.secondary).lineLimit(1)
                 }
             }
             Spacer(minLength: 8)
-            if song.isCloudOnly { Image(systemName: "icloud").font(.caption).foregroundStyle(Palette.faint) }
-            Text(song.playCount.grouped).font(.serif(16 * scale)).monospacedDigit().foregroundStyle(Palette.secondary)
+            if song.isCloudOnly { Image(systemName: "icloud").font(.caption).foregroundStyle(colours?.secondary ?? Palette.faint) }
+            Text(song.playCount.grouped).font(.serif(16 * scale)).monospacedDigit().foregroundStyle(colours?.secondary ?? Palette.secondary)
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)

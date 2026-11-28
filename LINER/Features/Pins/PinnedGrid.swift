@@ -155,7 +155,7 @@ struct PinCoverImage: View {
                 ArtworkView(albumID: albumID, cornerRadius: 0)
             }
         case .remote(let url): RemoteFill(url: url)
-        case .album, nil: ArtworkView(albumID: albumID, cornerRadius: 0)
+        case .album, nil: ArtworkView(albumID: albumID, cornerRadius: 0, place: .pin)
         }
     }
 }

@@ -37,7 +37,9 @@ extension CoverArt {
     /// Playing wouldn't know about.
     static func hasOwnCover(_ item: QueueItem) -> Bool {
         if edition(for: item)?.coverImage != nil { return true }
-        if case .library(let s) = item { return CoverOverrides.shared.image(s.albumID) != nil }
+        if case .library(let s) = item {
+            return StudioStore.shared.still(s.albumID, .player) != nil || CoverOverrides.shared.image(s.albumID) != nil
+        }
         return false
     }
 }
