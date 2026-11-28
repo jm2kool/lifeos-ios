@@ -63,9 +63,9 @@ struct AnyPrimitiveButtonStyle: PrimitiveButtonStyle {
 /// The primary action: white glass with black text, whatever tint is around it, except over a coloured
 /// tracklist, where it takes the album's accent colour (like the old Music app).
 struct LinerPrimaryStyle: PrimitiveButtonStyle {
-    func makeBody(configuration: Configuration) -> some View { Body(configuration: configuration) }
+    func makeBody(configuration: Configuration) -> some View { PrimaryLabel(configuration: configuration) }
 
-    private struct Body: View {
+    private struct PrimaryLabel: View {
         let configuration: PrimitiveButtonStyleConfiguration
         @Environment(\.albumColours) private var colours
         var body: some View {
