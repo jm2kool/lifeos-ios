@@ -61,7 +61,7 @@ enum AlbumPalette {
             let a = luminance, b = o.luminance
             return (max(a, b) + 0.05) / (min(a, b) + 0.05)
         }
-        static func hsb(_ h: Double, _ s: Double, _ v: Double) -> RGB {
+        static func fromHSB(_ h: Double, _ s: Double, _ v: Double) -> RGB {
             var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
             UIColor(hue: h, saturation: min(1, max(0, s)), brightness: min(1, max(0, v)), alpha: 1).getRed(&r, green: &g, blue: &b, alpha: &a)
             return RGB(r: Double(r), g: Double(g), b: Double(b))
@@ -114,7 +114,7 @@ enum AlbumPalette {
         // Keep it colourful: a black, white or grey edge takes the cover's strongest colour instead.
         if edgeHSB.s < 0.18, let strong = vivid.first?.0 {
             let h = strong.hsb
-            bg = .hsb(h.h, max(0.55, h.s), edgeHSB.v > 0.75 ? 0.82 : 0.3)
+            bg = .fromHSB(h.h, max(0.55, h.s), edgeHSB.v > 0.75 ? 0.82 : 0.3)
         } else if edgeHSB.s < 0.18 {
             bg = edgeHSB.v > 0.75 ? RGB(r: 0.93, g: 0.92, b: 0.9) : RGB(r: 0.07, g: 0.07, b: 0.075)
         }
@@ -123,17 +123,17 @@ enum AlbumPalette {
         let candidates = colours.map(\.0).filter { $0.distance(bg) > 0.2 }
         func fallback(_ strength: Double) -> RGB {
             let h = bg.hsb
-            return dark ? .hsb(h.h, 0.18 * strength, 1) : .hsb(h.h, 0.85, 0.18 + 0.12 * (1 - strength))
+            return dark ? .fromHSB(h.h, 0.18 * strength, 1) : .fromHSB(h.h, 0.85, 0.18 + 0.12 * (1 - strength))
         }
         let primary = candidates.first { $0.contrast(bg) >= 4.5 } ?? fallback(0.6)
         let secondary = candidates.first { $0.contrast(bg) >= 3 && $0.distance(primary) > 0.15 }
             ?? mix(primary, bg, 0.35)
         let accent = candidates.filter { $0.contrast(bg) >= 3 }.max { $0.hsb.s < $1.hsb.s }.flatMap { $0.hsb.s > 0.3 ? $0 : nil }
-            ?? (dark ? .hsb(bg.hsb.h, 0.45, 1) : .hsb(bg.hsb.h, 1, 0.45))
+            ?? (dark ? RGB.fromHSB(bg.hsb.h, 0.45, 1) : RGB.fromHSB(bg.hsb.h, 1, 0.45))
 
         var swatches = vivid.prefix(5).map { c -> Color in
             let h = c.0.hsb
-            return RGB.hsb(h.h, min(1, h.s * 1.15), max(0.35, h.v)).color
+            return RGB.fromHSB(h.h, min(1, h.s * 1.15), max(0.35, h.v)).color
         }
         if swatches.count < 3 { swatches += [bg.color, mix(bg, accent, 0.5).color, accent.color].prefix(3 - swatches.count) }
         return AlbumColours(background: bg.color, primary: primary.color, secondary: secondary.color, accent: accent.color,
