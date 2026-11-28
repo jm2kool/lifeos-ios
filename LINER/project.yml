@@ -29,6 +29,9 @@ targets:
           - "build.log"
           - "LINER.xcodeproj/**"
           - "LINERWidgets/**"
+          - "Shared/**"
+      # Shared with the widget: both targets name this folder the same way, so it gets one file reference.
+      - path: Shared
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.jm2kool.liner
