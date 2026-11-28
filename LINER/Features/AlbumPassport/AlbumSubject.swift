@@ -23,4 +23,6 @@ final class PassportPresenter {
     var album: AlbumSubject?
     var editions: AlbumSubject?
     var cover: CoverRequest?
+    /// The album open in LINER. Studio.
+    var studio: Album?
 }

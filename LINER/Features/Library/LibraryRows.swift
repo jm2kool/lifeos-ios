@@ -45,22 +45,29 @@ struct SongRow: View {
     var number: Int?
     var showArtwork = true
     @Environment(LibraryService.self) private var library
+    /// Set on a coloured album page.
+    @Environment(\.albumColours) private var colours
 
     var body: some View {
         HStack(spacing: 12) {
             if let number {
-                Text("\(number)").font(.serif(17)).monospacedDigit().foregroundStyle(Palette.label).frame(width: 26)
+                if let colours {
+                    AlbumTrackNumber(number: number, itemID: QueueItem.library(song).id, colours: colours).frame(width: 26)
+                } else {
+                    Text("\(number)").font(.serif(17)).monospacedDigit().foregroundStyle(Palette.label).frame(width: 26)
+                }
             } else if showArtwork {
                 ArtworkView(albumID: song.albumID, cornerRadius: 6).frame(width: 46, height: 46)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(song.title).font(.system(size: 16)).lineLimit(1)
+                Text(song.title).font(.system(size: 16, weight: colours == nil ? .regular : .medium)).lineLimit(1)
+                    .albumRowTitle(QueueItem.library(song).id, colours)
                 Text(number == nil && library.snapshot.albumOf(song) != nil ? "\(song.artist) · \(song.albumTitle)" : song.artist)
-                    .font(.system(size: 13)).foregroundStyle(Palette.secondary).lineLimit(1)
+                    .font(.system(size: 13)).foregroundStyle(colours?.secondary ?? Palette.secondary).lineLimit(1)
             }
             Spacer(minLength: 8)
-            if song.isCloudOnly { Image(systemName: "icloud").font(.caption).foregroundStyle(Palette.faint) }
-            Text(song.playCount.grouped).font(.serif(16)).monospacedDigit().foregroundStyle(Palette.secondary)
+            if song.isCloudOnly { Image(systemName: "icloud").font(.caption).foregroundStyle(colours?.secondary ?? Palette.faint) }
+            Text(song.playCount.grouped).font(.serif(16)).monospacedDigit().foregroundStyle(colours?.secondary ?? Palette.secondary)
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)

@@ -90,7 +90,7 @@ struct PinCard: View {
                 if let portraitName {
                     ArtistPortraitView(name: portraitName, fallbackAlbumID: albumID)
                 } else {
-                    ArtworkView(albumID: albumID, cornerRadius: 0)
+                    ArtworkView(albumID: albumID, cornerRadius: 0, place: .pin)
                 }
             }
             LinearGradient(colors: [.clear, .black.opacity(0.85)], startPoint: UnitPoint(x: 0.5, y: 0.5), endPoint: .bottom)

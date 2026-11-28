@@ -7,6 +7,8 @@ enum PlayerExtras {
     @ViewBuilder static func background(item: QueueItem?, image: UIImage?, look: ArtworkLook) -> some View {
         if let item, let motion = MotionLookup.file(for: item) {
             LoopingVideo(url: MotionCoverFiles.url(motion))
+        } else if let image, let song = item?.song, StudioStore.shared.motion(song.albumID) != .off {
+            StudioMotionView(image: image, motion: StudioStore.shared.motion(song.albumID), focus: look.focus, key: CoverArt.key(for: .library(song)))
         } else if let image, let item, MotionSettings.livingCoversOn {
             LivingCoverView(image: image, look: look, key: CoverArt.key(for: item))
         } else if let image {
@@ -14,10 +16,6 @@ enum PlayerExtras {
         } else {
             Color.clear
         }
-    }
-
-    @ViewBuilder static func lyrics() -> some View {
-        LyricsView().presentationDetents([.large]).presentationBackground(.black)
     }
 
     @ViewBuilder static func songPassport(for item: QueueItem?) -> some View {

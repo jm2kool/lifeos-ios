@@ -13,6 +13,9 @@ struct AlbumDetailView: View {
     @AppStorage(AlbumTracklist.storageKey) private var savedOnlyAlbums = ""
     /// The album as Apple Music lists it (nil until fetched, or when Apple doesn't know it).
     @State private var catalog: [AppleCatalog.Track]?
+    /// Colours picked from the cover the page shows (see `AlbumPalette`).
+    @State private var picked: AlbumColours?
+    @AppStorage("albumColours") private var colourSetting = AlbumPalette.Mode.coloured.rawValue
 
     init(album: Album) {
         self.album = album
@@ -58,51 +61,84 @@ struct AlbumDetailView: View {
         return parts.joined(separator: " · ")
     }
 
+    /// Your Studio look for this album (the plain album when you haven't made one).
+    private var studio: StudioLook { StudioStore.shared.look(album.id) ?? StudioLook() }
+
+    /// The page's colours, or nil for the plain black page (Settings → Covers → Album colours, or Studio).
+    private var colours: AlbumColours? {
+        guard let picked, colourSetting != "" else { return nil }
+        return studio.shownColours(picked)
+    }
+
+    private var paletteKey: String {
+        "page-\(album.id)\(CoverVersions.suffix(album.id))-\(activeEdition?.id.uuidString ?? "")-\(activeEdition?.coverImage?.count ?? 0)"
+    }
+
     var body: some View {
         let list = tracks
+        let look = studio
+        let tint = colours
+        let centred = look.layout == .centred
+        let page = tint?.background ?? Palette.background
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 ZStack(alignment: .bottom) {
-                    AlbumHeaderArt(albumID: album.id, note: notes.first, edition: activeEdition)
-                        .aspectRatio(1, contentMode: .fit).clipped()
-                    LinearGradient(colors: [.clear, .black], startPoint: UnitPoint(x: 0.5, y: 0.55), endPoint: .bottom)
+                    AlbumHeaderArt(albumID: album.id, note: notes.first, edition: activeEdition, motion: look.motion)
+                        .aspectRatio(look.layout == .poster ? 4 / 5 : 1, contentMode: .fit).clipped()
+                    LinearGradient(colors: [.clear, page], startPoint: UnitPoint(x: 0.5, y: look.layout == .poster ? 0.42 : 0.55), endPoint: .bottom)
                 }
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: centred ? .center : .leading, spacing: 8) {
                     if let edition = activeEdition {
-                        Text(edition.title).font(.itemTitle).lineLimit(3)
+                        Text(edition.title).font(.itemTitle).lineLimit(3).foregroundStyle(tint?.primary ?? .white)
                     } else {
-                        AlbumTitle(albumID: album.id, title: album.title)
+                        StudioTitleView(albumID: album.id, title: album.title, style: look.title,
+                                        colour: look.title.colour.flatMap(Color.init(hex:)) ?? tint?.primary ?? .white,
+                                        alignment: centred ? .center : .leading)
                     }
                     if let artist = library.snapshot.artist(named: album.artist) {
-                        NavigationLink(value: artist) { Text(album.artist).linerLabel(size: 12) }.buttonStyle(.plain)
+                        NavigationLink(value: artist) { StudioArtistLine(name: album.artist, style: look.title, colour: tint?.secondary ?? Palette.label) }
+                            .buttonStyle(.plain)
                     } else {
-                        Text(album.artist).linerLabel(size: 12)
+                        StudioArtistLine(name: album.artist, style: look.title, colour: tint?.secondary ?? Palette.label)
                     }
                     actions(list).padding(.top, 10)
-                    Text(facts).linerLabel(size: 10).padding(.top, 8)
+                    Text(facts).font(.system(size: 10, weight: .semibold)).tracking(2.5).foregroundStyle(tint?.secondary ?? Palette.label)
+                        .padding(.top, 8).multilineTextAlignment(centred ? .center : .leading)
                     editionSwitcher.padding(.top, 4)
                 }
-                .padding(.horizontal, 16).padding(.top, -24)
+                .frame(maxWidth: .infinity, alignment: centred ? .center : .leading)
+                .padding(.horizontal, 16).padding(.top, look.layout == .poster ? -110 : -24)
 
                 VStack(spacing: 0) {
                     ForEach(Array(list.enumerated()), id: \.offset) { i, item in
                         PlayableQueueRow(item: item, list: list, number: trackNumbersLookRight(list) ? (item.song?.trackNumber ?? i + 1) : i + 1)
                             .padding(.vertical, 10)
-                        Divider().overlay(Palette.stroke)
+                        Divider().overlay(tint.map { $0.primary.opacity(0.14) } ?? Palette.stroke)
                     }
                 }
                 .padding(.horizontal, 16).padding(.top, 18)
 
                 if let date = library.snapshot.songs(album.songIDs).compactMap(\.releaseDate).first {
                     Text("Released \(date.formatted(date: .long, time: .omitted))")
-                        .font(.footnote).foregroundStyle(Palette.label).padding(16)
+                        .font(.footnote).foregroundStyle(tint?.secondary ?? Palette.label).padding(16)
                 }
                 AlbumHistory(album: album, songs: library.snapshot.songs(album.songIDs)).padding(.horizontal, 16).padding(.top, 8)
             }
             .padding(.bottom, 32)
         }
         .environment(\.editionCover, activeEdition.map { EditionCover(editionID: $0.id, itemIDs: Set(list.map(\.id))) })
-        .background(Palette.background)
+        .environment(\.albumColours, tint)
+        .background(page)
+        .animation(.easeInOut(duration: 0.5), value: tint)
+        .task(id: paletteKey) {
+            var img: UIImage?
+            if let data = activeEdition?.coverImage { img = UIImage(data: data) }
+            if img == nil { img = StudioStore.shared.still(album.id, .album) ?? CoverOverrides.shared.image(album.id) }
+            if img == nil { img = await ArtworkCache.shared.image(album: album.id, pixels: 600) }
+            guard let img else { return }
+            let found = await AlbumPalette.colours(for: img, key: paletteKey)
+            withAnimation(.easeInOut(duration: 0.5)) { picked = found }
+        }
         .ignoresSafeArea(edges: .top)
         .task(id: album.id) {
             let ids = library.snapshot.songs(album.songIDs).filter(\.hasStoreID).map(\.storeID)
@@ -112,9 +148,13 @@ struct AlbumDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
+                Button("Studio", systemImage: "paintbrush.pointed") { passports.studio = album }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     AlbumActionsMenu(album: album)
                     Button("Download in Music", systemImage: "arrow.down.circle") { openInMusic() }
+                    Button("Edit in Studio", systemImage: "paintbrush.pointed") { passports.studio = album }
                 } label: { Label("More", systemImage: "ellipsis") }
             }
         }
@@ -143,9 +183,10 @@ struct AlbumDetailView: View {
             Button("Manage Editions", systemImage: "square.stack.3d.up") { passports.editions = .library(album, snapshot: library.snapshot) }
         } label: {
             HStack(spacing: 4) {
-                Text(tracklistName).linerLabel(size: 10)
-                Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold)).foregroundStyle(Palette.label)
+                Text(tracklistName).font(.system(size: 10, weight: .semibold)).textCase(.uppercase).tracking(2.5)
+                Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold))
             }
+            .foregroundStyle(colours?.secondary ?? Palette.label)
         }
         .accessibilityLabel("Edition: \(tracklistName)")
     }
@@ -179,41 +220,6 @@ struct AlbumDetailView: View {
             openURL(url)
         } else if let url = URL(string: "music://") {
             openURL(url)
-        }
-    }
-}
-
-/// The album header: a motion cover if you attached one; otherwise the cover (edition cover, your own cover,
-/// or the album artwork) as a moving Living Cover while you're on the page.
-struct AlbumHeaderArt: View {
-    let albumID: UInt64
-    let note: AlbumNote?
-    let edition: Edition?
-    @State private var image: UIImage?
-    @State private var look = ArtworkLook.neutral
-
-    private var stillKey: String {
-        "album-\(albumID)\(CoverVersions.suffix(albumID))-\(edition?.id.uuidString ?? "")-\(edition?.coverImage?.count ?? 0)"
-    }
-
-    var body: some View {
-        let motion = edition?.motionCoverFile ?? note?.motionCoverFile
-        ZStack {
-            ArtworkView(albumID: albumID, cornerRadius: 0)
-            if let motion {
-                LoopingVideo(url: MotionCoverFiles.url(motion))
-            } else if let image, MotionSettings.livingCoversOn {
-                LivingCoverView(image: image, look: look, key: stillKey).transition(.opacity)
-            }
-        }
-        .task(id: stillKey) {
-            var img: UIImage?
-            if let data = edition?.coverImage { img = UIImage(data: data) }
-            if img == nil { img = CoverOverrides.shared.image(albumID) }
-            if img == nil { img = await ArtworkCache.shared.image(album: albumID, pixels: 1400) }
-            guard let img else { return }
-            look = await ArtworkAnalysis.look(for: img, key: stillKey)
-            withAnimation(.easeIn(duration: 0.4)) { image = img }
         }
     }
 }

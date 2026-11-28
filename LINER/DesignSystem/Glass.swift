@@ -60,14 +60,21 @@ struct AnyPrimitiveButtonStyle: PrimitiveButtonStyle {
     .padding().background(LinearGradient(colors: [.orange, .black], startPoint: .top, endPoint: .bottom))
 }
 
-/// The primary action: always white glass with black text, whatever tint is around it.
+/// The primary action: white glass with black text, whatever tint is around it, except on a coloured album
+/// page, where it takes the page's title colour with the background colour for its words (like the old Music app).
 struct LinerPrimaryStyle: PrimitiveButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        Button(role: configuration.role, action: configuration.trigger) {
-            configuration.label.foregroundStyle(.black).singleLineLabel()
+    func makeBody(configuration: Configuration) -> some View { Body(configuration: configuration) }
+
+    private struct Body: View {
+        let configuration: PrimitiveButtonStyleConfiguration
+        @Environment(\.albumColours) private var colours
+        var body: some View {
+            Button(role: configuration.role, action: configuration.trigger) {
+                configuration.label.foregroundStyle(colours?.background ?? .black).singleLineLabel()
+            }
+            .buttonStyle(.glassProminent)
+            .tint(colours?.primary ?? .white)
         }
-        .buttonStyle(.glassProminent)
-        .tint(.white)
     }
 }
 

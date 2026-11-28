@@ -54,6 +54,7 @@ struct AlbumActionsMenu: View {
             }
         }
         Button("Album Passport", systemImage: "text.book.closed") { passports.album = .library(album, snapshot: library.snapshot) }
+        Button("Edit in Studio", systemImage: "paintbrush.pointed") { passports.studio = album }
         Menu("Cover", systemImage: "photo.on.rectangle") {
             Button("Choose Cover Photo", systemImage: "photo") { passports.cover = CoverRequest(album: album, motion: false) }
             Button("Choose Motion Cover", systemImage: "play.rectangle") { passports.cover = CoverRequest(album: album, motion: true) }

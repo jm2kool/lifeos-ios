@@ -23,6 +23,8 @@ struct SettingsView: View {
     @AppStorage("recapNotifications") private var recapNotifications = false
     @AppStorage("brandName") private var brandName = ""
     @AppStorage("groupAlbumEditions") private var groupEditions = true
+    @AppStorage("albumColours") private var albumColours = AlbumPalette.Mode.coloured.rawValue
+    @AppStorage("lyricsStyle") private var lyricsStyle = LyricsStyle.singAlong.rawValue
     @State private var exportURL: URL?
     @State private var importing = false
     @State private var message: String?
@@ -49,6 +51,9 @@ struct SettingsView: View {
                         Text("LRCLIB").tag("lrclib")
                         Text("Off").tag("off")
                     }
+                    Picker("Full-screen lyrics", selection: $lyricsStyle) {
+                        ForEach(LyricsStyle.allCases) { Text($0.label).tag($0.rawValue) }
+                    }
                 } header: { Text("Listening") } footer: {
                     Text("With Vinyl Mode on, Home becomes your record crate and the Library shows albums as a crate.")
                 }
@@ -56,6 +61,9 @@ struct SettingsView: View {
                     NavigationLink("Artist titles") { ArtistTitlesSettings() }
                 }
                 Section {
+                    Picker("Album colours", selection: $albumColours) {
+                        ForEach(AlbumPalette.Mode.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
+                    }
                     Toggle("Living Covers", isOn: $livingCovers)
                     Toggle("Album title logos", isOn: $albumLogos)
                     Picker("Style", selection: $coverStyle) {
@@ -68,7 +76,7 @@ struct SettingsView: View {
                     LabeledContent("Living Cover cache", value: cacheSize)
                     Button("Clear Living Cover cache") { LivingCoverRenderer.clearCache(); updateCache() }
                 } header: { Text("Covers") } footer: {
-                    Text("Covers keep moving in Low Power Mode inside the app unless you turn on Respect Low Power Mode. On the lock screen iOS always shows a still picture in Low Power Mode. Full-screen lock screen artwork works for mixtapes and for songs without copy protection (iTunes purchases, synced or ripped music) when “Play my own files in LINER.” is on; those plays are added to your stats by LINER. Streaming Apple Music songs are played by iOS itself, which keeps its standard lock screen.")
+                    Text("Album colours: Coloured paints each album page in its cover's colours, Tinted keeps the page black with coloured words, Black is the plain page. Studio (••• on any album) can change it per album. Covers keep moving in Low Power Mode inside the app unless you turn on Respect Low Power Mode. On the lock screen iOS always shows a still picture in Low Power Mode. Full-screen lock screen artwork works for mixtapes and for songs without copy protection (iTunes purchases, synced or ripped music) when “Play my own files in LINER.” is on; those plays are added to your stats by LINER. Streaming Apple Music songs are played by iOS itself, which keeps its standard lock screen.")
                 }
                 Section("Recaps") {
                     Toggle("Monday morning recap notification", isOn: $recapNotifications)

@@ -7,6 +7,7 @@ struct PlayableQueueRow: View {
     var number: Int?
     @Environment(PlaybackCoordinator.self) private var player
     @Environment(\.editionCover) private var edition
+    @Environment(\.albumColours) private var colours
 
     var body: some View {
         if case .library(let song) = item {
@@ -14,17 +15,19 @@ struct PlayableQueueRow: View {
         } else {
             Button { player.play(list, startAt: list.firstIndex(of: item) ?? 0, edition: edition) } label: {
                 HStack(spacing: 12) {
-                    if let number {
+                    if let number, let colours {
+                        AlbumTrackNumber(number: number, itemID: item.id, colours: colours).frame(width: 26)
+                    } else if let number {
                         Text("\(number)").font(.serif(17)).monospacedDigit().foregroundStyle(Palette.label).frame(width: 26)
                     } else {
                         QueueItemArtwork(item: item).frame(width: 46, height: 46)
                     }
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(item.title).font(.system(size: 16)).lineLimit(1)
-                        Text(item.artist).font(.system(size: 13)).foregroundStyle(Palette.secondary).lineLimit(1)
+                        Text(item.title).font(.system(size: 16)).lineLimit(1).albumRowTitle(item.id, colours)
+                        Text(item.artist).font(.system(size: 13)).foregroundStyle(colours?.secondary ?? Palette.secondary).lineLimit(1)
                     }
                     Spacer()
-                    Image(systemName: "recordingtape").font(.caption).foregroundStyle(Palette.faint)
+                    Image(systemName: "recordingtape").font(.caption).foregroundStyle(colours?.secondary ?? Palette.faint)
                 }
                 .contentShape(Rectangle())
             }

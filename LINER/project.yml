@@ -7,8 +7,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    MARKETING_VERSION: "1.4.0"
-    CURRENT_PROJECT_VERSION: "14"
+    MARKETING_VERSION: "1.5.0"
+    CURRENT_PROJECT_VERSION: "15"
     DEVELOPMENT_TEAM: ""
 targets:
   LINER:
@@ -44,6 +44,7 @@ targets:
         INFOPLIST_KEY_NSAppleMusicUsageDescription: "LINER. reads your Apple Music library to show your play counts, artwork and history, and to play your songs."
         INFOPLIST_KEY_NSSupportsLiveActivities: YES
         INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription: "LINER. saves your share cards to Photos when you ask."
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "LINER. listens to your own mixtape files, on the iPhone, to time each word of their lyrics for the sing-along."
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic

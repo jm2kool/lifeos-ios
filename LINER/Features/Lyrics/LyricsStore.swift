@@ -1,12 +1,18 @@
 import Foundation
 import SwiftData
 
-/// Finds lyrics for a queue item: a mixtape's own LRC, the cache, or LRCLIB (then cached).
+/// Finds lyrics for a queue item: a mixtape's own LRC (or the word timings LINER. heard in it), the cache, or
+/// LRCLIB (then cached). Every synced result gets word timings for the sing-along (`WordTiming`).
 @MainActor
 enum LyricsStore {
     static func lyrics(for item: QueueItem, refresh: Bool = false) async -> Lyrics? {
+        guard let found = await raw(for: item, refresh: refresh) else { return nil }
+        return WordTiming.apply(found, duration: item.duration)
+    }
+
+    private static func raw(for item: QueueItem, refresh: Bool) async -> Lyrics? {
         if case .local(let t) = item {
-            let lrc = TrackResolver.mixtapeTrack(t.id)?.lyricsLRC ?? t.lyricsLRC
+            let lrc = SpeechAligner.aligned(item.id) ?? TrackResolver.mixtapeTrack(t.id)?.lyricsLRC ?? t.lyricsLRC
             guard let lrc, !lrc.isEmpty else { return nil }
             let lines = LRCParser.parse(lrc)
             return Lyrics(lines: lines, plain: lines.isEmpty ? lrc : nil)
